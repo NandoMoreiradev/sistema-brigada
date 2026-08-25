@@ -8,7 +8,13 @@
 // produto) e a checagem de limite específica do WhatsApp (não existe aqui).
 
 import * as https from 'https';
-import { Injectable, Logger, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import {
+    Injectable,
+    Logger,
+    InternalServerErrorException,
+    BadRequestException,
+    ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -36,14 +42,26 @@ const allowedMimeTypes: Record<UploadContext, string[]> = {
 @Injectable()
 export class MediaService {
     private readonly logger = new Logger(MediaService.name);
-    private readonly s3Client: S3Client;
-    private readonly bucketName: string;
-    readonly publicUrl: string;
+    private readonly s3Client?: S3Client;
+    private readonly bucketName?: string;
+    readonly publicUrl?: string;
 
     constructor(private readonly configService: ConfigService) {
-        const accountId = this.configService.getOrThrow<string>('R2_ACCOUNT_ID');
-        this.bucketName = this.configService.getOrThrow<string>('R2_BUCKET_NAME');
-        this.publicUrl = this.configService.getOrThrow<string>('R2_PUBLIC_URL');
+        const accountId = this.configService.get<string>('R2_ACCOUNT_ID');
+        const bucketName = this.configService.get<string>('R2_BUCKET_NAME');
+        const publicUrl = this.configService.get<string>('R2_PUBLIC_URL');
+        const accessKeyId = this.configService.get<string>('R2_ACCESS_KEY_ID');
+        const secretAccessKey = this.configService.get<string>('R2_SECRET_ACCESS_KEY');
+
+        if (!accountId || !bucketName || !publicUrl || !accessKeyId || !secretAccessKey) {
+            this.logger.warn(
+                'Variáveis R2_* ausentes — MediaService desativado (upload de mídia vai falhar até serem configuradas).',
+            );
+            return;
+        }
+
+        this.bucketName = bucketName;
+        this.publicUrl = publicUrl;
         const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
 
         const httpsAgent = new https.Agent({ minVersion: 'TLSv1.2', keepAlive: true });
@@ -52,16 +70,22 @@ export class MediaService {
         this.s3Client = new S3Client({
             region: 'auto',
             endpoint,
-            credentials: {
-                accessKeyId: this.configService.getOrThrow<string>('R2_ACCESS_KEY_ID'),
-                secretAccessKey: this.configService.getOrThrow<string>('R2_SECRET_ACCESS_KEY'),
-            },
+            credentials: { accessKeyId, secretAccessKey },
             requestHandler,
             forcePathStyle: true,
             requestChecksumCalculation: 'WHEN_REQUIRED',
             responseChecksumValidation: 'WHEN_REQUIRED',
         });
         this.logger.log('MediaService inicializado e conectado ao Cloudflare R2.');
+    }
+
+    private getClient(): S3Client {
+        if (!this.s3Client) {
+            throw new ServiceUnavailableException(
+                'Upload de mídia não está configurado neste ambiente (variáveis R2_* ausentes).',
+            );
+        }
+        return this.s3Client;
     }
 
     async uploadFileFromBuffer(
@@ -84,7 +108,7 @@ export class MediaService {
         });
 
         try {
-            await this.s3Client.send(command);
+            await this.getClient().send(command);
             const url = `${this.publicUrl}/${key}`;
             return { url, key };
         } catch (error) {
@@ -123,7 +147,7 @@ export class MediaService {
         });
 
         try {
-            const signedUrl = await getSignedUrl(this.s3Client, command, {
+            const signedUrl = await getSignedUrl(this.getClient(), command, {
                 expiresIn: 300,
                 signableHeaders: new Set(['content-type']),
             });
@@ -139,7 +163,7 @@ export class MediaService {
     async generatePresignedDownloadUrl(key: string): Promise<string> {
         const command = new GetObjectCommand({ Bucket: this.bucketName, Key: key });
         try {
-            return await getSignedUrl(this.s3Client, command, { expiresIn: 300 });
+            return await getSignedUrl(this.getClient(), command, { expiresIn: 300 });
         } catch (error) {
             this.logger.error(`Falha ao gerar URL de download: ${error.message}`);
             throw new InternalServerErrorException('Erro ao gerar link de download.');
@@ -148,7 +172,7 @@ export class MediaService {
 
     async getObjectStream(key: string): Promise<NodeJS.ReadableStream> {
         const command = new GetObjectCommand({ Bucket: this.bucketName, Key: key });
-        const response = await this.s3Client.send(command);
+        const response = await this.getClient().send(command);
         return response.Body as NodeJS.ReadableStream;
     }
 
@@ -161,7 +185,7 @@ export class MediaService {
             ContentDisposition: 'inline',
         });
         try {
-            await this.s3Client.send(command);
+            await this.getClient().send(command);
             this.logger.log(`Objeto ${key} sobrescrito com sucesso.`);
         } catch (error) {
             this.logger.error(`Falha ao sobrescrever objeto ${key}: ${error.message}`, error.stack);
@@ -172,7 +196,7 @@ export class MediaService {
     async deleteObject(key: string): Promise<void> {
         const command = new DeleteObjectCommand({ Bucket: this.bucketName, Key: key });
         try {
-            await this.s3Client.send(command);
+            await this.getClient().send(command);
             this.logger.log(`Objeto ${key} excluído com sucesso.`);
         } catch (error) {
             this.logger.error(`Falha ao excluir objeto ${key}: ${error.message}`);
