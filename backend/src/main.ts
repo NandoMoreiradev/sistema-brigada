@@ -16,8 +16,11 @@ async function bootstrap() {
 
     app.use(cookieParser());
 
+    const allowedOrigins = process.env.FRONTEND_URL?.split(',').map((o) => o.trim());
+    logger.log(`CORS origin permitida: ${allowedOrigins?.join(', ') ?? '(qualquer uma — FRONTEND_URL ausente)'}`);
+
     app.enableCors({
-        origin: process.env.FRONTEND_URL?.split(',') ?? true,
+        origin: allowedOrigins ?? true,
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
         credentials: true,
         allowedHeaders: [
