@@ -34,3 +34,101 @@ export interface User {
     organization?: Organization | null;
     allowedOrganizations?: Organization[];
 }
+
+// ─── Turmas e matrícula (backend/src/courses, backend/src/users) ──────────
+
+export interface StudentProfile {
+    id: string;
+    userId: string;
+    birthDate?: string | null;
+    gender?: string | null;
+    guardianName?: string | null;
+    guardianPhone?: string | null;
+}
+
+export interface OrgPerson {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    role: Role;
+    avatarUrl?: string | null;
+    isActive: boolean;
+    createdAt: string;
+    studentProfile?: StudentProfile | null;
+    staffMember?: { id: string; status: string } | null;
+    instructorAssignments?: { courseId: string }[];
+}
+
+export type EventStatus = 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
+export type EnrollmentStatus = 'ACTIVE' | 'COMPLETED' | 'DROPPED';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'JUSTIFIED_ABSENT';
+
+export interface CourseEvent {
+    id: string;
+    title: string;
+    location?: string | null;
+    startDate: string;
+    endDate?: string | null;
+    status: EventStatus;
+}
+
+export interface CourseInstructor {
+    userId: string;
+    user: { id: string; name: string; email: string };
+}
+
+export interface Course {
+    id: string;
+    eventId: string;
+    category?: string | null;
+    vacancies?: number | null;
+    minAttendancePercent: number;
+    requireAllLessonsWatched: boolean;
+    recyclingValidityMonths?: number | null;
+    active: boolean;
+    event: CourseEvent;
+    instructors: CourseInstructor[];
+    _count: { enrollments: number; sessions: number };
+}
+
+export interface Room {
+    id: string;
+    name: string;
+    capacity?: number | null;
+    active: boolean;
+}
+
+export interface ClassSession {
+    id: string;
+    courseId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    roomId?: string | null;
+    room?: Room | null;
+    classLog?: { id: string; content: string } | null;
+    _count?: { attendances: number };
+}
+
+export interface Enrollment {
+    id: string;
+    courseId: string;
+    status: EnrollmentStatus;
+    enrolledAt: string;
+    studentProfile: { id: string; user: { id: string; name: string; email: string } };
+}
+
+export interface AttendanceRosterEntry {
+    enrollmentId: string;
+    student: { id: string; name: string; email: string };
+    status: AttendanceStatus | null;
+}
+
+export interface Paginated<T> {
+    data: T[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
