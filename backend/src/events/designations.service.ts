@@ -5,6 +5,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { DesignationStatus } from '@prisma/client';
 
@@ -17,19 +18,26 @@ export class DesignationsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly eventsService: EventsService,
+        private readonly notificationsService: NotificationsService,
     ) {}
 
     async create(eventId: string, organizationId: string, dto: CreateDesignationDto) {
-        const operation = await this.eventsService.requireEventOperation(eventId, organizationId);
+        const event = await this.eventsService.findOne(eventId, organizationId);
+        if (!event.operation) {
+            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+        }
 
-        const staffMember = await this.prisma.staffMember.findFirst({ where: { id: dto.staffMemberId, organizationId } });
+        const staffMember = await this.prisma.staffMember.findFirst({
+            where: { id: dto.staffMemberId, organizationId },
+            include: { user: { select: { id: true, name: true, email: true } } },
+        });
         if (!staffMember) {
             throw new NotFoundException('Membro de equipe informado não pertence a esta organização.');
         }
 
-        return this.prisma.designation.create({
+        const designation = await this.prisma.designation.create({
             data: {
-                eventOperationId: operation.id,
+                eventOperationId: event.operation.id,
                 staffMemberId: dto.staffMemberId,
                 role: dto.role,
                 shiftStart: new Date(dto.shiftStart),
@@ -37,6 +45,17 @@ export class DesignationsService {
             },
             include: designationInclude,
         });
+
+        await this.notificationsService.create({
+            userId: staffMember.user.id,
+            organizationId,
+            type: 'DESIGNATION_ASSIGNED',
+            title: 'Nova designação',
+            message: `Você foi designado(a) como ${dto.role} para o evento "${event.title}".`,
+            link: `/events/${eventId}`,
+        });
+
+        return designation;
     }
 
     async findAll(eventId: string, organizationId: string) {

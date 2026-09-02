@@ -20,6 +20,7 @@ import {
     Award,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationBell } from './NotificationBell';
 
 const Shell = styled.div`
     display: flex;
@@ -218,6 +219,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
             <Content>
                 <Topbar>
+                    <NotificationBell />
                     <UserBadge>
                         <strong>{user?.name}</strong>
                         <span>{organization?.name || user?.role}</span>

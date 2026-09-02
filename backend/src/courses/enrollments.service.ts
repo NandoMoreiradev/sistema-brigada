@@ -13,6 +13,7 @@ import { EnrollmentStatus } from '@prisma/client';
 import { UsersService } from '../users/users.service';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
 import { CertificatesService } from '../certificates/certificates.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class EnrollmentsService {
@@ -20,12 +21,16 @@ export class EnrollmentsService {
         private readonly prisma: PrismaService,
         private readonly usersService: UsersService,
         private readonly certificatesService: CertificatesService,
+        private readonly notificationsService: NotificationsService,
     ) {}
 
     private async requireCourse(courseId: string, organizationId: string) {
         const course = await this.prisma.course.findFirst({
             where: { id: courseId, organizationId },
-            include: { _count: { select: { enrollments: { where: { status: EnrollmentStatus.ACTIVE } } } } },
+            include: {
+                event: { select: { title: true } },
+                _count: { select: { enrollments: { where: { status: EnrollmentStatus.ACTIVE } } } },
+            },
         });
         if (!course) {
             throw new NotFoundException(`Turma com ID ${courseId} não encontrada nesta organização.`);
@@ -48,10 +53,21 @@ export class EnrollmentsService {
             throw new ConflictException('Este aluno já está matriculado nesta turma.');
         }
 
-        return this.prisma.enrollment.create({
+        const enrollment = await this.prisma.enrollment.create({
             data: { studentProfileId: studentProfile.id, courseId, organizationId },
             include: { studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } } },
         });
+
+        await this.notificationsService.create({
+            userId,
+            organizationId,
+            type: 'ENROLLMENT_CONFIRMED',
+            title: 'Matrícula confirmada',
+            message: `Sua matrícula na turma "${course.event.title}" foi confirmada.`,
+            link: `/courses/${courseId}`,
+        });
+
+        return enrollment;
     }
 
     findAll(courseId: string, organizationId: string) {
