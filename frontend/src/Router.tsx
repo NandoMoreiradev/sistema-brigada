@@ -13,9 +13,12 @@ import Login from '@/pages/Login';
 import BadgePage from '@/pages/public/BadgePage';
 import Dashboard from '@/pages/Dashboard';
 import Courses from '@/pages/Courses';
+import CourseDetail from '@/pages/CourseDetail';
 import Events from '@/pages/Events';
+import EventDetail from '@/pages/EventDetail';
 import Staff from '@/pages/Staff';
 import Students from '@/pages/Students';
+import Certificates from '@/pages/Certificates';
 import Organizations from '@/pages/admin/Organizations';
 
 import { ProtectedRoute, SuperAdminRoute } from '@/components/common/ProtectedRoute';
@@ -31,9 +34,12 @@ export function Router() {
             <Route element={<ProtectedRoute />}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/courses" element={<Courses />} />
+                <Route path="/courses/:id" element={<CourseDetail />} />
                 <Route path="/events" element={<Events />} />
+                <Route path="/events/:id" element={<EventDetail />} />
                 <Route path="/staff" element={<Staff />} />
                 <Route path="/students" element={<Students />} />
+                <Route path="/certificates" element={<Certificates />} />
             </Route>
 
             {/* Privadas — só SUPER_ADMIN */}

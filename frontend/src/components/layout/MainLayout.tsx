@@ -17,6 +17,7 @@ import {
     Building2,
     LogOut,
     Flame,
+    Award,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -174,6 +175,7 @@ const NAV_ITEMS = [
     { to: '/events', label: 'Eventos', icon: CalendarClock },
     { to: '/staff', label: 'Equipe', icon: ShieldCheck },
     { to: '/students', label: 'Alunos', icon: Users },
+    { to: '/certificates', label: 'Certificados', icon: Award },
 ];
 
 export function MainLayout({ children }: { children: ReactNode }) {
