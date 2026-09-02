@@ -58,6 +58,7 @@ export interface OrgPerson {
     studentProfile?: StudentProfile | null;
     staffMember?: { id: string; status: string } | null;
     instructorAssignments?: { courseId: string }[];
+    roleAssignments?: { id: string; name: string }[];
 }
 
 export type EventStatus = 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';

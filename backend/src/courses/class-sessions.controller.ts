@@ -14,17 +14,17 @@ import { UpsertClassLogDto } from './dto/upsert-class-log.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('courses/:courseId/sessions')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ClassSessionsController {
     constructor(private readonly classSessionsService: ClassSessionsService) {}
 
@@ -36,7 +36,7 @@ export class ClassSessionsController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     create(
         @Param('courseId') courseId: string,
         @Body() dto: CreateClassSessionDto,
@@ -52,7 +52,7 @@ export class ClassSessionsController {
     }
 
     @Patch(':sessionId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     update(
         @Param('courseId') courseId: string,
         @Param('sessionId') sessionId: string,
@@ -63,7 +63,7 @@ export class ClassSessionsController {
     }
 
     @Delete(':sessionId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     remove(
         @Param('courseId') courseId: string,
         @Param('sessionId') sessionId: string,

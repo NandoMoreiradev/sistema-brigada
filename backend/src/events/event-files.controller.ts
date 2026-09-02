@@ -3,17 +3,17 @@ import { EventFilesService } from './event-files.service';
 import { CreateEventFileDto } from './dto/create-event-file.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('events/:eventId/files')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class EventFilesController {
     constructor(private readonly eventFilesService: EventFilesService) {}
 
@@ -42,7 +42,7 @@ export class EventFilesController {
     }
 
     @Delete(':fileId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('events:manage')
     remove(
         @Param('eventId') eventId: string,
         @Param('fileId') fileId: string,

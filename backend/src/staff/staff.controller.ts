@@ -5,16 +5,15 @@ import { UpdateStaffStatusDto } from './dto/update-staff-status.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
-
 @Controller('staff')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class StaffController {
     constructor(private readonly staffService: StaffService) {}
 
@@ -26,7 +25,7 @@ export class StaffController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('staff:manage')
     promote(
         @Body() dto: PromoteStaffMemberDto,
         @ActiveOrganizationId() organizationId: string | undefined,
@@ -42,7 +41,7 @@ export class StaffController {
     }
 
     @Patch(':id/status')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('staff:manage')
     updateStatus(
         @Param('id') id: string,
         @Body() dto: UpdateStaffStatusDto,
@@ -52,7 +51,7 @@ export class StaffController {
     }
 
     @Post(':id/external-certifications')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('staff:manage')
     addExternalCertification(
         @Param('id') id: string,
         @Body() dto: CreateExternalCertificationDto,

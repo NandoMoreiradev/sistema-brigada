@@ -28,6 +28,7 @@ const userListSelect = {
     studentProfile: true,
     staffMember: { select: { id: true, status: true } },
     instructorAssignments: { select: { courseId: true } },
+    roleAssignments: { select: { id: true, name: true } },
 } satisfies Prisma.UserSelect;
 
 @Injectable()
@@ -158,6 +159,34 @@ export class UsersService {
 
             return tx.user.findUniqueOrThrow({ where: { id }, select: userListSelect });
         });
+    }
+
+    /**
+     * Atribui (ou remove, com `roleAssignmentId: null`) o cargo de uma pessoa.
+     * `User.roleAssignments` é M:N no schema, mas tratamos como "um cargo por
+     * vez" aqui — `set` substitui a lista inteira em vez de `connect` somar.
+     */
+    async setRoleAssignment(id: string, organizationId: string, roleAssignmentId: string | null) {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+
+        if (roleAssignmentId) {
+            const roleAssignment = await this.prisma.roleAssignment.findFirst({
+                where: { id: roleAssignmentId, organizationId },
+            });
+            if (!roleAssignment) {
+                throw new BadRequestException('Cargo informado não pertence a esta organização.');
+            }
+        }
+
+        await this.prisma.user.update({
+            where: { id },
+            data: { roleAssignments: { set: roleAssignmentId ? [{ id: roleAssignmentId }] : [] } },
+        });
+
+        return this.findOne(id, organizationId);
     }
 
     /** Resolve o StudentProfile de um usuário da organização — usado pelo módulo de matrícula. */

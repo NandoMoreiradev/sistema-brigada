@@ -40,4 +40,8 @@ export const peopleApi = {
         const { data } = await api.patch<OrgPerson>(`/users/${id}`, input);
         return data;
     },
+    setRoleAssignment: async (id: string, roleAssignmentId: string | null) => {
+        const { data } = await api.put<OrgPerson>(`/users/${id}/role-assignment`, { roleAssignmentId });
+        return data;
+    },
 };

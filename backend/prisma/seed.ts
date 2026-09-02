@@ -1,9 +1,10 @@
 // backend/prisma/seed.ts
 //
-// Cria/atualiza o usuário SUPER_ADMIN inicial. Credenciais vêm exclusivamente
-// do ambiente (mesmo padrão do maskotCrmEdu/backend/prisma/seed.ts): sem
-// fallback embutido, o seed falha alto quando SUPER_ADMIN_EMAIL/PASSWORD não
-// estão configuradas, em vez de criar uma senha previsível por acidente.
+// Cria/atualiza o usuário SUPER_ADMIN inicial e o catálogo de permissões.
+// Credenciais do SUPER_ADMIN vêm exclusivamente do ambiente (mesmo padrão do
+// maskotCrmEdu/backend/prisma/seed.ts): sem fallback embutido, o seed falha
+// alto quando SUPER_ADMIN_EMAIL/PASSWORD não estão configuradas, em vez de
+// criar uma senha previsível por acidente.
 //
 // SUPER_ADMIN não pertence a uma Organization (User.organizationId é
 // opcional no schema) — é o usuário de plataforma, não de uma unidade.
@@ -11,6 +12,7 @@
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as dotenv from 'dotenv';
+import { PERMISSIONS_CATALOG } from '../src/permissions/permissions.catalog';
 
 dotenv.config();
 
@@ -57,7 +59,27 @@ async function seedSuperAdmin() {
     console.log('✅ Usuário SUPER_ADMIN garantido.');
 }
 
-seedSuperAdmin()
+/** Idempotente: roda em todo deploy, então precisa ser upsert, não create. */
+async function seedPermissionsCatalog() {
+    console.log(`Sincronizando catálogo de permissões (${PERMISSIONS_CATALOG.length} entradas)...`);
+
+    for (const permission of PERMISSIONS_CATALOG) {
+        await prisma.permission.upsert({
+            where: { id: permission.id },
+            update: { name: permission.name, description: permission.description, module: permission.module, group: permission.group },
+            create: permission,
+        });
+    }
+
+    console.log('✅ Catálogo de permissões sincronizado.');
+}
+
+async function main() {
+    await seedSuperAdmin();
+    await seedPermissionsCatalog();
+}
+
+main()
     .catch((e) => {
         console.error('❌ Erro durante o seed:', e);
         process.exit(1);

@@ -179,9 +179,12 @@ const NAV_ITEMS = [
     { to: '/certificates', label: 'Certificados', icon: Award },
 ];
 
+const ADMIN_ROLES = ['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN'];
+
 export function MainLayout({ children }: { children: ReactNode }) {
     const { user, organization, signOut } = useAuth();
     const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+    const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role);
 
     return (
         <Shell>
@@ -198,6 +201,13 @@ export function MainLayout({ children }: { children: ReactNode }) {
                             {label}
                         </NavItem>
                     ))}
+
+                    {isOrgAdmin && (
+                        <NavItem to="/roles">
+                            <ShieldCheck size={18} />
+                            Cargos
+                        </NavItem>
+                    )}
 
                     {isSuperAdmin && (
                         <>

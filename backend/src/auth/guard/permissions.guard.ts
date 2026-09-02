@@ -5,6 +5,12 @@
 // SUPER_ADMIN (root ou via SystemRole). REMOVIDO o bloco de AccessLevel
 // WHATSAPP_ONLY — este schema não tem o campo `accessLevel` em User, não
 // existe o conceito de "usuário só-WhatsApp" neste produto.
+//
+// ACRÉSCIMO (não existia no original): bypass para GROUP_ADMIN/ORG_ADMIN.
+// `RoleAssignment`/`Permission` existem para DELEGAR partes da administração
+// a um ORG_USER (secretaria, coordenador) — o admin "de verdade" da
+// organização não deveria ficar bloqueado por não ter um cargo com aquela
+// permissão específica atribuído a si mesmo.
 
 import { Injectable, CanActivate, ExecutionContext, SetMetadata, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -63,6 +69,14 @@ export class PermissionsGuard implements CanActivate {
             // Não é Root e não tem a permissão via SystemRole: bloqueia.
             const errorResponse = ForbiddenErrorHelper.createPermissionDeniedError(requiredPermission, user.email);
             throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
+        }
+
+        // =====================================================================
+        // GROUP_ADMIN / ORG_ADMIN — já são "dono" da organização, não dependem
+        // de RoleAssignment para ter acesso administrativo pleno.
+        // =====================================================================
+        if (user.role === Role.GROUP_ADMIN || user.role === Role.ORG_ADMIN) {
+            return true;
         }
 
         const hasPermission = user.permissions.includes(requiredPermission);

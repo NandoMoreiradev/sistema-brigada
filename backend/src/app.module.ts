@@ -4,8 +4,11 @@
 // Notifications) e os módulos de domínio construídos até agora: Organizations
 // (tenant), Users (pessoas/perfis), Courses (turmas/matrícula/presença),
 // Certificates (emissão automática de certificado, crachá digital, PDF),
-// Staff (brigadista/bombeiro) e Events (assembleia/congresso/atuação de
-// brigada/reunião — o tronco polimórfico `Event`, ver docs/decisoes.md).
+// Staff (brigadista/bombeiro), Events (assembleia/congresso/atuação de
+// brigada/reunião — o tronco polimórfico `Event`, ver docs/decisoes.md) e
+// Permissions (catálogo de permissões + CRUD de cargo/RoleAssignment por
+// organização, que ativa o `@RequirePermission` já usado nos controllers
+// acima).
 //
 // `ScheduleModule.forRoot()` habilita `@Cron(...)` em qualquer provider da
 // aplicação — usado hoje só pelo job diário de certificados vencendo em
@@ -29,6 +32,7 @@ import { CoursesModule } from './courses/courses.module';
 import { CertificatesModule } from './certificates/certificates.module';
 import { StaffModule } from './staff/staff.module';
 import { EventsModule } from './events/events.module';
+import { PermissionsModule } from './permissions/permissions.module';
 
 @Module({
     imports: [
@@ -45,6 +49,7 @@ import { EventsModule } from './events/events.module';
         CertificatesModule,
         StaffModule,
         EventsModule,
+        PermissionsModule,
     ],
     controllers: [AppController],
 })

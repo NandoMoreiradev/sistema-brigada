@@ -1,10 +1,12 @@
 // backend/src/courses/course-lessons.controller.ts
 //
 // Create/update de aula liberado a qualquer papel autenticado da organização
-// (instrutor é um ORG_USER comum, decisão de produto de manter o RBAC simples
-// até o sistema de permissões granulares ser populado — ver comentário
-// equivalente em class-sessions.controller.ts). Marcar progresso é sempre
-// sobre o próprio usuário autenticado.
+// de propósito — instrutor é um ORG_USER comum, e "professor sobe sua aula"
+// é justamente o caso de uso que não pode depender de ganhar a permissão
+// `courses:manage` (essa é para quem administra a turma inteira: agenda,
+// matrícula etc.). Só a exclusão de aula fica atrás de `courses:manage` —
+// apagar conteúdo de terceiros é uma ação mais sensível que publicar o
+// próprio. Marcar progresso é sempre sobre o próprio usuário autenticado.
 
 import { Controller, Post, Body, Patch, Put, Param, Delete, UseGuards, BadRequestException } from '@nestjs/common';
 import { CourseLessonsService } from './course-lessons.service';
@@ -13,17 +15,17 @@ import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
 import { UpdateLessonProgressDto } from './dto/update-lesson-progress.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('courses/:courseId/lessons')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class CourseLessonsController {
     constructor(private readonly courseLessonsService: CourseLessonsService) {}
 
@@ -56,7 +58,7 @@ export class CourseLessonsController {
     }
 
     @Delete(':lessonId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     remove(
         @Param('courseId') courseId: string,
         @Param('lessonId') lessonId: string,

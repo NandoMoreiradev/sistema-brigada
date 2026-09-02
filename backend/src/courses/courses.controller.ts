@@ -1,10 +1,10 @@
 // backend/src/courses/courses.controller.ts
 //
 // Leitura liberada para qualquer papel autenticado da organização (portal
-// único com views por papel — decisão 11 do docs/decisoes.md); escrita
-// restrita a papéis administrativos. Refinar para permissão granular por
-// matrícula/instrutor é trabalho futuro (RBAC granular ainda não populado
-// neste projeto, ver `docs/decisoes.md`).
+// único com views por papel — decisão 11 do docs/decisoes.md); escrita exige
+// a permissão `courses:manage` (SUPER_ADMIN/GROUP_ADMIN/ORG_ADMIN sempre
+// passam via bypass do PermissionsGuard; ORG_USER precisa de um cargo com
+// essa permissão — ver backend/src/permissions/).
 
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { CoursesService } from './courses.service';
@@ -14,16 +14,15 @@ import { ListCoursesDto } from './dto/list-courses.dto';
 import { AssignInstructorDto } from './dto/assign-instructor.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
-
 @Controller('courses')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class CoursesController {
     constructor(private readonly coursesService: CoursesService) {}
 
@@ -35,7 +34,7 @@ export class CoursesController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     create(
         @Body() dto: CreateCourseDto,
         @ActiveOrganizationId() organizationId: string | undefined,
@@ -57,7 +56,7 @@ export class CoursesController {
     }
 
     @Patch(':id')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateCourseDto,
@@ -67,13 +66,13 @@ export class CoursesController {
     }
 
     @Delete(':id')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     remove(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.coursesService.remove(id, this.requireOrganizationId(organizationId));
     }
 
     @Post(':id/instructors')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     assignInstructor(
         @Param('id') id: string,
         @Body() dto: AssignInstructorDto,
@@ -83,7 +82,7 @@ export class CoursesController {
     }
 
     @Delete(':id/instructors/:userId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     removeInstructor(
         @Param('id') id: string,
         @Param('userId') userId: string,

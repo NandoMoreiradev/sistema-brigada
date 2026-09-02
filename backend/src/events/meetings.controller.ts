@@ -4,15 +4,15 @@ import { UpdateMeetingDto } from './dto/update-meeting.dto';
 import { MarkMeetingAttendanceDto } from './dto/mark-meeting-attendance.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('events/:eventId/meeting')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class MeetingsController {
     constructor(private readonly meetingsService: MeetingsService) {}
 
@@ -30,7 +30,7 @@ export class MeetingsController {
     }
 
     @Patch()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('events:manage')
     update(
         @Param('eventId') eventId: string,
         @Body() dto: UpdateMeetingDto,

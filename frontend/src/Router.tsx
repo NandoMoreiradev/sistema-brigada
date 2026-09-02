@@ -19,6 +19,7 @@ import EventDetail from '@/pages/EventDetail';
 import Staff from '@/pages/Staff';
 import Students from '@/pages/Students';
 import Certificates from '@/pages/Certificates';
+import Roles from '@/pages/Roles';
 import Organizations from '@/pages/admin/Organizations';
 
 import { ProtectedRoute, SuperAdminRoute } from '@/components/common/ProtectedRoute';
@@ -40,6 +41,7 @@ export function Router() {
                 <Route path="/staff" element={<Staff />} />
                 <Route path="/students" element={<Students />} />
                 <Route path="/certificates" element={<Certificates />} />
+                <Route path="/roles" element={<Roles />} />
             </Route>
 
             {/* Privadas — só SUPER_ADMIN */}
