@@ -7,6 +7,7 @@ import styled from 'styled-components';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Mail, Lock, Eye, EyeOff, KeyRound, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthLayout } from '@/components/layout/AuthLayout';
 import { toast } from '@/utils/toast';
@@ -21,7 +22,7 @@ type FormData = z.infer<typeof schema>;
 const Form = styled.form`
     display: flex;
     flex-direction: column;
-    gap: 0.875rem;
+    gap: 1rem;
     text-align: left;
 `;
 
@@ -37,15 +38,53 @@ const Label = styled.label`
     color: rgba(255, 255, 255, 0.9);
 `;
 
+const InputWrapper = styled.div`
+    position: relative;
+    display: flex;
+    align-items: center;
+`;
+
+const InputIcon = styled.div`
+    position: absolute;
+    left: 0.85rem;
+    display: flex;
+    color: #adb5bd;
+    pointer-events: none;
+`;
+
 const Input = styled.input`
-    padding: 0.65rem 0.85rem;
+    width: 100%;
+    padding: 0.7rem 0.85rem 0.7rem 2.5rem;
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.92);
     font-size: 0.9375rem;
+    box-sizing: border-box;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
 
     &:focus {
-        outline: 2px solid rgba(255, 255, 255, 0.6);
+        outline: none;
+        border-color: white;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
+    }
+`;
+
+const ToggleVisibilityButton = styled.button`
+    position: absolute;
+    right: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #868e96;
+    cursor: pointer;
+    padding: 0.3rem;
+    border-radius: 6px;
+
+    &:hover {
+        color: #495057;
+        background: rgba(0, 0, 0, 0.06);
     }
 `;
 
@@ -55,8 +94,12 @@ const ErrorText = styled.span`
 `;
 
 const SubmitButton = styled.button`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
     margin-top: 0.5rem;
-    padding: 0.7rem 1rem;
+    padding: 0.75rem 1rem;
     border-radius: 10px;
     border: none;
     background: white;
@@ -64,15 +107,21 @@ const SubmitButton = styled.button`
     font-weight: 700;
     font-size: 0.9375rem;
     cursor: pointer;
-    transition: opacity 0.15s ease;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 
     &:disabled {
-        opacity: 0.6;
+        opacity: 0.65;
         cursor: not-allowed;
     }
 
     &:hover:not(:disabled) {
-        opacity: 0.9;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+    }
+
+    &:active:not(:disabled) {
+        transform: translateY(0);
     }
 `;
 
@@ -82,6 +131,7 @@ export default function Login() {
     const [twoFactorPending, setTwoFactorPending] = useState<{ tempToken: string } | null>(null);
     const [twoFactorCode, setTwoFactorCode] = useState('');
     const [isVerifyingTwoFactor, setIsVerifyingTwoFactor] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -126,17 +176,20 @@ export default function Login() {
                 <Form onSubmit={(e) => { e.preventDefault(); onSubmitTwoFactor(); }}>
                     <Field>
                         <Label htmlFor="code">Código</Label>
-                        <Input
-                            id="code"
-                            maxLength={20}
-                            value={twoFactorCode}
-                            onChange={(e) => setTwoFactorCode(e.target.value)}
-                            placeholder="000000 ou xxxx-xxxx-xxxx"
-                            autoFocus
-                        />
+                        <InputWrapper>
+                            <InputIcon><KeyRound size={16} /></InputIcon>
+                            <Input
+                                id="code"
+                                maxLength={20}
+                                value={twoFactorCode}
+                                onChange={(e) => setTwoFactorCode(e.target.value)}
+                                placeholder="000000 ou xxxx-xxxx-xxxx"
+                                autoFocus
+                            />
+                        </InputWrapper>
                     </Field>
                     <SubmitButton type="submit" disabled={isVerifyingTwoFactor || twoFactorCode.length === 0}>
-                        {isVerifyingTwoFactor ? 'Verificando...' : 'Confirmar'}
+                        {isVerifyingTwoFactor ? 'Verificando...' : 'Confirmar'} <ArrowRight size={16} />
                     </SubmitButton>
                 </Form>
             </AuthLayout>
@@ -148,16 +201,36 @@ export default function Login() {
             <Form onSubmit={handleSubmit(onSubmit)}>
                 <Field>
                     <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" type="email" autoComplete="email" {...register('email')} />
+                    <InputWrapper>
+                        <InputIcon><Mail size={16} /></InputIcon>
+                        <Input id="email" type="email" autoComplete="email" placeholder="voce@escola.com" {...register('email')} />
+                    </InputWrapper>
                     {errors.email && <ErrorText>{errors.email.message}</ErrorText>}
                 </Field>
                 <Field>
                     <Label htmlFor="password">Senha</Label>
-                    <Input id="password" type="password" autoComplete="current-password" {...register('password')} />
+                    <InputWrapper>
+                        <InputIcon><Lock size={16} /></InputIcon>
+                        <Input
+                            id="password"
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            placeholder="••••••••"
+                            style={{ paddingRight: '2.5rem' }}
+                            {...register('password')}
+                        />
+                        <ToggleVisibilityButton
+                            type="button"
+                            onClick={() => setShowPassword((v) => !v)}
+                            aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                        >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </ToggleVisibilityButton>
+                    </InputWrapper>
                     {errors.password && <ErrorText>{errors.password.message}</ErrorText>}
                 </Field>
                 <SubmitButton type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? 'Entrando...' : 'Entrar'}
+                    {isSubmitting ? 'Entrando...' : 'Entrar'} <ArrowRight size={16} />
                 </SubmitButton>
             </Form>
         </AuthLayout>
