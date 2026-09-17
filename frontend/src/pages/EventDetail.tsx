@@ -393,17 +393,13 @@ function AttendanceTab({ eventId }: { eventId: string }) {
     const [userId, setUserId] = useState('');
     const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
     const queryClient = useQueryClient();
-    const { user } = useAuth();
-    // PUT .../meeting/attendance é liberado a qualquer autenticado no backend (reunião é
-    // aberta a toda a organização por design — ver meetings.service.ts), mas montar esta
-    // grade de presença precisa da lista completa de pessoas, que é `people:manage`
-    // (Fase 3, docs/decisoes.md). Limitação conhecida: na prática, só quem tem essa
-    // permissão consegue registrar presença por aqui — buscar a lista sem ela só gera
-    // um 403 (e o toast do interceptor global) sem entregar a função pra mais ninguém.
-    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data: attendance } = useQuery({ queryKey: ['events', eventId, 'attendance'], queryFn: () => meetingsApi.getAttendance(eventId) });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
+    // PUT .../meeting/attendance é liberado a qualquer autenticado no backend (reunião é
+    // aberta a toda a organização por design — ver meetings.service.ts), então o seletor
+    // de pessoa usa o roster enxuto (só id+nome, GET /users/roster) em vez da listagem
+    // administrativa completa (`peopleApi.list`, que exige `people:manage`).
+    const { data: roster } = useQuery({ queryKey: ['people', 'roster'], queryFn: () => peopleApi.roster() });
 
     const markMutation = useMutation({
         mutationFn: (records: { userId: string; status: AttendanceStatus }[]) => meetingsApi.markAttendance(eventId, records),
@@ -420,11 +416,9 @@ function AttendanceTab({ eventId }: { eventId: string }) {
 
     return (
         <>
-            {canListPeople && (
-                <ToolbarRow>
-                    <Button onClick={() => setModalOpen(true)}><Plus size={16} /> Registrar presença</Button>
-                </ToolbarRow>
-            )}
+            <ToolbarRow>
+                <Button onClick={() => setModalOpen(true)}><Plus size={16} /> Registrar presença</Button>
+            </ToolbarRow>
             <TableWrapper>
                 <Table>
                     <Thead><tr><Th>Pessoa</Th><Th>Status</Th><Th>Alterar</Th></tr></Thead>
@@ -453,7 +447,7 @@ function AttendanceTab({ eventId }: { eventId: string }) {
                         <Label htmlFor="user">Pessoa</Label>
                         <Select id="user" value={userId} onChange={(e) => setUserId(e.target.value)}>
                             <option value="">Selecione</option>
-                            {(peopleData?.data ?? []).filter((p) => !recordedUserIds.has(p.id)).map((p) => (
+                            {(roster ?? []).filter((p) => !recordedUserIds.has(p.id)).map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </Select>

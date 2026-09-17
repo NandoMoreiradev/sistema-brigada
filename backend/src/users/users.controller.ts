@@ -49,6 +49,18 @@ export class UsersController {
         return this.usersService.findAll(this.requireOrganizationId(organizationId), query);
     }
 
+    /**
+     * Sem @Roles/@RequirePermission de propósito — aberto a qualquer autenticado
+     * (RolesGuard/PermissionsGuard não bloqueiam rota sem esses decorators). Só
+     * id+nome (ver UsersService.findRoster), para seletores de pessoa em
+     * funcionalidades abertas a todo mundo (hoje: marcar presença de reunião,
+     * meetings.service.ts). Declarada antes de `:id` para não colidir com ela.
+     */
+    @Get('roster')
+    roster(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.usersService.findRoster(this.requireOrganizationId(organizationId));
+    }
+
     @Get(':id')
     @Roles(...ADMIN_ROLES)
     findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
