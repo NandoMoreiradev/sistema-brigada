@@ -29,6 +29,7 @@ import Organizations from '@/pages/admin/Organizations';
 import MyCourses from '@/pages/MyCourses';
 import MyCertificates from '@/pages/MyCertificates';
 import MyDesignations from '@/pages/MyDesignations';
+import Settings from '@/pages/Settings';
 
 import { ProtectedRoute, PermissionRoute, SuperAdminRoute } from '@/components/common/ProtectedRoute';
 
@@ -49,6 +50,7 @@ export function Router() {
                 <Route path="/my-courses" element={<MyCourses />} />
                 <Route path="/my-certificates" element={<MyCertificates />} />
                 <Route path="/my-designations" element={<MyDesignations />} />
+                <Route path="/settings" element={<Settings />} />
             </Route>
 
             {/* Privadas — listagem completa, só quem tem a permissão do módulo */}

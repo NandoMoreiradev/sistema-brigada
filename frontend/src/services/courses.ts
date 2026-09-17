@@ -20,8 +20,13 @@ export interface CreateCourseInput {
     endDate?: string;
     category?: string;
     vacancies?: number;
+    /** Critério de emissão automática do certificado (decisão 17, docs/decisoes.md). */
     minAttendancePercent?: number;
+    requireAllLessonsWatched?: boolean;
+    /** Validade em meses do certificado emitido nesta turma (decisão 19). */
     recyclingValidityMonths?: number;
+    /** Curso sugerido para reciclagem quando o certificado desta turma vencer (decisão 19). */
+    recommendedRecyclingCourseId?: string;
     instructorUserIds?: string[];
 }
 

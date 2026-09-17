@@ -32,6 +32,10 @@ const schema = z.object({
     endDate: z.string().optional(),
     category: z.string().optional(),
     vacancies: z.string().optional(),
+    minAttendancePercent: z.string().optional(),
+    requireAllLessonsWatched: z.boolean().optional(),
+    recyclingValidityMonths: z.string().optional(),
+    recommendedRecyclingCourseId: z.string().optional(),
     instructorUserIds: z.array(z.string()).optional(),
 });
 
@@ -71,7 +75,19 @@ export default function Courses() {
     });
 
     const openCreate = () => {
-        reset({ title: '', location: '', startDate: '', endDate: '', category: '', vacancies: '', instructorUserIds: [] });
+        reset({
+            title: '',
+            location: '',
+            startDate: '',
+            endDate: '',
+            category: '',
+            vacancies: '',
+            minAttendancePercent: '75',
+            requireAllLessonsWatched: true,
+            recyclingValidityMonths: '',
+            recommendedRecyclingCourseId: '',
+            instructorUserIds: [],
+        });
         setModalOpen(true);
     };
 
@@ -96,6 +112,10 @@ export default function Courses() {
             endDate: formData.endDate || undefined,
             category: formData.category || undefined,
             vacancies: formData.vacancies ? Number(formData.vacancies) : undefined,
+            minAttendancePercent: formData.minAttendancePercent ? Number(formData.minAttendancePercent) : undefined,
+            requireAllLessonsWatched: formData.requireAllLessonsWatched,
+            recyclingValidityMonths: formData.recyclingValidityMonths ? Number(formData.recyclingValidityMonths) : undefined,
+            recommendedRecyclingCourseId: formData.recommendedRecyclingCourseId || undefined,
             instructorUserIds: formData.instructorUserIds,
         });
     };
@@ -188,6 +208,36 @@ export default function Courses() {
                         <Label htmlFor="location">Local</Label>
                         <Input id="location" {...register('location')} />
                     </Field>
+
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="minAttendancePercent">Presença mínima p/ certificado (%)</Label>
+                            <Input id="minAttendancePercent" type="number" min={0} max={100} {...register('minAttendancePercent')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="recyclingValidityMonths">Validade do certificado (meses, opcional)</Label>
+                            <Input id="recyclingValidityMonths" type="number" min={1} placeholder="sem vencimento" {...register('recyclingValidityMonths')} />
+                        </Field>
+                    </FieldRow>
+
+                    <Field>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                            <input type="checkbox" {...register('requireAllLessonsWatched')} />
+                            Exigir todas as vídeo-aulas assistidas para emitir o certificado
+                        </label>
+                    </Field>
+
+                    {courses.length > 0 && (
+                        <Field>
+                            <Label htmlFor="recommendedRecyclingCourseId">Curso de reciclagem recomendado (opcional)</Label>
+                            <select id="recommendedRecyclingCourseId" {...register('recommendedRecyclingCourseId')} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #ced4da' }}>
+                                <option value="">Nenhum</option>
+                                {courses.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.event.title}</option>
+                                ))}
+                            </select>
+                        </Field>
+                    )}
 
                     <Field>
                         <Label>Instrutores</Label>

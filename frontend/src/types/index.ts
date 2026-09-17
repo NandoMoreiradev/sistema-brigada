@@ -95,6 +95,7 @@ export interface Course {
     minAttendancePercent: number;
     requireAllLessonsWatched: boolean;
     recyclingValidityMonths?: number | null;
+    recommendedRecyclingCourseId?: string | null;
     active: boolean;
     event: CourseEvent;
     instructors: CourseInstructor[];

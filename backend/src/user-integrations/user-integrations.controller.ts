@@ -4,6 +4,12 @@
 // Único provedor suportado por enquanto é o Google Calendar. Adicionado
 // `DELETE google` (desconectar) — o original não tinha, mas era pedido
 // explícito desta tarefa e é o par natural de `google/status`.
+//
+// O callback redireciona para `/settings` (não `/calendar` como no original
+// copiado): essa página nunca existiu no frontend deste produto — sem ela,
+// nenhum usuário conseguia de fato conectar a conta Google (a tela pra
+// clicar em "Conectar" simplesmente não existia). `/settings` é a página
+// "Minha Conta" criada junto com este fix.
 
 import { Controller, Get, Delete, Res, UseGuards, Query, HttpCode, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
@@ -44,17 +50,17 @@ export class UserIntegrationsController {
         const frontendUrl = process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:5173';
 
         if (error) {
-            return res.redirect(`${frontendUrl}/calendar?error=google_auth_failed`);
+            return res.redirect(`${frontendUrl}/settings?error=google_auth_failed`);
         }
 
         try {
             // O state passado na URL de auth era o userId.
             const userId = state;
             await this.userIntegrationsService.handleGoogleCallback(userId, code);
-            return res.redirect(`${frontendUrl}/calendar?success=google_auth_linked`);
+            return res.redirect(`${frontendUrl}/settings?success=google_auth_linked`);
         } catch (err) {
             console.error('Error handling Google Calendar callback:', err);
-            return res.redirect(`${frontendUrl}/calendar?error=google_sync_error`);
+            return res.redirect(`${frontendUrl}/settings?error=google_sync_error`);
         }
     }
 }

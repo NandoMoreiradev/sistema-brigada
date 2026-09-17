@@ -18,6 +18,7 @@ import {
     LogOut,
     Flame,
     Award,
+    Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -232,6 +233,12 @@ export function MainLayout({ children }: { children: ReactNode }) {
                             </NavItem>
                         </>
                     )}
+
+                    <NavDivider />
+                    <NavItem to="/settings">
+                        <Settings size={18} />
+                        Minha Conta
+                    </NavItem>
                 </Nav>
 
                 <SignOutButton onClick={signOut}>
