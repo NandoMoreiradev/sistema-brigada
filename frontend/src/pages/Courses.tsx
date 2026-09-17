@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Textarea, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
@@ -36,6 +36,7 @@ const schema = z.object({
     requireAllLessonsWatched: z.boolean().optional(),
     recyclingValidityMonths: z.string().optional(),
     recommendedRecyclingCourseId: z.string().optional(),
+    syllabus: z.string().optional(),
     instructorUserIds: z.array(z.string()).optional(),
 });
 
@@ -86,6 +87,7 @@ export default function Courses() {
             requireAllLessonsWatched: true,
             recyclingValidityMonths: '',
             recommendedRecyclingCourseId: '',
+            syllabus: '',
             instructorUserIds: [],
         });
         setModalOpen(true);
@@ -116,6 +118,7 @@ export default function Courses() {
             requireAllLessonsWatched: formData.requireAllLessonsWatched,
             recyclingValidityMonths: formData.recyclingValidityMonths ? Number(formData.recyclingValidityMonths) : undefined,
             recommendedRecyclingCourseId: formData.recommendedRecyclingCourseId || undefined,
+            syllabus: formData.syllabus || undefined,
             instructorUserIds: formData.instructorUserIds,
         });
     };
@@ -238,6 +241,16 @@ export default function Courses() {
                             </select>
                         </Field>
                     )}
+
+                    <Field>
+                        <Label htmlFor="syllabus">Conteúdo programático (opcional)</Label>
+                        <Textarea
+                            id="syllabus"
+                            rows={5}
+                            placeholder="Cole ou escreva a ementa da turma — vira uma 2ª página no PDF do certificado."
+                            {...register('syllabus')}
+                        />
+                    </Field>
 
                     <Field>
                         <Label>Instrutores</Label>

@@ -27,6 +27,8 @@ export interface CreateCourseInput {
     recyclingValidityMonths?: number;
     /** Curso sugerido para reciclagem quando o certificado desta turma vencer (decisão 19). */
     recommendedRecyclingCourseId?: string;
+    /** Conteúdo programático (texto livre) — vira a 2ª página do PDF do certificado quando preenchido. */
+    syllabus?: string;
     instructorUserIds?: string[];
 }
 

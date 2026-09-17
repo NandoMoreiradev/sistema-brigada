@@ -77,10 +77,11 @@ const SubmitButton = styled.button`
 `;
 
 export default function Login() {
-    const { signIn, finishSignIn } = useAuth();
+    const { signIn, verifyTwoFactor, finishSignIn } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [twoFactorPending, setTwoFactorPending] = useState<{ tempToken: string } | null>(null);
     const [twoFactorCode, setTwoFactorCode] = useState('');
+    const [isVerifyingTwoFactor, setIsVerifyingTwoFactor] = useState(false);
 
     const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -107,28 +108,36 @@ export default function Login() {
     };
 
     const onSubmitTwoFactor = async () => {
-        // Placeholder: a verificação de 2FA propriamente dita (endpoint que
-        // troca temp_token + código pelo access_token) ainda não existe nas
-        // páginas — este bootstrap só monta a casca do fluxo.
-        toast.info('Verificação de 2FA ainda não implementada nesta tela.');
+        if (!twoFactorPending || twoFactorCode.trim().length === 0) return;
+        setIsVerifyingTwoFactor(true);
+        try {
+            const result = await verifyTwoFactor(twoFactorPending.tempToken, twoFactorCode);
+            await finishSignIn(result.access_token);
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || 'Código inválido ou expirado.');
+        } finally {
+            setIsVerifyingTwoFactor(false);
+        }
     };
 
     if (twoFactorPending) {
         return (
-            <AuthLayout title="Verificação em duas etapas" subtitle="Digite o código do seu aplicativo autenticador">
+            <AuthLayout title="Verificação em duas etapas" subtitle="Digite o código do seu aplicativo autenticador ou um código de recuperação">
                 <Form onSubmit={(e) => { e.preventDefault(); onSubmitTwoFactor(); }}>
                     <Field>
                         <Label htmlFor="code">Código</Label>
                         <Input
                             id="code"
-                            inputMode="numeric"
-                            maxLength={6}
+                            maxLength={20}
                             value={twoFactorCode}
                             onChange={(e) => setTwoFactorCode(e.target.value)}
-                            placeholder="000000"
+                            placeholder="000000 ou xxxx-xxxx-xxxx"
+                            autoFocus
                         />
                     </Field>
-                    <SubmitButton type="submit">Confirmar</SubmitButton>
+                    <SubmitButton type="submit" disabled={isVerifyingTwoFactor || twoFactorCode.length === 0}>
+                        {isVerifyingTwoFactor ? 'Verificando...' : 'Confirmar'}
+                    </SubmitButton>
                 </Form>
             </AuthLayout>
         );

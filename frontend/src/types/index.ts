@@ -96,6 +96,7 @@ export interface Course {
     requireAllLessonsWatched: boolean;
     recyclingValidityMonths?: number | null;
     recommendedRecyclingCourseId?: string | null;
+    syllabus?: string | null;
     active: boolean;
     event: CourseEvent;
     instructors: CourseInstructor[];

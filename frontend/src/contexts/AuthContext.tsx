@@ -74,6 +74,7 @@ interface AuthContextData {
     user: User | null;
     organization: Organization | null;
     signIn: (credentials: SignInCredentials) => Promise<LoginStep1Response>;
+    verifyTwoFactor: (tempToken: string, code: string) => Promise<{ access_token: string }>;
     finishSignIn: (accessToken: string) => Promise<void>;
     signOut: () => void;
     isLoading: boolean;
@@ -188,6 +189,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return response.data;
     }
 
+    /**
+     * Segunda etapa do login quando 2FA está ativo. `tempToken` (recebido no
+     * passo 1) vai no header Authorization em vez do access_token normal — por
+     * isso o header é setado aqui explicitamente, o interceptor de api.ts só
+     * injeta o token da sessão já autenticada (tokenManager), que ainda não
+     * existe neste ponto do fluxo.
+     */
+    async function verifyTwoFactor(tempToken: string, code: string): Promise<{ access_token: string }> {
+        const response = await api.post<{ access_token: string }>(
+            '/auth/2fa/authenticate',
+            { code },
+            { headers: { Authorization: `Bearer ${tempToken}` } },
+        );
+        return response.data;
+    }
+
     async function finishSignIn(accessToken: string) {
         // Guarda em memória — nunca no localStorage
         tokenManager.set(accessToken);
@@ -242,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user,
             organization,
             signIn,
+            verifyTwoFactor,
             finishSignIn,
             signOut,
             isLoading,

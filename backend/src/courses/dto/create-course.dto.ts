@@ -64,6 +64,11 @@ export class CreateCourseDto {
     @IsOptional()
     recommendedRecyclingCourseId?: string;
 
+    /** Conteúdo programático (texto livre) — vira a 2ª página do PDF do certificado quando preenchido. */
+    @IsString()
+    @IsOptional()
+    syllabus?: string;
+
     @IsArray()
     @IsString({ each: true })
     @IsOptional()

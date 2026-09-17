@@ -93,6 +93,7 @@ interface EditCourseFormData {
     requireAllLessonsWatched: boolean;
     recyclingValidityMonths: string;
     recommendedRecyclingCourseId: string;
+    syllabus: string;
 }
 
 const ATTENDANCE_LABEL: Record<AttendanceStatus, string> = {
@@ -161,6 +162,7 @@ export default function CourseDetail() {
             requireAllLessonsWatched: course.requireAllLessonsWatched,
             recyclingValidityMonths: course.recyclingValidityMonths ? String(course.recyclingValidityMonths) : '',
             recommendedRecyclingCourseId: course.recommendedRecyclingCourseId || '',
+            syllabus: course.syllabus || '',
         });
         setEditModalOpen(true);
     };
@@ -172,6 +174,7 @@ export default function CourseDetail() {
                 requireAllLessonsWatched: input.requireAllLessonsWatched,
                 recyclingValidityMonths: input.recyclingValidityMonths ? Number(input.recyclingValidityMonths) : undefined,
                 recommendedRecyclingCourseId: input.recommendedRecyclingCourseId || undefined,
+                syllabus: input.syllabus || undefined,
             }),
         onSuccess: () => {
             toast.success('Critérios de certificado atualizados.');
@@ -444,6 +447,15 @@ export default function CourseDetail() {
                                 <option key={c.id} value={c.id}>{c.event.title}</option>
                             ))}
                         </Select>
+                    </Field>
+                    <Field>
+                        <Label htmlFor="editSyllabus">Conteúdo programático (opcional)</Label>
+                        <Textarea
+                            id="editSyllabus"
+                            rows={5}
+                            placeholder="Cole ou escreva a ementa da turma — vira uma 2ª página no PDF do certificado."
+                            {...registerEdit('syllabus')}
+                        />
                     </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setEditModalOpen(false)}>Cancelar</Button>

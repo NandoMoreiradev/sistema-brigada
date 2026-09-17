@@ -51,6 +51,7 @@ export class CoursesService {
                     requireAllLessonsWatched: dto.requireAllLessonsWatched ?? true,
                     recyclingValidityMonths: dto.recyclingValidityMonths,
                     recommendedRecyclingCourseId: dto.recommendedRecyclingCourseId,
+                    syllabus: dto.syllabus,
                 },
             });
 
@@ -164,6 +165,7 @@ export class CoursesService {
                     requireAllLessonsWatched: courseFields.requireAllLessonsWatched,
                     recyclingValidityMonths: courseFields.recyclingValidityMonths,
                     recommendedRecyclingCourseId: courseFields.recommendedRecyclingCourseId,
+                    syllabus: courseFields.syllabus,
                 },
             });
 

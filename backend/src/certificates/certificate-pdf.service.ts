@@ -13,12 +13,16 @@
 // brigada que o cliente forneceu como referência: selo recortado (rosette)
 // no canto superior esquerdo com fita, ornamentos dourados nos cantos, faixa
 // navy com o nome da turma em destaque, moldura dupla, e duas colunas de
-// assinatura no rodapé. Duas simplificações deliberadas em relação à
-// referência, por dependerem de dado que este produto ainda não modela:
-// (1) não há "verso" com conteúdo programático — exigiria um campo de
-// ementa/tópicos por turma que não existe no schema; (2) a assinatura do
-// aluno é sempre uma linha em branco (para assinar após imprimir), nunca uma
-// imagem — o sistema não captura assinatura digital do aluno.
+// assinatura no rodapé. Simplificação deliberada em relação à referência: a
+// assinatura do aluno é sempre uma linha em branco (para assinar após
+// imprimir), nunca uma imagem — o sistema não captura assinatura digital do
+// aluno.
+//
+// 2ª página "CONTEÚDO PROGRAMÁTICO" (2026-09-17): só é desenhada quando
+// `Course.syllabus` está preenchido. É texto livre (não a grade de 3 colunas
+// da referência) — turmas de brigada variam demais de formato pra uma
+// estrutura rígida valer a pena (decisão 17); a academia escreve do jeito
+// que já usa na ementa impressa dela.
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -88,6 +92,17 @@ export class CertificatePdfService {
             this.drawBody(doc, width, certificate);
             this.drawSignatures(doc, width, height, certificate, template, signatureImageBuffer);
             this.drawQrCode(doc, width, height, qrCodeBuffer);
+
+            const syllabus = certificate.enrollment.course.syllabus?.trim();
+            if (syllabus) {
+                // Conteúdo programático não tem tamanho previsível — em vez de truncar
+                // (ver comentário em drawSyllabusPage sobre o bug de overflow já
+                // encontrado uma vez), deixa o texto fluir e redesenha a moldura em
+                // toda página que o pdfkit adicionar sozinho por causa disso.
+                doc.on('pageAdded', () => this.drawBorder(doc, width, height));
+                doc.addPage({ layout: 'landscape', size: 'A4', margin: 50 });
+                this.drawSyllabusPage(doc, width, height, certificate.enrollment.course.event.title, syllabus, qrCodeBuffer);
+            }
 
             doc.end();
         }).catch((error) => {
@@ -293,5 +308,29 @@ export class CertificatePdfService {
             width: 110,
             align: 'center',
         });
+    }
+
+    private drawSyllabusPage(
+        doc: PDFKit.PDFDocument,
+        width: number,
+        height: number,
+        courseTitle: string,
+        syllabus: string,
+        qrCodeBuffer: Buffer,
+    ) {
+        doc.fontSize(26).font('Helvetica-Bold').fillColor(GOLD).text('CONTEÚDO PROGRAMÁTICO', 0, 55, { align: 'center' });
+        doc.fontSize(12).font('Helvetica').fillColor(TEXT_MUTED).text(courseTitle, 0, 90, { align: 'center' });
+
+        // Sem `height` aqui de propósito: com um valor fixo o pdfkit corta o texto
+        // que não coube (bug já visto uma vez) em vez de continuar em nova página.
+        // Deixando fluir, o listener `pageAdded` em generate() redesenha a moldura
+        // em qualquer página extra que isso gerar.
+        doc.fontSize(11).font('Helvetica').fillColor(TEXT_DARK).text(syllabus, 90, 140, {
+            width: width - 180,
+            align: 'left',
+            lineGap: 4,
+        });
+
+        this.drawQrCode(doc, width, height, qrCodeBuffer);
     }
 }
