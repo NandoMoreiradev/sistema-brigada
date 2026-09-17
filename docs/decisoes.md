@@ -24,7 +24,7 @@ Codificação iniciada e em andamento. Módulos completos (backend + frontend, v
 
 Pendente:
 
-- ❌ App mobile (decisão 12) — não iniciado
+- ⏸️ App mobile (decisão 12) — **adiado deliberadamente para uma fase futura** (2026-09-17), não é próximo passo do MVP web
 
 ## Decisões fechadas
 
@@ -89,7 +89,7 @@ Pendente:
 - Designação com escala/turnos dentro de evento de atuação. **✅**
 - Relatório de ocorrência generalizado (hoje `StudentOccurrence` é só por aluno; precisa aceitar vínculo a `Event` também). **✅**
 - Permissões granuladas + posse de dado para portal de aluno/professor — ver decisões 22-24. **✅ Fases 1, 2 e 3 feitas** (cargo/permissão, posse no backend, gating de nav/rotas + dashboard role-aware + páginas `/my-*` no frontend).
-- App mobile novo (Expo/React Native), focado em staff/instrutor. **❌ não iniciado**
+- App mobile novo (Expo/React Native), focado em staff/instrutor. **⏸️ adiado para fase futura — não é próximo passo do MVP web**
 
 ### Descartar
 WhatsApp/Instagram/Messenger, chatbot de vendas, `EnrollmentCampaign` (é campanha de marketing, não matrícula), funil de leads, cupons/addons de SaaS, módulo financeiro completo (por enquanto).
@@ -97,7 +97,9 @@ WhatsApp/Instagram/Messenger, chatbot de vendas, `EnrollmentCampaign` (é campan
 ## Próximos passos (ordem sugerida)
 1. ~~**Permissões — Fase 2**: endpoints "meus dados", checagem de posse nos services já existentes, `AuthService.getProfile` enriquecido.~~ **✅ feito em 2026-09-17.**
 2. ~~**Permissões — Fase 3**: dashboards/portais dedicados de aluno e professor no frontend, consumindo `/me/*`.~~ **✅ feito em 2026-09-17** (dashboard role-aware + `/my-courses`/`/my-certificates`/`/my-designations` + gating de nav/rotas por permissão).
-3. **App mobile** (decisão 12): Expo/React Native, foco em staff/instrutor em campo (escala, presença, ocorrência).
+3. ~~**App mobile** (decisão 12)~~ — **adiado para fase futura (2026-09-17), fora do próximo passo do MVP web.**
+
+Com Fases 1-3 de permissões fechadas e o mobile adiado, os candidatos a próximo passo são os itens já registrados como pendência parcial ou em aberto (ver seções abaixo) — falta decidir qual priorizar.
 
 ## Itens menores em aberto (não bloqueiam a codificação)
 - Nome definitivo do projeto/produto (e, por consequência, nome final da pasta/repo — hoje `brigada-treinamentos`).
