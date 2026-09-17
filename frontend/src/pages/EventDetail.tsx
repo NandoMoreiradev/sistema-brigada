@@ -22,6 +22,8 @@ import { eventsApi, designationsApi, occurrenceReportsApi, meetingsApi, eventFil
 import { staffApi } from '@/services/staff';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import type { AttendanceStatus } from '@/types';
 
 const TabsList = styled(Tabs.List)`
@@ -166,9 +168,14 @@ export default function EventDetail() {
 function DesignationsTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // Criar designação exige `events:manage` no backend — buscar a lista completa de
+    // staff sem essa permissão só gera um 403 (e o toast do interceptor global) para
+    // quem só está vendo o evento (visualização é aberta a todos, ver Router.tsx).
+    const canManageDesignations = hasPermission(user, 'events:manage');
 
     const { data: designations } = useQuery({ queryKey: ['events', eventId, 'designations'], queryFn: () => designationsApi.list(eventId) });
-    const { data: staff } = useQuery({ queryKey: ['staff'], queryFn: () => staffApi.list() });
+    const { data: staff } = useQuery({ queryKey: ['staff'], queryFn: () => staffApi.list(), enabled: canManageDesignations });
 
     const { register, handleSubmit, reset } = useForm<{ staffMemberId: string; role: string; shiftStart: string; shiftEnd: string }>();
 
@@ -191,11 +198,13 @@ function DesignationsTab({ eventId }: { eventId: string }) {
 
     return (
         <>
-            <ToolbarRow>
-                <Button onClick={() => { reset({ staffMemberId: '', role: '', shiftStart: '', shiftEnd: '' }); setModalOpen(true); }}>
-                    <Plus size={16} /> Nova designação
-                </Button>
-            </ToolbarRow>
+            {canManageDesignations && (
+                <ToolbarRow>
+                    <Button onClick={() => { reset({ staffMemberId: '', role: '', shiftStart: '', shiftEnd: '' }); setModalOpen(true); }}>
+                        <Plus size={16} /> Nova designação
+                    </Button>
+                </ToolbarRow>
+            )}
             <TableWrapper>
                 <Table>
                     <Thead>
@@ -215,11 +224,16 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                                 <Td>{format(new Date(d.shiftStart), 'dd/MM HH:mm')} — {format(new Date(d.shiftEnd), 'HH:mm')}</Td>
                                 <Td><Badge $tone={d.status === 'CONFIRMED' ? 'success' : d.status === 'DECLINED' ? 'danger' : 'warning'}>{DESIGNATION_STATUS_LABEL[d.status]}</Badge></Td>
                                 <Td>
-                                    <Select value={d.status} onChange={(e) => statusMutation.mutate({ designationId: d.id, status: e.target.value as DesignationStatus })}>
-                                        <option value="PENDING">Pendente</option>
-                                        <option value="CONFIRMED">Confirmada</option>
-                                        <option value="DECLINED">Recusada</option>
-                                    </Select>
+                                    {/* DesignationsService.updateStatus (Fase 2, docs/decisoes.md) só deixa quem
+                                        tem events:manage OU é o próprio staff alterar — esconder o controle pros
+                                        demais evita um 403 ao tentar mexer na designação de outra pessoa. */}
+                                    {(canManageDesignations || d.staffMember.user.id === user?.id) ? (
+                                        <Select value={d.status} onChange={(e) => statusMutation.mutate({ designationId: d.id, status: e.target.value as DesignationStatus })}>
+                                            <option value="PENDING">Pendente</option>
+                                            <option value="CONFIRMED">Confirmada</option>
+                                            <option value="DECLINED">Recusada</option>
+                                        </Select>
+                                    ) : '—'}
                                 </Td>
                             </Tr>
                         ))}
@@ -379,9 +393,17 @@ function AttendanceTab({ eventId }: { eventId: string }) {
     const [userId, setUserId] = useState('');
     const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // PUT .../meeting/attendance é liberado a qualquer autenticado no backend (reunião é
+    // aberta a toda a organização por design — ver meetings.service.ts), mas montar esta
+    // grade de presença precisa da lista completa de pessoas, que é `people:manage`
+    // (Fase 3, docs/decisoes.md). Limitação conhecida: na prática, só quem tem essa
+    // permissão consegue registrar presença por aqui — buscar a lista sem ela só gera
+    // um 403 (e o toast do interceptor global) sem entregar a função pra mais ninguém.
+    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data: attendance } = useQuery({ queryKey: ['events', eventId, 'attendance'], queryFn: () => meetingsApi.getAttendance(eventId) });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list() });
+    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
 
     const markMutation = useMutation({
         mutationFn: (records: { userId: string; status: AttendanceStatus }[]) => meetingsApi.markAttendance(eventId, records),
@@ -398,9 +420,11 @@ function AttendanceTab({ eventId }: { eventId: string }) {
 
     return (
         <>
-            <ToolbarRow>
-                <Button onClick={() => setModalOpen(true)}><Plus size={16} /> Registrar presença</Button>
-            </ToolbarRow>
+            {canListPeople && (
+                <ToolbarRow>
+                    <Button onClick={() => setModalOpen(true)}><Plus size={16} /> Registrar presença</Button>
+                </ToolbarRow>
+            )}
             <TableWrapper>
                 <Table>
                     <Thead><tr><Th>Pessoa</Th><Th>Status</Th><Th>Alterar</Th></tr></Thead>

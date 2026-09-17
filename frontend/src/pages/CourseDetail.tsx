@@ -23,6 +23,8 @@ import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/com
 import { coursesApi, roomsApi, classSessionsApi, enrollmentsApi, courseModulesApi, courseLessonsApi } from '@/services/courses';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import type { AttendanceStatus, EnrollmentStatus } from '@/types';
 
 const TabsList = styled(Tabs.List)`
@@ -114,11 +116,21 @@ export default function CourseDetail() {
     const [enrollModalOpen, setEnrollModalOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
+    const { user } = useAuth();
+    // Matricular aluno (mutation abaixo) exige `courses:manage` no backend — buscar a
+    // lista de pessoas sem essa permissão só gera um 403 (e o toast de erro do
+    // interceptor global) para quem nunca vai conseguir usar o dropdown mesmo.
+    const canManageEnrollments = hasPermission(user, 'courses:manage');
+
     const { data: course } = useQuery({ queryKey: ['courses', courseId], queryFn: () => coursesApi.get(courseId) });
     const { data: sessions } = useQuery({ queryKey: ['courses', courseId, 'sessions'], queryFn: () => classSessionsApi.list(courseId) });
     const { data: enrollments } = useQuery({ queryKey: ['courses', courseId, 'enrollments'], queryFn: () => enrollmentsApi.list(courseId) });
     const { data: rooms } = useQuery({ queryKey: ['rooms'], queryFn: () => roomsApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', { hasStudentProfile: true }], queryFn: () => peopleApi.list({ hasStudentProfile: true }) });
+    const { data: peopleData } = useQuery({
+        queryKey: ['people', { hasStudentProfile: true }],
+        queryFn: () => peopleApi.list({ hasStudentProfile: true }),
+        enabled: canManageEnrollments,
+    });
 
     const invalidateCourse = () => {
         queryClient.invalidateQueries({ queryKey: ['courses', courseId] });
@@ -243,11 +255,13 @@ export default function CourseDetail() {
                 </Tabs.Content>
 
                 <Tabs.Content value="enrollments">
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-                        <Button onClick={() => setEnrollModalOpen(true)}>
-                            <Plus size={16} /> Matricular aluno
-                        </Button>
-                    </div>
+                    {canManageEnrollments && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                            <Button onClick={() => setEnrollModalOpen(true)}>
+                                <Plus size={16} /> Matricular aluno
+                            </Button>
+                        </div>
+                    )}
                     <TableWrapper>
                         <Table>
                             <Thead>

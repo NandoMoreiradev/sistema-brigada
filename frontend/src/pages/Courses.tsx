@@ -21,6 +21,8 @@ import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/com
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import type { EventStatus } from '@/types';
 
 const schema = z.object({
@@ -53,9 +55,15 @@ export default function Courses() {
     const [modalOpen, setModalOpen] = useState(false);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // Esta página já exige `courses:manage` (PermissionRoute), mas escolher instrutor
+    // ao criar turma precisa da lista de pessoas, que é `people:manage` — um cargo com
+    // só `courses:manage` chegaria aqui e levaria um 403 (e o toast do interceptor
+    // global) ao carregar, sem nem tentar usar o formulário.
+    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data, isLoading } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list() });
+    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
 
     const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),

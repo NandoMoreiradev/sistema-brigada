@@ -43,7 +43,14 @@ async function seedSuperAdmin() {
         console.log(`Atualizando Super Admin existente (${SUPER_ADMIN_EMAIL})...`);
         await prisma.user.update({
             where: { email: SUPER_ADMIN_EMAIL },
-            data: { password: hashedPassword, role: Role.SUPER_ADMIN, isActive: true },
+            // isSuperAdminRoot: true é essencial aqui, não só cosmético — sem ele,
+            // PermissionsGuard/userHasPermission bloqueia esse SUPER_ADMIN em toda
+            // rota com @RequirePermission (ex.: POST /users), porque o bypass de
+            // SUPER_ADMIN exige isSuperAdminRoot OU um SystemRole com a permissão.
+            // Sem isso, o onboarding manual de uma academia nova (decisão 5 do
+            // docs/decisoes.md) trava: dá pra criar a Organization mas não o
+            // primeiro ORG_ADMIN dela.
+            data: { password: hashedPassword, role: Role.SUPER_ADMIN, isActive: true, isSuperAdminRoot: true },
         });
     } else {
         console.log(`Criando novo Super Admin (${SUPER_ADMIN_EMAIL})...`);
@@ -53,6 +60,7 @@ async function seedSuperAdmin() {
                 email: SUPER_ADMIN_EMAIL,
                 password: hashedPassword,
                 role: Role.SUPER_ADMIN,
+                isSuperAdminRoot: true,
             },
         });
     }

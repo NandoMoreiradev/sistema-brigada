@@ -239,7 +239,9 @@ export class CertificatesService {
             type: 'CERTIFICATE_ISSUED',
             title: 'Certificado emitido',
             message: `Seu certificado da turma "${courseName}" foi emitido.`,
-            link: '/certificates',
+            // Não `/certificates` (Fase 3, docs/decisoes.md): essa lista agora exige
+            // `certificates:manage`, e quem recebe esta notificação é o próprio aluno.
+            link: '/my-certificates',
         });
 
         return this.findOne(certificate.id, enrollment.organizationId);
@@ -357,7 +359,9 @@ export class CertificatesService {
         let notifiedCount = 0;
 
         for (const certificate of expiring) {
-            const link = `/certificates#${certificate.id}`;
+            // Não `/certificates` (Fase 3, docs/decisoes.md) pelo mesmo motivo do link
+            // de "certificado emitido" acima: quem recebe é o próprio aluno.
+            const link = `/my-certificates#${certificate.id}`;
             const alreadyNotified = await this.prisma.notification.findFirst({
                 where: { type: 'CERTIFICATE_EXPIRING', link },
             });

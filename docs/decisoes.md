@@ -26,6 +26,16 @@ Pendente:
 
 - ⏸️ App mobile (decisão 12) — **adiado deliberadamente para uma fase futura** (2026-09-17), não é próximo passo do MVP web
 
+## Validação end-to-end (2026-09-17)
+
+Primeira vez que o sistema rodou contra um Postgres real (ambiente local: Postgres + backend + frontend + seed do Super Admin), em vez de só typecheck/build. Criada uma academia de teste inteira via API (org, org admin, instrutor, 2 alunos, 3 staff, turma com módulo/aula/sessão, evento de atuação, reunião, designação) e testado por papel (SUPER_ADMIN, ORG_ADMIN, instrutor, aluno, staff, pessoa sem vínculo) com 31 checagens automatizadas de permissão/posse (100% passando) + inspeção visual via Playwright/Chromium das telas de cada papel. Bugs reais encontrados e corrigidos:
+
+1. **Onboarding de academia nova travava** — `prisma/seed.ts` criava o SUPER_ADMIN sem `isSuperAdminRoot: true`; sem isso, `PermissionsGuard` bloqueia qualquer rota com `@RequirePermission`, incluindo `POST /users` — ou seja, o Super Admin seedado criava a `Organization` mas não conseguia criar o primeiro `ORG_ADMIN` dela (quebrava a decisão 5 na prática). Corrigido: seed agora marca `isSuperAdminRoot: true` no create e no update (idempotente).
+2. **Notificação de certificado levava a uma página sem acesso** — `link: '/certificates'` nas notificações de "certificado emitido" e "certificado vencendo" (recebidas pelo próprio aluno) apontava para a lista completa, que a Fase 3 restringiu a `certificates:manage`. Corrigido para `/my-certificates`.
+3. **Toasts de "sem permissão" disparando sozinhos ao abrir a página, sem o usuário clicar em nada** — `CourseDetail.tsx`, `EventDetail.tsx`, `Courses.tsx` e `Staff.tsx` buscavam listas auxiliares (`GET /users`, `GET /staff`) sem checar se o usuário tinha a permissão daquela lista especificamente, mesmo a página em si sendo acessível a um papel diferente (ex.: instrutor abre a própria turma — permitido — mas a página também tentava buscar a lista completa de pessoas para o dropdown de matrícula — `people:manage`, que o instrutor não tem). Corrigido com `enabled: hasPermission(...)` nas queries afetadas, escondendo também os botões/controles que dependem delas (e, no caso da tabela de designações do evento, o dropdown de alterar status só aparece editável para quem administra ou é o dono daquela designação específica).
+
+Limitação conhecida, não corrigida (pré-existente, fora do escopo desta rodada): marcar presença de reunião pela tela do evento (`EventDetail.tsx` → aba Presença) precisa da lista completa de pessoas (`people:manage`), então, embora o backend permita qualquer autenticado registrar presença de reunião por design (`meetings.service.ts`), na prática só quem tem `people:manage` consegue usar essa tela. Resolver direito exigiria um endpoint mais enxuto de "listar pessoas da organização" acessível a qualquer autenticado, sem os campos sensíveis do `GET /users` administrativo — não implementado agora.
+
 ## Decisões fechadas
 
 ### Arquitetura geral
