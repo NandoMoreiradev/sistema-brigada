@@ -10,7 +10,7 @@
 // automaticamente pelo módulo `courses` (ver class-sessions.service.ts e
 // enrollments.service.ts) toda vez que a presença muda.
 
-import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { CertificatePdfService } from './certificate-pdf.service';
@@ -18,6 +18,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../common/email.service';
 import { Prisma, AttendanceStatus, EnrollmentStatus, CertificateStatus } from '@prisma/client';
 import { ListCertificatesDto } from './dto/list-certificates.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 const certificateInclude = {
     enrollment: {
@@ -79,6 +81,7 @@ export class CertificatesService {
         };
     }
 
+    /** Uso interno (emissão/regeneração) — sem checagem de posse, o chamador já é confiável (admin ou fluxo automático). */
     async findOne(id: string, organizationId: string) {
         const certificate = await this.prisma.certificate.findFirst({
             where: { id, organizationId },
@@ -88,6 +91,22 @@ export class CertificatesService {
             throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
         }
         return this.serialize(certificate);
+    }
+
+    /**
+     * Fase 3 de posse de dado (docs/decisoes.md): usado pelo endpoint
+     * `GET /certificates/:id` — exige `certificates:manage` OU que o
+     * certificado seja do próprio aluno chamando.
+     */
+    async findOneForRequester(id: string, organizationId: string, user: AuthenticatedUser) {
+        const certificate = await this.findOne(id, organizationId);
+
+        const isOwnCertificate = certificate.enrollment.studentProfile.user.id === user.id;
+        if (!isOwnCertificate && !userHasPermission(user, 'certificates:manage')) {
+            throw new ForbiddenException('Você não pode ver este certificado.');
+        }
+
+        return certificate;
     }
 
     private serialize(certificate: Prisma.CertificateGetPayload<{ include: typeof certificateInclude }>) {

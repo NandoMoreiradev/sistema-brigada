@@ -20,6 +20,7 @@ import {
     Award,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import { NotificationBell } from './NotificationBell';
 
 const Shell = styled.div`
@@ -170,21 +171,33 @@ const Main = styled.div`
     overflow: hidden;
 `;
 
-const NAV_ITEMS = [
-    { to: '/dashboard', label: 'Painel', icon: LayoutDashboard },
-    { to: '/courses', label: 'Turmas', icon: GraduationCap },
-    { to: '/events', label: 'Eventos', icon: CalendarClock },
-    { to: '/staff', label: 'Equipe', icon: ShieldCheck },
-    { to: '/students', label: 'Alunos', icon: Users },
-    { to: '/certificates', label: 'Certificados', icon: Award },
-];
-
 const ADMIN_ROLES = ['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN'];
 
 export function MainLayout({ children }: { children: ReactNode }) {
     const { user, organization, signOut } = useAuth();
     const isSuperAdmin = user?.role === 'SUPER_ADMIN';
     const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role);
+
+    // Fase 3 de posse de dado (docs/decisoes.md): quem tem a permissão
+    // administrativa do módulo vê a listagem completa da organização; quem
+    // não tem vê só o recorte pessoal (/me/*). Eventos fica de fora dessa
+    // troca de propósito — reuniões/assembleias são abertas a toda a
+    // organização por design (ver meetings.service.ts), não só a quem
+    // administra.
+    const navItems = [
+        { to: '/dashboard', label: 'Painel', icon: LayoutDashboard },
+        hasPermission(user, 'courses:manage')
+            ? { to: '/courses', label: 'Turmas', icon: GraduationCap }
+            : { to: '/my-courses', label: 'Minhas Turmas', icon: GraduationCap },
+        { to: '/events', label: 'Eventos', icon: CalendarClock },
+        hasPermission(user, 'staff:manage')
+            ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
+            : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
+        ...(hasPermission(user, 'people:manage') ? [{ to: '/students', label: 'Alunos', icon: Users }] : []),
+        hasPermission(user, 'certificates:manage')
+            ? { to: '/certificates', label: 'Certificados', icon: Award }
+            : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
+    ];
 
     return (
         <Shell>
@@ -195,7 +208,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
                 </Brand>
 
                 <Nav>
-                    {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+                    {navItems.map(({ to, label, icon: Icon }) => (
                         <NavItem key={to} to={to}>
                             <Icon size={18} />
                             {label}

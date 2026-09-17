@@ -5,6 +5,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import { MainLayout } from '@/components/layout/MainLayout';
 
 const spin = keyframes`
@@ -70,6 +71,41 @@ export const SuperAdminRoute = () => {
     }
 
     if (user?.role !== 'SUPER_ADMIN') {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return (
+        <MainLayout>
+            <Outlet />
+        </MainLayout>
+    );
+};
+
+/**
+ * Igual a ProtectedRoute, mas só deixa passar quem tem a permissão de módulo
+ * informada (Fase 3 de posse de dado, docs/decisoes.md) — usado nas listagens
+ * completas (Turmas/Equipe/Alunos/Certificados) que agora ficam restritas a
+ * `courses:manage`/`staff:manage`/`people:manage`/`certificates:manage`. O
+ * backend já recusa com 403 de qualquer forma; isto só evita mandar quem não
+ * tem a permissão para uma tela que vai falhar.
+ */
+export const PermissionRoute = ({ permission }: { permission: string }) => {
+    const { isAuthenticated, isLoading, user } = useAuth();
+    const location = useLocation();
+
+    if (isLoading) {
+        return (
+            <SpinnerContainer>
+                <Spinner />
+            </SpinnerContainer>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    if (!hasPermission(user, permission)) {
         return <Navigate to="/dashboard" replace />;
     }
 

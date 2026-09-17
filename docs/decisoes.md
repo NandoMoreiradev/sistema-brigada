@@ -19,11 +19,11 @@ Codificação iniciada e em andamento. Módulos completos (backend + frontend, v
 - ✅ Eventos polimórficos — assembleia/congresso/atuação de brigada/reunião, escala de staff, relatório de ocorrência, presença de reunião, **Google Meet automático** (pendência do mapeamento de reaproveitamento abaixo, já resolvida)
 - ✅ Notificações reais — certificado emitido/vencendo (job diário + e-mail), designação, matrícula confirmada, sino no frontend
 - ✅ Permissões granulares — **Fase 1**: catálogo de permissões + cargos (`RoleAssignment`) configuráveis por organização, tela `/roles` (ver decisões 22-24)
-- ✅ Permissões — **Fase 2** (backend, atualizado em 2026-09-17): `userHasPermission` extraído de `PermissionsGuard` para reuso em services; `AuthService.getProfile` devolve `studentProfile`/`staffMember`/`instructorCourseIds`; endpoints `GET /me/courses`, `/me/enrollments`, `/me/designations`, `/me/certificates`; checagem de posse adicionada em `CourseLessonsService` (create/update de aula), `ClassSessionsService` (diário/presença) e `DesignationsService.updateStatus` — só quem tem a permissão administrativa do módulo (`courses:manage`/`events:manage`) OU é o dono do dado (instrutor da turma, staff da própria designação) passa
+- ✅ Permissões — **Fase 2** (backend, 2026-09-17): `userHasPermission` extraído de `PermissionsGuard` para reuso em services; `AuthService.getProfile` devolve `studentProfile`/`staffMember`/`instructorCourseIds`; endpoints `GET /me/courses`, `/me/enrollments`, `/me/designations`, `/me/certificates`; checagem de posse adicionada em `CourseLessonsService` (create/update de aula), `ClassSessionsService` (diário/presença) e `DesignationsService.updateStatus` — só quem tem a permissão administrativa do módulo (`courses:manage`/`events:manage`) OU é o dono do dado (instrutor da turma, staff da própria designação) passa
+- ✅ Permissões — **Fase 3** (2026-09-17): listagem completa de Turmas/Equipe/Alunos/Certificados agora exige a permissão do módulo (`courses:manage`/`staff:manage`/`people:manage`/`certificates:manage`) tanto no backend (`GET` das listas + posse no detalhe de turma/certificado) quanto no frontend (`PermissionRoute`, nav condicional em `MainLayout`); quem não tem a permissão usa o recorte pessoal em `/my-courses`, `/my-certificates`, `/my-designations`; `/dashboard` deixou de ser placeholder — agora é "role-aware" (cards condicionais por papel acumulado: aluno/instrutor/staff/admin). **Eventos ficou de fora dessa restrição de propósito** — reuniões/assembleias são abertas a toda a organização por design (`meetings.service.ts`: presença é lista aberta, sem roster fixo), então `/events` continua acessível a qualquer autenticado.
 
 Pendente:
 
-- ⏳ Permissões — **Fase 3**: dashboards/portais dedicados de aluno e professor no frontend, consumindo a Fase 2
 - ❌ App mobile (decisão 12) — não iniciado
 
 ## Decisões fechadas
@@ -73,7 +73,7 @@ Pendente:
 |---|---|---|---|
 | `School` (+ `isMatrix`/`parentSchoolId`) | `Academia` (tenant) | Renomear, manter hierarquia matriz→filiais | ✅ |
 | `AdminController` / `SchoolOperationsController` | Painel de plataforma (SUPER_ADMIN) | Gestão de academias-clientes, onboarding manual | ✅ |
-| `UserSchoolAccess` + `RoleAssignment` + `Permission` + `SystemRole` | Cargo por unidade + papel de plataforma | Já resolve staff/instrutor com cargo diferente por filial | ✅ Fase 1 (cargo/permissão para equipe) + Fase 2 (posse de dado no backend); portal dedicado no frontend é Fase 3 |
+| `UserSchoolAccess` + `RoleAssignment` + `Permission` + `SystemRole` | Cargo por unidade + papel de plataforma | Já resolve staff/instrutor com cargo diferente por filial | ✅ Fase 1 (cargo/permissão) + Fase 2 (posse de dado no backend) + Fase 3 (gating de nav/rotas e dashboard role-aware no frontend) |
 | Auth (JWT + refresh + 2FA) | Auth | Sem alteração | ✅ |
 | `Course`, `Student`, `Enrollment`, `TeacherCourseSubject`, `Room`, `TimetableEntry`, `ClassLog`, `Attendance` | `Turma`, `Aluno`, `Matricula`, designação instrutor↔turma, sala, grade horária, diário de aula, presença | Renomear, podar campos comerciais (`soldByUserId`, `churnScore`) | ✅ |
 | `TrainingModule`/`TrainingLesson`/`TrainingProgress` + upload presigned R2 | Vídeo-aulas por turma | Hoje é global/interno da Maskot; passa a ser por turma + gated por matrícula | ✅ |
@@ -88,7 +88,7 @@ Pendente:
 - Staff/membro de equipe: papel adicional sobre `User` (não entidade separada) — ver decisões 6-9. **✅**
 - Designação com escala/turnos dentro de evento de atuação. **✅**
 - Relatório de ocorrência generalizado (hoje `StudentOccurrence` é só por aluno; precisa aceitar vínculo a `Event` também). **✅**
-- Permissões granuladas + posse de dado para portal de aluno/professor — ver decisões 22-24. **✅ Fase 1 (cargo/permissão) e Fase 2 (posse de dado no backend) feitas; ⏳ Fase 3 (portal dedicado no frontend) pendente.**
+- Permissões granuladas + posse de dado para portal de aluno/professor — ver decisões 22-24. **✅ Fases 1, 2 e 3 feitas** (cargo/permissão, posse no backend, gating de nav/rotas + dashboard role-aware + páginas `/my-*` no frontend).
 - App mobile novo (Expo/React Native), focado em staff/instrutor. **❌ não iniciado**
 
 ### Descartar
@@ -96,7 +96,7 @@ WhatsApp/Instagram/Messenger, chatbot de vendas, `EnrollmentCampaign` (é campan
 
 ## Próximos passos (ordem sugerida)
 1. ~~**Permissões — Fase 2**: endpoints "meus dados", checagem de posse nos services já existentes, `AuthService.getProfile` enriquecido.~~ **✅ feito em 2026-09-17.**
-2. **Permissões — Fase 3**: dashboards/portais dedicados de aluno e professor no frontend, consumindo `/me/*` (em vez das listas completas hoje usadas por qualquer papel).
+2. ~~**Permissões — Fase 3**: dashboards/portais dedicados de aluno e professor no frontend, consumindo `/me/*`.~~ **✅ feito em 2026-09-17** (dashboard role-aware + `/my-courses`/`/my-certificates`/`/my-designations` + gating de nav/rotas por permissão).
 3. **App mobile** (decisão 12): Expo/React Native, foco em staff/instrutor em campo (escala, presença, ocorrência).
 
 ## Itens menores em aberto (não bloqueiam a codificação)

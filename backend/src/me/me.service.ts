@@ -9,20 +9,29 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaService } from '../media/media.service';
 
 @Injectable()
 export class MeService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly mediaService: MediaService,
+    ) {}
+
+    /** Mesmo cálculo de CertificatesService.serialize — replicado aqui para não acoplar os dois módulos. */
+    private toPdfUrl(pdfKey: string | null): string | null {
+        return pdfKey && this.mediaService.publicUrl ? `${this.mediaService.publicUrl}/${pdfKey}` : null;
+    }
 
     async getMyCourses(userId: string, organizationId: string) {
         const [instructing, enrollments] = await Promise.all([
             this.prisma.courseInstructor.findMany({
                 where: { userId, course: { organizationId } },
-                include: { course: true },
+                include: { course: { include: { event: true } } },
             }),
             this.prisma.enrollment.findMany({
                 where: { organizationId, studentProfile: { userId } },
-                include: { course: true },
+                include: { course: { include: { event: true } } },
             }),
         ]);
 
@@ -36,11 +45,18 @@ export class MeService {
         const studentProfile = await this.prisma.studentProfile.findFirst({ where: { userId, organizationId } });
         if (!studentProfile) return [];
 
-        return this.prisma.enrollment.findMany({
+        const enrollments = await this.prisma.enrollment.findMany({
             where: { studentProfileId: studentProfile.id },
-            include: { course: true, certificate: true },
+            include: { course: { include: { event: true } }, certificate: true },
             orderBy: { enrolledAt: 'desc' },
         });
+
+        return enrollments.map((enrollment) => ({
+            ...enrollment,
+            certificate: enrollment.certificate
+                ? { ...enrollment.certificate, pdfUrl: this.toPdfUrl(enrollment.certificate.pdfKey) }
+                : null,
+        }));
     }
 
     async getMyDesignations(userId: string, organizationId: string) {
@@ -58,10 +74,12 @@ export class MeService {
         const studentProfile = await this.prisma.studentProfile.findFirst({ where: { userId, organizationId } });
         if (!studentProfile) return [];
 
-        return this.prisma.certificate.findMany({
+        const certificates = await this.prisma.certificate.findMany({
             where: { organizationId, enrollment: { studentProfileId: studentProfile.id } },
-            include: { enrollment: { include: { course: true } } },
+            include: { enrollment: { include: { course: { include: { event: true } } } } },
             orderBy: { issuedAt: 'desc' },
         });
+
+        return certificates.map((certificate) => ({ ...certificate, pdfUrl: this.toPdfUrl(certificate.pdfKey) }));
     }
 }

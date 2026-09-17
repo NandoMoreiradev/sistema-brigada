@@ -4,12 +4,11 @@
 // ativa. Restrito a papéis administrativos — é uma tela de gestão, não um
 // autocadastro (decisão 5 do docs/decisoes.md).
 //
-// Leitura continua restrita a ADMIN_ROLES (não é aberta a ALL_ORG_ROLES —
-// diferente de turmas/eventos, a listagem de pessoas expõe e-mail/telefone de
-// todo mundo da organização, não é algo para deixar aberto por padrão).
-// Escrita passa a usar `@RequirePermission('people:manage')` em vez de
-// `@Roles`, para permitir delegar a uma pessoa sem ser ORG_ADMIN via cargo —
-// ver backend/src/permissions/.
+// Leitura da listagem (`findAll`) também usa `@RequirePermission('people:manage')`
+// (Fase 3 de posse de dado, docs/decisoes.md) — igual à escrita, para que um
+// cargo delegado (secretaria/coordenador) veja a lista sem precisar ser
+// ORG_ADMIN. `findOne` de uma pessoa específica continua restrito a
+// ADMIN_ROLES sem mudança.
 
 import { Controller, Get, Post, Body, Patch, Put, Param, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -45,7 +44,7 @@ export class UsersController {
     }
 
     @Get()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('people:manage')
     findAll(@Query() query: ListUsersDto, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.usersService.findAll(this.requireOrganizationId(organizationId), query);
     }
