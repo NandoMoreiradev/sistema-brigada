@@ -1,13 +1,21 @@
 // backend/src/events/designations.service.ts
 // Escala de staff em evento de atuação (decisão 14: turnos/horários, não uma
 // designação única para o evento inteiro).
+//
+// Fase 2 de posse de dado (docs/decisoes.md, decisão 22): `updateStatus`
+// (confirmar/recusar escala) passa a exigir `events:manage` (admin) OU que a
+// designação seja do próprio StaffMember do usuário chamador — antes disso
+// qualquer ORG_USER autenticado podia confirmar/recusar a designação de
+// qualquer outra pessoa.
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { DesignationStatus } from '@prisma/client';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 const designationInclude = {
     staffMember: { include: { user: { select: { id: true, name: true, email: true } } } },
@@ -67,12 +75,27 @@ export class DesignationsService {
         });
     }
 
-    async updateStatus(eventId: string, organizationId: string, designationId: string, status: DesignationStatus) {
+    async updateStatus(
+        eventId: string,
+        organizationId: string,
+        designationId: string,
+        status: DesignationStatus,
+        user: AuthenticatedUser,
+    ) {
         const operation = await this.eventsService.requireEventOperation(eventId, organizationId);
-        const designation = await this.prisma.designation.findFirst({ where: { id: designationId, eventOperationId: operation.id } });
+        const designation = await this.prisma.designation.findFirst({
+            where: { id: designationId, eventOperationId: operation.id },
+            include: { staffMember: { select: { userId: true } } },
+        });
         if (!designation) {
             throw new NotFoundException(`Designação com ID ${designationId} não encontrada neste evento.`);
         }
+
+        const isOwnDesignation = designation.staffMember.userId === user.id;
+        if (!isOwnDesignation && !userHasPermission(user, 'events:manage')) {
+            throw new ForbiddenException('Você só pode confirmar ou recusar a própria designação.');
+        }
+
         return this.prisma.designation.update({ where: { id: designationId }, data: { status }, include: designationInclude });
     }
 
