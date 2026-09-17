@@ -5,26 +5,27 @@
 // de brigada mostram Escala + Ocorrências; reunião mostra Pauta/Ata + Presença.
 // Arquivos é comum aos dois.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Select, Textarea, Form, FormActions } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { eventsApi, designationsApi, occurrenceReportsApi, meetingsApi, eventFilesApi, type DesignationStatus } from '@/services/events';
+import { eventsApi, designationsApi, occurrenceReportsApi, meetingsApi, eventFilesApi, type DesignationStatus, type AppEvent } from '@/services/events';
 import { staffApi } from '@/services/staff';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
-import type { AttendanceStatus } from '@/types';
+import { STATUS_LABEL, STATUS_TONE } from './Events';
+import type { AttendanceStatus, EventStatus } from '@/types';
 
 const TabsList = styled(Tabs.List)`
     display: flex;
@@ -104,8 +105,22 @@ export default function EventDetail() {
     const { id } = useParams<{ id: string }>();
     const eventId = id!;
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
+    const { user } = useAuth();
+    const canManageEvent = hasPermission(user, 'events:manage');
+    const [editOpen, setEditOpen] = useState(false);
 
     const { data: event } = useQuery({ queryKey: ['events', eventId], queryFn: () => eventsApi.get(eventId) });
+
+    const removeMutation = useMutation({
+        mutationFn: () => eventsApi.remove(eventId),
+        onSuccess: () => {
+            toast.success('Evento excluído.');
+            queryClient.invalidateQueries({ queryKey: ['events'] });
+            navigate('/events');
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível excluir o evento.'),
+    });
 
     if (!event) {
         return (
@@ -117,19 +132,43 @@ export default function EventDetail() {
 
     const isOperation = event.kind !== 'REUNIAO';
 
+    const handleRemove = () => {
+        if (window.confirm(`Excluir o evento "${event.title}"? Essa ação não pode ser desfeita.`)) {
+            removeMutation.mutate();
+        }
+    };
+
     return (
-        <PageLayout title={event.title} subtitle={format(new Date(event.startDate), 'dd/MM/yyyy HH:mm')} icon={<CalendarClock size={16} />}>
+        <PageLayout
+            title={event.title}
+            subtitle={format(new Date(event.startDate), 'dd/MM/yyyy HH:mm')}
+            icon={<CalendarClock size={16} />}
+            actions={
+                canManageEvent ? (
+                    <>
+                        <Button $variant="secondary" onClick={() => setEditOpen(true)}>
+                            <Pencil size={16} /> Editar evento
+                        </Button>
+                        <Button $variant="danger" onClick={handleRemove} disabled={removeMutation.isPending}>
+                            <Trash2 size={16} /> Excluir
+                        </Button>
+                    </>
+                ) : undefined
+            }
+        >
             <BackLink onClick={() => navigate('/events')}>
                 <ArrowLeft size={14} /> Voltar para eventos
             </BackLink>
 
             <InfoRow>
                 {event.location && <span><strong>Local:</strong> {event.location}</span>}
-                <span><strong>Status:</strong> {event.status}</span>
+                <span><strong>Status:</strong> <Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge></span>
                 {isOperation && event.operation?.estimatedAudienceCount != null && (
                     <span><strong>Público estimado:</strong> {event.operation.estimatedAudienceCount}</span>
                 )}
             </InfoRow>
+
+            {canManageEvent && <EditEventModal event={event} open={editOpen} onOpenChange={setEditOpen} />}
 
             <Tabs.Root defaultValue={isOperation ? 'designations' : 'meeting'}>
                 <TabsList>
@@ -165,6 +204,116 @@ export default function EventDetail() {
     );
 }
 
+function toDatetimeLocalValue(iso: string): string {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+interface EditEventFormData {
+    title: string;
+    location: string;
+    startDate: string;
+    endDate: string;
+    status: EventStatus;
+    estimatedAudienceCount: string;
+    notes: string;
+}
+
+function EditEventModal({ event, open, onOpenChange }: { event: AppEvent; open: boolean; onOpenChange: (open: boolean) => void }) {
+    const queryClient = useQueryClient();
+    const isOperation = event.kind !== 'REUNIAO';
+    const { register, handleSubmit, reset } = useForm<EditEventFormData>();
+
+    useEffect(() => {
+        if (open) {
+            reset({
+                title: event.title,
+                location: event.location ?? '',
+                startDate: toDatetimeLocalValue(event.startDate),
+                endDate: event.endDate ? toDatetimeLocalValue(event.endDate) : '',
+                status: event.status,
+                estimatedAudienceCount: event.operation?.estimatedAudienceCount != null ? String(event.operation.estimatedAudienceCount) : '',
+                notes: event.operation?.notes ?? '',
+            });
+        }
+    }, [open, event, reset]);
+
+    const updateMutation = useMutation({
+        mutationFn: (input: Parameters<typeof eventsApi.update>[1]) => eventsApi.update(event.id, input),
+        onSuccess: () => {
+            toast.success('Evento atualizado.');
+            queryClient.invalidateQueries({ queryKey: ['events', event.id] });
+            queryClient.invalidateQueries({ queryKey: ['events'] });
+            onOpenChange(false);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível salvar o evento.'),
+    });
+
+    const onSubmit = (data: EditEventFormData) => {
+        updateMutation.mutate({
+            title: data.title,
+            location: data.location || undefined,
+            startDate: data.startDate,
+            endDate: data.endDate || undefined,
+            status: data.status,
+            ...(isOperation ? {
+                estimatedAudienceCount: data.estimatedAudienceCount ? Number(data.estimatedAudienceCount) : undefined,
+                notes: data.notes || undefined,
+            } : {}),
+        });
+    };
+
+    return (
+        <Modal open={open} onOpenChange={onOpenChange} title="Editar evento" width="560px">
+            <Form onSubmit={handleSubmit(onSubmit)}>
+                <Field>
+                    <Label htmlFor="edit-title">Título</Label>
+                    <Input id="edit-title" {...register('title', { required: true })} />
+                </Field>
+                <FieldRow>
+                    <Field>
+                        <Label htmlFor="edit-startDate">Data/hora de início</Label>
+                        <Input id="edit-startDate" type="datetime-local" {...register('startDate', { required: true })} />
+                    </Field>
+                    <Field>
+                        <Label htmlFor="edit-endDate">Data/hora de término (opcional)</Label>
+                        <Input id="edit-endDate" type="datetime-local" {...register('endDate')} />
+                    </Field>
+                </FieldRow>
+                <Field>
+                    <Label htmlFor="edit-location">Local</Label>
+                    <Input id="edit-location" {...register('location')} />
+                </Field>
+                <Field>
+                    <Label htmlFor="edit-status">Status</Label>
+                    <Select id="edit-status" {...register('status')}>
+                        {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                        ))}
+                    </Select>
+                </Field>
+                {isOperation && (
+                    <>
+                        <Field>
+                            <Label htmlFor="edit-estimatedAudienceCount">Estimativa de público (opcional)</Label>
+                            <Input id="edit-estimatedAudienceCount" type="number" min={0} {...register('estimatedAudienceCount')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="edit-notes">Observações</Label>
+                            <Textarea id="edit-notes" {...register('notes')} />
+                        </Field>
+                    </>
+                )}
+                <FormActions>
+                    <Button type="button" $variant="secondary" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                    <Button type="submit" disabled={updateMutation.isPending}>{updateMutation.isPending ? 'Salvando...' : 'Salvar'}</Button>
+                </FormActions>
+            </Form>
+        </Modal>
+    );
+}
+
 function DesignationsTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
     const queryClient = useQueryClient();
@@ -196,6 +345,15 @@ function DesignationsTab({ eventId }: { eventId: string }) {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atualizar.'),
     });
 
+    const removeMutation = useMutation({
+        mutationFn: (designationId: string) => designationsApi.remove(eventId, designationId),
+        onSuccess: () => {
+            toast.success('Designação removida.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'designations'] });
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover a designação.'),
+    });
+
     return (
         <>
             {canManageDesignations && (
@@ -214,6 +372,7 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                             <Th>Turno</Th>
                             <Th>Status</Th>
                             <Th>Alterar</Th>
+                            {canManageDesignations && <Th></Th>}
                         </tr>
                     </Thead>
                     <tbody>
@@ -235,6 +394,20 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                                         </Select>
                                     ) : '—'}
                                 </Td>
+                                {canManageDesignations && (
+                                    <Td>
+                                        <Button
+                                            $variant="ghost"
+                                            onClick={() => {
+                                                if (window.confirm(`Remover a designação de ${d.staffMember.user.name}?`)) {
+                                                    removeMutation.mutate(d.id);
+                                                }
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    </Td>
+                                )}
                             </Tr>
                         ))}
                     </tbody>
@@ -278,6 +451,10 @@ function DesignationsTab({ eventId }: { eventId: string }) {
 function OccurrencesTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // Registrar é aberto a todo mundo (quem está em campo percebe o incidente), mas
+    // remover um relatório já registrado exige events:manage no backend.
+    const canRemove = hasPermission(user, 'events:manage');
     const { data: reports } = useQuery({ queryKey: ['events', eventId, 'occurrence-reports'], queryFn: () => occurrenceReportsApi.list(eventId) });
     const { register, handleSubmit, reset } = useForm<{ type: string; title: string; description: string }>();
 
@@ -291,6 +468,15 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível registrar o relatório.'),
     });
 
+    const removeMutation = useMutation({
+        mutationFn: (reportId: string) => occurrenceReportsApi.remove(eventId, reportId),
+        onSuccess: () => {
+            toast.success('Relatório removido.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'occurrence-reports'] });
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover o relatório.'),
+    });
+
     return (
         <>
             <ToolbarRow>
@@ -301,7 +487,7 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
             <TableWrapper>
                 <Table>
                     <Thead>
-                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Data</Th></tr>
+                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Data</Th>{canRemove && <Th></Th>}</tr>
                     </Thead>
                     <tbody>
                         {(reports ?? []).map((r) => (
@@ -310,6 +496,20 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                 <Td>{r.title}</Td>
                                 <Td>{r.description || '—'}</Td>
                                 <Td>{format(new Date(r.createdAt), 'dd/MM/yyyy HH:mm')}</Td>
+                                {canRemove && (
+                                    <Td>
+                                        <Button
+                                            $variant="ghost"
+                                            onClick={() => {
+                                                if (window.confirm(`Remover o relatório "${r.title}"?`)) {
+                                                    removeMutation.mutate(r.id);
+                                                }
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    </Td>
+                                )}
                             </Tr>
                         ))}
                     </tbody>
@@ -345,6 +545,11 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
 
 function MeetingTab({ eventId, meeting }: { eventId: string; meeting: { agenda: string | null; minutes: string | null; meetUrl: string | null } | null }) {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // Ver a reunião é aberto a todo mundo (qualquer um pode conferir a pauta antes de
+    // entrar), mas editar pauta/ata/link exige events:manage no backend — sem esconder
+    // o formulário, quem não tem a permissão via um 403 inesperado ao clicar em Salvar.
+    const canEditMeeting = hasPermission(user, 'events:manage');
     const { register, handleSubmit } = useForm({
         defaultValues: { agenda: meeting?.agenda ?? '', minutes: meeting?.minutes ?? '', meetUrl: meeting?.meetUrl ?? '' },
     });
@@ -367,23 +572,30 @@ function MeetingTab({ eventId, meeting }: { eventId: string; meeting: { agenda: 
                     </Button>
                 </div>
             )}
-            <Form onSubmit={handleSubmit((data) => updateMutation.mutate({ ...data, meetUrl: data.meetUrl || undefined }))}>
-                <Field>
-                    <Label htmlFor="meetUrl">Link do Google Meet</Label>
-                    <Input id="meetUrl" placeholder="Gerado automaticamente se você conectou o Google Calendar" {...register('meetUrl')} />
-                </Field>
-                <Field>
-                    <Label htmlFor="agenda">Pauta</Label>
-                    <Textarea id="agenda" {...register('agenda')} />
-                </Field>
-                <Field>
-                    <Label htmlFor="minutes">Ata</Label>
-                    <Textarea id="minutes" {...register('minutes')} />
-                </Field>
-                <FormActions>
-                    <Button type="submit" disabled={updateMutation.isPending}>{updateMutation.isPending ? 'Salvando...' : 'Salvar'}</Button>
-                </FormActions>
-            </Form>
+            {canEditMeeting ? (
+                <Form onSubmit={handleSubmit((data) => updateMutation.mutate({ ...data, meetUrl: data.meetUrl || undefined }))}>
+                    <Field>
+                        <Label htmlFor="meetUrl">Link do Google Meet</Label>
+                        <Input id="meetUrl" placeholder="Gerado automaticamente se você conectou o Google Calendar" {...register('meetUrl')} />
+                    </Field>
+                    <Field>
+                        <Label htmlFor="agenda">Pauta</Label>
+                        <Textarea id="agenda" {...register('agenda')} />
+                    </Field>
+                    <Field>
+                        <Label htmlFor="minutes">Ata</Label>
+                        <Textarea id="minutes" {...register('minutes')} />
+                    </Field>
+                    <FormActions>
+                        <Button type="submit" disabled={updateMutation.isPending}>{updateMutation.isPending ? 'Salvando...' : 'Salvar'}</Button>
+                    </FormActions>
+                </Form>
+            ) : (
+                <InfoRow style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.75rem' }}>
+                    <span><strong>Pauta:</strong> {meeting?.agenda || 'Não informada.'}</span>
+                    <span><strong>Ata:</strong> {meeting?.minutes || 'Ainda não registrada.'}</span>
+                </InfoRow>
+            )}
         </div>
     );
 }
