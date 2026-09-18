@@ -8,12 +8,14 @@
 // pai, para a cascata de soft delete do `PrismaService` funcionar (ver
 // SOFT_DELETE_CASCADE_TARGETS em prisma/prisma.service.ts).
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EventKind } from '@prisma/client';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { ListCoursesDto } from './dto/list-courses.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 const courseInclude = {
     event: true,
@@ -49,6 +51,7 @@ export class CoursesService {
                     requireAllLessonsWatched: dto.requireAllLessonsWatched ?? true,
                     recyclingValidityMonths: dto.recyclingValidityMonths,
                     recommendedRecyclingCourseId: dto.recommendedRecyclingCourseId,
+                    syllabus: dto.syllabus,
                 },
             });
 
@@ -88,7 +91,7 @@ export class CoursesService {
         return { data: courses, total, page, limit, totalPages: Math.ceil(total / limit) };
     }
 
-    async findOne(id: string, organizationId: string) {
+    async findOne(id: string, organizationId: string, user: AuthenticatedUser) {
         const course = await this.prisma.course.findFirst({
             where: { id, organizationId },
             include: {
@@ -101,11 +104,42 @@ export class CoursesService {
             throw new NotFoundException(`Turma com ID ${id} não encontrada nesta organização.`);
         }
 
+        await this.assertCanView(id, user);
+
+        return course;
+    }
+
+    /**
+     * Fase 3 de posse de dado (docs/decisoes.md): abrir o detalhe de uma
+     * turma exige `courses:manage` OU ser instrutor/aluno matriculado
+     * *desta* turma — sem isso, restringir a listagem completa a
+     * `courses:manage` não impediria alguém de abrir qualquer turma alheia
+     * direto pelo ID.
+     */
+    private async assertCanView(courseId: string, user: AuthenticatedUser) {
+        if (userHasPermission(user, 'courses:manage')) return;
+
+        const [isInstructor, isEnrolled] = await Promise.all([
+            this.prisma.courseInstructor.findFirst({ where: { courseId, userId: user.id }, select: { id: true } }),
+            this.prisma.enrollment.findFirst({ where: { courseId, studentProfile: { userId: user.id } }, select: { id: true } }),
+        ]);
+
+        if (!isInstructor && !isEnrolled) {
+            throw new ForbiddenException('Você não faz parte desta turma.');
+        }
+    }
+
+    /** Uso interno (mutações já gated por `courses:manage` no controller) — sem checagem de posse. */
+    private async requireCourse(id: string, organizationId: string) {
+        const course = await this.prisma.course.findFirst({ where: { id, organizationId }, include: courseInclude });
+        if (!course) {
+            throw new NotFoundException(`Turma com ID ${id} não encontrada nesta organização.`);
+        }
         return course;
     }
 
     async update(id: string, organizationId: string, dto: UpdateCourseDto) {
-        const course = await this.findOne(id, organizationId);
+        const course = await this.requireCourse(id, organizationId);
         const { status, ...courseFields } = dto;
 
         return this.prisma.$transaction(async (tx) => {
@@ -131,6 +165,7 @@ export class CoursesService {
                     requireAllLessonsWatched: courseFields.requireAllLessonsWatched,
                     recyclingValidityMonths: courseFields.recyclingValidityMonths,
                     recommendedRecyclingCourseId: courseFields.recommendedRecyclingCourseId,
+                    syllabus: courseFields.syllabus,
                 },
             });
 
@@ -140,13 +175,13 @@ export class CoursesService {
 
     /** Remove a turma soft-deletando o `Event` pai — a cascata do PrismaService cuida do `Course`. */
     async remove(id: string, organizationId: string) {
-        const course = await this.findOne(id, organizationId);
+        const course = await this.requireCourse(id, organizationId);
         await this.prisma.event.delete({ where: { id: course.eventId } });
         return { id };
     }
 
     async assignInstructor(courseId: string, organizationId: string, userId: string) {
-        await this.findOne(courseId, organizationId);
+        await this.requireCourse(courseId, organizationId);
 
         const targetUser = await this.prisma.user.findFirst({ where: { id: userId, organizationId } });
         if (!targetUser) {
@@ -159,12 +194,12 @@ export class CoursesService {
             update: {},
         });
 
-        return this.findOne(courseId, organizationId);
+        return this.requireCourse(courseId, organizationId);
     }
 
     async removeInstructor(courseId: string, organizationId: string, userId: string) {
-        await this.findOne(courseId, organizationId);
+        await this.requireCourse(courseId, organizationId);
         await this.prisma.courseInstructor.deleteMany({ where: { courseId, userId } });
-        return this.findOne(courseId, organizationId);
+        return this.requireCourse(courseId, organizationId);
     }
 }

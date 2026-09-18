@@ -5,16 +5,13 @@ import { UpdateStaffStatusDto } from './dto/update-staff-status.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
-import { Roles } from '../auth/decorator/roles.decorator';
-import { Role } from '@prisma/client';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
-
 @Controller('staff')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class StaffController {
     constructor(private readonly staffService: StaffService) {}
 
@@ -26,7 +23,7 @@ export class StaffController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('staff:manage')
     promote(
         @Body() dto: PromoteStaffMemberDto,
         @ActiveOrganizationId() organizationId: string | undefined,
@@ -35,14 +32,19 @@ export class StaffController {
         return this.staffService.promote(dto.userId, this.requireOrganizationId(organizationId), user.id);
     }
 
+    /**
+     * Fase 3 de posse de dado (docs/decisoes.md): a listagem completa da
+     * equipe fica atrás de `staff:manage` — quem só quer ver a própria
+     * designação usa `GET /me/designations`, não esta lista.
+     */
     @Get()
-    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER)
+    @RequirePermission('staff:manage')
     findAll(@ActiveOrganizationId() organizationId: string | undefined) {
         return this.staffService.findAll(this.requireOrganizationId(organizationId));
     }
 
     @Patch(':id/status')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('staff:manage')
     updateStatus(
         @Param('id') id: string,
         @Body() dto: UpdateStaffStatusDto,
@@ -52,7 +54,7 @@ export class StaffController {
     }
 
     @Post(':id/external-certifications')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('staff:manage')
     addExternalCertification(
         @Param('id') id: string,
         @Body() dto: CreateExternalCertificationDto,

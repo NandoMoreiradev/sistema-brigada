@@ -33,6 +33,14 @@ export interface User {
     // Preenchidos pelo backend em /auth/profile
     organization?: Organization | null;
     allowedOrganizations?: Organization[];
+    // Permissões já resolvidas para a organização ativa (RoleAssignment + directPermissions) —
+    // ver AuthService.getProfile/buildOrganizationPermissionsMap no backend.
+    permissions?: string[];
+    // Fase 2/3 de posse de dado (docs/decisoes.md): de qual papel de domínio este
+    // usuário participa, além do Role de plataforma acima.
+    studentProfile?: StudentProfile | null;
+    staffMember?: { id: string; status: string } | null;
+    instructorCourseIds?: string[];
 }
 
 // ─── Turmas e matrícula (backend/src/courses, backend/src/users) ──────────
@@ -58,6 +66,7 @@ export interface OrgPerson {
     studentProfile?: StudentProfile | null;
     staffMember?: { id: string; status: string } | null;
     instructorAssignments?: { courseId: string }[];
+    roleAssignments?: { id: string; name: string }[];
 }
 
 export type EventStatus = 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
@@ -86,6 +95,8 @@ export interface Course {
     minAttendancePercent: number;
     requireAllLessonsWatched: boolean;
     recyclingValidityMonths?: number | null;
+    recommendedRecyclingCourseId?: string | null;
+    syllabus?: string | null;
     active: boolean;
     event: CourseEvent;
     instructors: CourseInstructor[];

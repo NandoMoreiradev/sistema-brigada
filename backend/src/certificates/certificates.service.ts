@@ -10,12 +10,16 @@
 // automaticamente pelo módulo `courses` (ver class-sessions.service.ts e
 // enrollments.service.ts) toda vez que a presença muda.
 
-import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { CertificatePdfService } from './certificate-pdf.service';
-import { Prisma, AttendanceStatus, EnrollmentStatus } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../common/email.service';
+import { Prisma, AttendanceStatus, EnrollmentStatus, CertificateStatus } from '@prisma/client';
 import { ListCertificatesDto } from './dto/list-certificates.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 const certificateInclude = {
     enrollment: {
@@ -40,6 +44,8 @@ export class CertificatesService {
         private readonly prisma: PrismaService,
         private readonly mediaService: MediaService,
         private readonly certificatePdfService: CertificatePdfService,
+        private readonly notificationsService: NotificationsService,
+        private readonly emailService: EmailService,
     ) {}
 
     async findAll(organizationId: string, query: ListCertificatesDto) {
@@ -75,6 +81,7 @@ export class CertificatesService {
         };
     }
 
+    /** Uso interno (emissão/regeneração) — sem checagem de posse, o chamador já é confiável (admin ou fluxo automático). */
     async findOne(id: string, organizationId: string) {
         const certificate = await this.prisma.certificate.findFirst({
             where: { id, organizationId },
@@ -84,6 +91,22 @@ export class CertificatesService {
             throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
         }
         return this.serialize(certificate);
+    }
+
+    /**
+     * Fase 3 de posse de dado (docs/decisoes.md): usado pelo endpoint
+     * `GET /certificates/:id` — exige `certificates:manage` OU que o
+     * certificado seja do próprio aluno chamando.
+     */
+    async findOneForRequester(id: string, organizationId: string, user: AuthenticatedUser) {
+        const certificate = await this.findOne(id, organizationId);
+
+        const isOwnCertificate = certificate.enrollment.studentProfile.user.id === user.id;
+        if (!isOwnCertificate && !userHasPermission(user, 'certificates:manage')) {
+            throw new ForbiddenException('Você não pode ver este certificado.');
+        }
+
+        return certificate;
     }
 
     private serialize(certificate: Prisma.CertificateGetPayload<{ include: typeof certificateInclude }>) {
@@ -182,7 +205,10 @@ export class CertificatesService {
     private async issue(enrollmentId: string, issuedAutomatically: boolean) {
         const enrollment = await this.prisma.enrollment.findUniqueOrThrow({
             where: { id: enrollmentId },
-            include: { course: true },
+            include: {
+                course: { include: { event: true } },
+                studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
+            },
         });
 
         const expiresAt = enrollment.course.recyclingValidityMonths
@@ -204,6 +230,19 @@ export class CertificatesService {
         });
 
         await this.generateAndAttachPdf(certificate.id);
+
+        const student = enrollment.studentProfile.user;
+        const courseName = enrollment.course.event.title;
+        await this.notificationsService.create({
+            userId: student.id,
+            organizationId: enrollment.organizationId,
+            type: 'CERTIFICATE_ISSUED',
+            title: 'Certificado emitido',
+            message: `Seu certificado da turma "${courseName}" foi emitido.`,
+            // Não `/certificates` (Fase 3, docs/decisoes.md): essa lista agora exige
+            // `certificates:manage`, e quem recebe esta notificação é o próprio aluno.
+            link: '/my-certificates',
+        });
 
         return this.findOne(certificate.id, enrollment.organizationId);
     }
@@ -290,5 +329,63 @@ export class CertificatesService {
         const result = new Date(date);
         result.setMonth(result.getMonth() + months);
         return result;
+    }
+
+    /**
+     * Decisão 19 do docs/decisoes.md: "sistema alerta vencimento". Chamado
+     * diariamente pelo job em `certificate-expiration.scheduler.ts`. Notifica
+     * uma única vez por certificado ao entrar na janela de 30 dias antes do
+     * vencimento — a deduplicação é feita checando se já existe uma
+     * `Notification` desse tipo com o link específico deste certificado
+     * (não há campo próprio para "já notificado" no schema).
+     */
+    async notifyExpiringCertificates(windowDays = 30): Promise<number> {
+        const now = new Date();
+        const windowEnd = new Date(now);
+        windowEnd.setDate(windowEnd.getDate() + windowDays);
+
+        const expiring = await this.prisma.certificate.findMany({
+            where: { status: CertificateStatus.VALID, expiresAt: { gte: now, lte: windowEnd } },
+            include: {
+                enrollment: {
+                    include: {
+                        course: { include: { event: true } },
+                        studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
+                    },
+                },
+            },
+        });
+
+        let notifiedCount = 0;
+
+        for (const certificate of expiring) {
+            // Não `/certificates` (Fase 3, docs/decisoes.md) pelo mesmo motivo do link
+            // de "certificado emitido" acima: quem recebe é o próprio aluno.
+            const link = `/my-certificates#${certificate.id}`;
+            const alreadyNotified = await this.prisma.notification.findFirst({
+                where: { type: 'CERTIFICATE_EXPIRING', link },
+            });
+            if (alreadyNotified) continue;
+
+            const student = certificate.enrollment.studentProfile.user;
+            const courseName = certificate.enrollment.course.event.title;
+            const expiresAtLabel = certificate.expiresAt!.toLocaleDateString('pt-BR');
+            const message = `Seu certificado da turma "${courseName}" vence em ${expiresAtLabel}. Verifique se é preciso fazer a reciclagem.`;
+
+            await this.notificationsService.create({
+                userId: student.id,
+                organizationId: certificate.organizationId,
+                type: 'CERTIFICATE_EXPIRING',
+                title: 'Certificado vencendo em breve',
+                message,
+                link,
+            });
+
+            await this.emailService.sendNotificationEmail(student.email, student.name, 'Seu certificado está vencendo', message, `${process.env.FRONTEND_URL}/certificates`);
+
+            notifiedCount++;
+        }
+
+        return notifiedCount;
     }
 }

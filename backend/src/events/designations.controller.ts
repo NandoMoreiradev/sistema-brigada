@@ -4,15 +4,17 @@ import { CreateDesignationDto } from './dto/create-designation.dto';
 import { UpdateDesignationStatusDto } from './dto/update-designation-status.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('events/:eventId/designations')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DesignationsController {
     constructor(private readonly designationsService: DesignationsService) {}
 
@@ -24,7 +26,7 @@ export class DesignationsController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('events:manage')
     create(
         @Param('eventId') eventId: string,
         @Body() dto: CreateDesignationDto,
@@ -39,7 +41,12 @@ export class DesignationsController {
         return this.designationsService.findAll(eventId, this.requireOrganizationId(organizationId));
     }
 
-    /** Confirmar/recusar a própria escala é o caso de uso mais comum — por isso liberado a qualquer papel autenticado. */
+    /**
+     * Confirmar/recusar a própria escala é o caso de uso mais comum — por isso
+     * o guard de role fica aberto a qualquer papel autenticado. A posse (só a
+     * própria designação, a menos que tenha `events:manage`) é checada dentro
+     * de DesignationsService.updateStatus (Fase 2, docs/decisoes.md).
+     */
     @Patch(':designationId/status')
     @Roles(...ALL_ORG_ROLES)
     updateStatus(
@@ -47,12 +54,19 @@ export class DesignationsController {
         @Param('designationId') designationId: string,
         @Body() dto: UpdateDesignationStatusDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.designationsService.updateStatus(eventId, this.requireOrganizationId(organizationId), designationId, dto.status);
+        return this.designationsService.updateStatus(
+            eventId,
+            this.requireOrganizationId(organizationId),
+            designationId,
+            dto.status,
+            user,
+        );
     }
 
     @Delete(':designationId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('events:manage')
     remove(
         @Param('eventId') eventId: string,
         @Param('designationId') designationId: string,

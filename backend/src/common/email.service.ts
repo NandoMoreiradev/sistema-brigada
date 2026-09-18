@@ -58,4 +58,19 @@ export class EmailService {
         `;
         await this.send(to, 'Redefinição de senha', html);
     }
+
+    /**
+     * E-mail genérico para notificações de domínio (vencimento de certificado,
+     * designação, matrícula confirmada) — sem template dedicado por tipo ainda
+     * (ver comentário do topo do arquivo), só uma casca simples reaproveitável.
+     */
+    async sendNotificationEmail(to: string, name: string, subject: string, message: string, actionUrl?: string): Promise<void> {
+        const firstName = name.split(' ')[0];
+        const html = `
+            <p>Olá, ${firstName}.</p>
+            <p>${message}</p>
+            ${actionUrl ? `<p><a href="${actionUrl}">Ver detalhes</a></p>` : ''}
+        `;
+        await this.send(to, subject, html);
+    }
 }

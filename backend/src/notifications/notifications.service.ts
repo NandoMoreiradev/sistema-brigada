@@ -11,16 +11,24 @@
 // do original também saiu — sem push para disparar em duplicidade, o pior
 // caso aqui é uma linha a mais na lista, não uma notificação push repetida.
 //
-// `create()` não tem endpoint HTTP correspondente — é para os futuros módulos
-// de domínio (vencimento de certificado, designação, matrícula confirmada)
-// chamarem diretamente.
+// `create()` não tem endpoint HTTP correspondente — é chamado diretamente
+// pelos módulos de domínio: certificados (emitido/vencendo, ver
+// certificates.service.ts e certificate-expiration.scheduler.ts), eventos
+// (designação, ver designations.service.ts) e turmas (matrícula confirmada,
+// ver enrollments.service.ts).
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
 /** Tipos de notificação previstos hoje (ver comentário do campo no schema.prisma). String livre, não é enum no banco. */
-export type NotificationType = 'CERTIFICATE_EXPIRING' | 'DESIGNATION_ASSIGNED' | 'ENROLLMENT_CONFIRMED' | 'GENERAL' | (string & {});
+export type NotificationType =
+    | 'CERTIFICATE_EXPIRING'
+    | 'CERTIFICATE_ISSUED'
+    | 'DESIGNATION_ASSIGNED'
+    | 'ENROLLMENT_CONFIRMED'
+    | 'GENERAL'
+    | (string & {});
 
 export interface CreateNotificationInput {
     userId: string;

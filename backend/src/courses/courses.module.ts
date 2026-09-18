@@ -14,9 +14,10 @@ import { CourseLessonsController } from './course-lessons.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UsersModule } from '../users/users.module';
 import { CertificatesModule } from '../certificates/certificates.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-    imports: [PrismaModule, UsersModule, CertificatesModule],
+    imports: [PrismaModule, UsersModule, CertificatesModule, NotificationsModule],
     controllers: [
         CoursesController,
         RoomsController,

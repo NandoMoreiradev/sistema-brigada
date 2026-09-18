@@ -4,11 +4,23 @@
 // Notifications) e os módulos de domínio construídos até agora: Organizations
 // (tenant), Users (pessoas/perfis), Courses (turmas/matrícula/presença),
 // Certificates (emissão automática de certificado, crachá digital, PDF),
-// Staff (brigadista/bombeiro) e Events (assembleia/congresso/atuação de
-// brigada/reunião — o tronco polimórfico `Event`, ver docs/decisoes.md).
+// Staff (brigadista/bombeiro), Events (assembleia/congresso/atuação de
+// brigada/reunião — o tronco polimórfico `Event`, ver docs/decisoes.md) e
+// Permissions (catálogo de permissões + CRUD de cargo/RoleAssignment por
+// organização, que ativa o `@RequirePermission` já usado nos controllers
+// acima) e Me (Fase 2 de posse de dado — endpoints /me/* com o recorte do
+// próprio usuário autenticado, ver docs/decisoes.md).
+//
+// `ScheduleModule.forRoot()` habilita `@Cron(...)` em qualquer provider da
+// aplicação — usado hoje só pelo job diário de certificados vencendo em
+// certificates/certificate-expiration.scheduler.ts. Preferido a montar uma
+// fila BullMQ (também já é dependência do projeto, herdada do maskotCrmEdu,
+// mas nunca foi ligada) porque não exige Redis configurado para esse único
+// job simples de "rodar 1x por dia".
 
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -21,10 +33,13 @@ import { CoursesModule } from './courses/courses.module';
 import { CertificatesModule } from './certificates/certificates.module';
 import { StaffModule } from './staff/staff.module';
 import { EventsModule } from './events/events.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { MeModule } from './me/me.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
+        ScheduleModule.forRoot(),
         PrismaModule,
         AuthModule,
         MediaModule,
@@ -36,6 +51,8 @@ import { EventsModule } from './events/events.module';
         CertificatesModule,
         StaffModule,
         EventsModule,
+        PermissionsModule,
+        MeModule,
     ],
     controllers: [AppController],
 })

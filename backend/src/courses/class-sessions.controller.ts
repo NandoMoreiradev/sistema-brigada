@@ -1,10 +1,11 @@
 // backend/src/courses/class-sessions.controller.ts
 //
 // Agendamento de aula é trabalho administrativo (create/update/remove restrito
-// a admin), mas diário de aula e chamada são lançados por quem está em sala —
-// hoje isso inclui qualquer ORG_USER autenticado, porque o RBAC granular
-// (RoleAssignment/Permission) ainda não está populado neste projeto para
-// restringir "só o instrutor designado desta turma" (ver docs/decisoes.md).
+// a admin), mas diário de aula e chamada são lançados por quem está em sala.
+// O guard de role continua aberto a ALL_ORG_ROLES (senão exigiria
+// `courses:manage`, que é para quem administra a turma inteira), mas agora
+// ClassSessionsService.assertCanRecordClass checa posse — só quem tem
+// `courses:manage` OU é CourseInstructor desta turma passa (Fase 2, docs/decisoes.md).
 
 import { Controller, Get, Post, Put, Body, Patch, Param, Delete, UseGuards, BadRequestException } from '@nestjs/common';
 import { ClassSessionsService } from './class-sessions.service';
@@ -14,17 +15,17 @@ import { UpsertClassLogDto } from './dto/upsert-class-log.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('courses/:courseId/sessions')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ClassSessionsController {
     constructor(private readonly classSessionsService: ClassSessionsService) {}
 
@@ -36,7 +37,7 @@ export class ClassSessionsController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     create(
         @Param('courseId') courseId: string,
         @Body() dto: CreateClassSessionDto,
@@ -52,7 +53,7 @@ export class ClassSessionsController {
     }
 
     @Patch(':sessionId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     update(
         @Param('courseId') courseId: string,
         @Param('sessionId') sessionId: string,
@@ -63,7 +64,7 @@ export class ClassSessionsController {
     }
 
     @Delete(':sessionId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     remove(
         @Param('courseId') courseId: string,
         @Param('sessionId') sessionId: string,
@@ -81,7 +82,7 @@ export class ClassSessionsController {
         @ActiveOrganizationId() organizationId: string | undefined,
         @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.classSessionsService.upsertLog(courseId, this.requireOrganizationId(organizationId), sessionId, user.id, dto);
+        return this.classSessionsService.upsertLog(courseId, this.requireOrganizationId(organizationId), sessionId, user, dto);
     }
 
     @Get(':sessionId/attendance')
@@ -101,7 +102,8 @@ export class ClassSessionsController {
         @Param('sessionId') sessionId: string,
         @Body() dto: MarkAttendanceDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.classSessionsService.markAttendance(courseId, this.requireOrganizationId(organizationId), sessionId, dto);
+        return this.classSessionsService.markAttendance(courseId, this.requireOrganizationId(organizationId), sessionId, user, dto);
     }
 }

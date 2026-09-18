@@ -4,8 +4,14 @@
 // 1:1) e presença (`Attendance`). A emissão automática de certificado por
 // critério de presença (decisão 16/17 do docs/decisoes.md) é responsabilidade
 // do futuro módulo de certificados — aqui só registramos a presença.
+//
+// Fase 2 de posse de dado (docs/decisoes.md, decisão 22/25): lançar diário de
+// aula e presença — `upsertLog`/`markAttendance` — passa a exigir
+// `courses:manage` (admin) OU ser CourseInstructor desta turma. Antes disso o
+// controller liberava para qualquer ORG_USER autenticado, mesmo de fora da
+// turma (ver comentário em class-sessions.controller.ts).
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentStatus } from '@prisma/client';
 import { CreateClassSessionDto } from './dto/create-class-session.dto';
@@ -13,6 +19,8 @@ import { UpdateClassSessionDto } from './dto/update-class-session.dto';
 import { UpsertClassLogDto } from './dto/upsert-class-log.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { CertificatesService } from '../certificates/certificates.service';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 @Injectable()
 export class ClassSessionsService {
@@ -28,6 +36,18 @@ export class ClassSessionsService {
             throw new NotFoundException(`Turma com ID ${courseId} não encontrada nesta organização.`);
         }
         return course;
+    }
+
+    private async assertCanRecordClass(courseId: string, user: AuthenticatedUser) {
+        if (userHasPermission(user, 'courses:manage')) return;
+
+        const isInstructor = await this.prisma.courseInstructor.findFirst({
+            where: { courseId, userId: user.id },
+            select: { id: true },
+        });
+        if (!isInstructor) {
+            throw new ForbiddenException('Você não é instrutor desta turma.');
+        }
     }
 
     async create(courseId: string, organizationId: string, dto: CreateClassSessionDto) {
@@ -84,11 +104,12 @@ export class ClassSessionsService {
         return { id: sessionId };
     }
 
-    async upsertLog(courseId: string, organizationId: string, sessionId: string, userId: string, dto: UpsertClassLogDto) {
+    async upsertLog(courseId: string, organizationId: string, sessionId: string, user: AuthenticatedUser, dto: UpsertClassLogDto) {
         await this.requireSession(courseId, organizationId, sessionId);
+        await this.assertCanRecordClass(courseId, user);
         return this.prisma.classLog.upsert({
             where: { classSessionId: sessionId },
-            create: { classSessionId: sessionId, content: dto.content, createdByUserId: userId },
+            create: { classSessionId: sessionId, content: dto.content, createdByUserId: user.id },
             update: { content: dto.content },
         });
     }
@@ -118,8 +139,9 @@ export class ClassSessionsService {
         }));
     }
 
-    async markAttendance(courseId: string, organizationId: string, sessionId: string, dto: MarkAttendanceDto) {
+    async markAttendance(courseId: string, organizationId: string, sessionId: string, user: AuthenticatedUser, dto: MarkAttendanceDto) {
         await this.requireSession(courseId, organizationId, sessionId);
+        await this.assertCanRecordClass(courseId, user);
 
         const enrollmentIds = dto.records.map((r) => r.enrollmentId);
         const validEnrollments = await this.prisma.enrollment.findMany({

@@ -1,10 +1,12 @@
 // backend/src/courses/courses.controller.ts
 //
-// Leitura liberada para qualquer papel autenticado da organização (portal
-// único com views por papel — decisão 11 do docs/decisoes.md); escrita
-// restrita a papéis administrativos. Refinar para permissão granular por
-// matrícula/instrutor é trabalho futuro (RBAC granular ainda não populado
-// neste projeto, ver `docs/decisoes.md`).
+// Fase 3 de posse de dado (docs/decisoes.md): a listagem completa (`findAll`)
+// fica atrás de `courses:manage` — quem só quer ver a própria turma (aluno
+// matriculado ou instrutor) usa `GET /me/courses`, não esta lista. O detalhe
+// (`findOne`) continua aberto a ALL_ORG_ROLES no guard, mas
+// CoursesService.findOne checa posse por dentro (courses:manage OU
+// instrutor/matriculado nesta turma específica) — é isso que permite ao
+// aluno/instrutor abrir a própria turma sem enxergar as outras.
 
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { CoursesService } from './courses.service';
@@ -14,16 +16,15 @@ import { ListCoursesDto } from './dto/list-courses.dto';
 import { AssignInstructorDto } from './dto/assign-instructor.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
-
 @Controller('courses')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class CoursesController {
     constructor(private readonly coursesService: CoursesService) {}
 
@@ -35,7 +36,7 @@ export class CoursesController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     create(
         @Body() dto: CreateCourseDto,
         @ActiveOrganizationId() organizationId: string | undefined,
@@ -45,19 +46,23 @@ export class CoursesController {
     }
 
     @Get()
-    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER)
+    @RequirePermission('courses:manage')
     findAll(@Query() query: ListCoursesDto, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.coursesService.findAll(this.requireOrganizationId(organizationId), query);
     }
 
     @Get(':id')
     @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER)
-    findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.coursesService.findOne(id, this.requireOrganizationId(organizationId));
+    findOne(
+        @Param('id') id: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.coursesService.findOne(id, this.requireOrganizationId(organizationId), user);
     }
 
     @Patch(':id')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     update(
         @Param('id') id: string,
         @Body() dto: UpdateCourseDto,
@@ -67,13 +72,13 @@ export class CoursesController {
     }
 
     @Delete(':id')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     remove(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.coursesService.remove(id, this.requireOrganizationId(organizationId));
     }
 
     @Post(':id/instructors')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     assignInstructor(
         @Param('id') id: string,
         @Body() dto: AssignInstructorDto,
@@ -83,7 +88,7 @@ export class CoursesController {
     }
 
     @Delete(':id/instructors/:userId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     removeInstructor(
         @Param('id') id: string,
         @Param('userId') userId: string,

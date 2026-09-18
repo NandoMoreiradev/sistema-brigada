@@ -4,15 +4,15 @@ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 
-const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
 @Controller('courses/:courseId/enrollments')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class EnrollmentsController {
     constructor(private readonly enrollmentsService: EnrollmentsService) {}
 
@@ -24,7 +24,7 @@ export class EnrollmentsController {
     }
 
     @Post()
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     enroll(
         @Param('courseId') courseId: string,
         @Body() dto: CreateEnrollmentDto,
@@ -40,7 +40,7 @@ export class EnrollmentsController {
     }
 
     @Patch(':enrollmentId')
-    @Roles(...ADMIN_ROLES)
+    @RequirePermission('courses:manage')
     updateStatus(
         @Param('courseId') courseId: string,
         @Param('enrollmentId') enrollmentId: string,

@@ -34,6 +34,7 @@ import { TwoFactorAuthService } from './two-factor-auth.service';
 import { CurrentUser } from './common/current-user.decorator';
 import { AuthenticatedUser } from './types/authenticated-user.type';
 import { TwoFactorAuthCodeDto } from './dto/two-factor-auth-code.dto';
+import { VerifyTwoFactorLoginDto } from './dto/verify-two-factor-login.dto';
 import { Jwt2faTempGuard } from './guard/jwt-2fa-temp.guard';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { LoginAttemptsService } from './login-attempts.service';
@@ -125,7 +126,7 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     async authenticate(
         @CurrentUser() user: AuthenticatedUser,
-        @Body(new ValidationPipe()) { code }: TwoFactorAuthCodeDto,
+        @Body(new ValidationPipe()) { code }: VerifyTwoFactorLoginDto,
         @Res({ passthrough: true }) res: Response,
     ) {
         const result = await this.authService.loginWith2fa(user.id, code);

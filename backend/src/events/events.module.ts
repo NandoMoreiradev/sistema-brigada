@@ -11,9 +11,10 @@ import { EventFilesService } from './event-files.service';
 import { EventFilesController } from './event-files.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UserIntegrationsModule } from '../user-integrations/user-integrations.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-    imports: [PrismaModule, UserIntegrationsModule],
+    imports: [PrismaModule, UserIntegrationsModule, NotificationsModule],
     controllers: [
         EventsController,
         DesignationsController,

@@ -28,6 +28,7 @@ const userListSelect = {
     studentProfile: true,
     staffMember: { select: { id: true, status: true } },
     instructorAssignments: { select: { courseId: true } },
+    roleAssignments: { select: { id: true, name: true } },
 } satisfies Prisma.UserSelect;
 
 @Injectable()
@@ -160,6 +161,34 @@ export class UsersService {
         });
     }
 
+    /**
+     * Atribui (ou remove, com `roleAssignmentId: null`) o cargo de uma pessoa.
+     * `User.roleAssignments` é M:N no schema, mas tratamos como "um cargo por
+     * vez" aqui — `set` substitui a lista inteira em vez de `connect` somar.
+     */
+    async setRoleAssignment(id: string, organizationId: string, roleAssignmentId: string | null) {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+
+        if (roleAssignmentId) {
+            const roleAssignment = await this.prisma.roleAssignment.findFirst({
+                where: { id: roleAssignmentId, organizationId },
+            });
+            if (!roleAssignment) {
+                throw new BadRequestException('Cargo informado não pertence a esta organização.');
+            }
+        }
+
+        await this.prisma.user.update({
+            where: { id },
+            data: { roleAssignments: { set: roleAssignmentId ? [{ id: roleAssignmentId }] : [] } },
+        });
+
+        return this.findOne(id, organizationId);
+    }
+
     /** Resolve o StudentProfile de um usuário da organização — usado pelo módulo de matrícula. */
     async requireStudentProfile(userId: string, organizationId: string) {
         const user = await this.prisma.user.findFirst({
@@ -178,5 +207,22 @@ export class UsersService {
         }
 
         return user.studentProfile;
+    }
+
+    /**
+     * Versão enxuta de `findAll` (só id+nome, sem e-mail/telefone/cargo) para
+     * seletores de pessoa em funcionalidades que são abertas a qualquer
+     * autenticado da organização — hoje só a presença de reunião
+     * (`meetings.service.ts`: "qualquer usuário pode ser marcado
+     * presente/ausente"). Por isso este método não é `@RequirePermission`
+     * como `findAll`: expõe só o suficiente pra montar um dropdown, nunca os
+     * campos sensíveis da listagem administrativa.
+     */
+    async findRoster(organizationId: string) {
+        return this.prisma.user.findMany({
+            where: { organizationId, isActive: true },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+        });
     }
 }

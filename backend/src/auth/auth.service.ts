@@ -55,6 +55,9 @@ type UserWithProfileRelations = Prisma.UserGetPayload<{
                 roleAssignment: { include: { permissions: { select: { id: true } } } };
             };
         };
+        studentProfile: true;
+        staffMember: true;
+        instructorAssignments: { select: { courseId: true } };
     };
 }>;
 
@@ -95,6 +98,11 @@ export class AuthService {
                         roleAssignment: { include: { permissions: { select: { id: true } } } },
                     },
                 },
+                studentProfile: true,
+                staffMember: true,
+                // Fase 2 (posse de dado, docs/decisoes.md) — permite ao frontend saber
+                // "de quais turmas sou instrutor" sem precisar de um endpoint à parte.
+                instructorAssignments: { select: { courseId: true } },
             },
         })) as UserWithProfileRelations | null;
 
@@ -155,7 +163,7 @@ export class AuthService {
 
         const accessibleOrganizations = Array.from(accessibleOrganizationsMap.values());
 
-        const { password, twoFactorSecret, roleAssignments, allowedOrganizations, ...userProfile } =
+        const { password, twoFactorSecret, roleAssignments, allowedOrganizations, instructorAssignments, ...userProfile } =
             userWithRelations;
 
         return {
@@ -166,6 +174,10 @@ export class AuthService {
             isSuperAdminRoot: userWithRelations.isSuperAdminRoot,
             systemRoleId: userWithRelations.systemRoleId,
             systemRole: userWithRelations.systemRole,
+            // Fase 2 (posse de dado): studentProfile/staffMember já vêm em userProfile
+            // (relações 1:1 no schema); instructorCourseIds precisa desse achatamento
+            // porque é uma relação N:N (CourseInstructor).
+            instructorCourseIds: instructorAssignments.map((assignment) => assignment.courseId),
         };
     }
 

@@ -5,12 +5,24 @@
 // SUPER_ADMIN (root ou via SystemRole). REMOVIDO o bloco de AccessLevel
 // WHATSAPP_ONLY — este schema não tem o campo `accessLevel` em User, não
 // existe o conceito de "usuário só-WhatsApp" neste produto.
+//
+// ACRÉSCIMO (não existia no original): bypass para GROUP_ADMIN/ORG_ADMIN.
+// `RoleAssignment`/`Permission` existem para DELEGAR partes da administração
+// a um ORG_USER (secretaria, coordenador) — o admin "de verdade" da
+// organização não deveria ficar bloqueado por não ter um cargo com aquela
+// permissão específica atribuído a si mesmo.
+//
+// A checagem em si (bypass de SUPER_ADMIN/GROUP_ADMIN/ORG_ADMIN + lookup em
+// `permissions[]`) mora em `userHasPermission` (../common/user-has-permission.util)
+// para poder ser reaproveitada dentro de services que combinam "tem a
+// permissão administrativa" com "é dono do próprio dado" — ver Fase 2 de
+// posse de dado em docs/decisoes.md (ex.: instrutor edita a própria turma).
 
 import { Injectable, CanActivate, ExecutionContext, SetMetadata, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Role } from '@prisma/client';
 import { AuthenticatedUser } from '../types/authenticated-user.type';
 import { ForbiddenErrorHelper } from '../types/forbidden-error-codes';
+import { userHasPermission } from '../common/user-has-permission.util';
 
 export const PERMISSION_KEY = 'requiredPermission';
 export const RequirePermission = (permission: string) => SetMetadata(PERMISSION_KEY, permission);
@@ -41,33 +53,7 @@ export class PermissionsGuard implements CanActivate {
             throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
         }
 
-        // =====================================================================
-        // SUPER ADMIN
-        // =====================================================================
-        if (user.role === Role.SUPER_ADMIN) {
-            // 1. Root Admin: acesso total irrestrito
-            if (user.isSuperAdminRoot) {
-                return true;
-            }
-
-            // 2. Super Admin com SystemRole: permissões granulares (ou coringa '*')
-            if (user.systemRole?.permissions) {
-                const hasSystemPermission = user.systemRole.permissions.some(
-                    (p) => p === '*' || p === requiredPermission,
-                );
-                if (hasSystemPermission) {
-                    return true;
-                }
-            }
-
-            // Não é Root e não tem a permissão via SystemRole: bloqueia.
-            const errorResponse = ForbiddenErrorHelper.createPermissionDeniedError(requiredPermission, user.email);
-            throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
-        }
-
-        const hasPermission = user.permissions.includes(requiredPermission);
-
-        if (!hasPermission) {
+        if (!userHasPermission(user, requiredPermission)) {
             const errorResponse = ForbiddenErrorHelper.createPermissionDeniedError(requiredPermission, user.email);
             throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
         }
