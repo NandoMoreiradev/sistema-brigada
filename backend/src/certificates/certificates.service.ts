@@ -15,7 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { CertificatePdfService } from './certificate-pdf.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { EmailService } from '../common/email.service';
+import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { Prisma, AttendanceStatus, EnrollmentStatus, CertificateStatus } from '@prisma/client';
 import { ListCertificatesDto } from './dto/list-certificates.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
@@ -45,7 +45,7 @@ export class CertificatesService {
         private readonly mediaService: MediaService,
         private readonly certificatePdfService: CertificatePdfService,
         private readonly notificationsService: NotificationsService,
-        private readonly emailService: EmailService,
+        private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
 
     async findAll(organizationId: string, query: ListCertificatesDto) {
@@ -349,7 +349,7 @@ export class CertificatesService {
             include: {
                 enrollment: {
                     include: {
-                        course: { include: { event: true } },
+                        course: { include: { event: true, organization: { select: { name: true } } } },
                         studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
                     },
                 },
@@ -381,7 +381,14 @@ export class CertificatesService {
                 link,
             });
 
-            await this.emailService.sendNotificationEmail(student.email, student.name, 'Seu certificado está vencendo', message, `${process.env.FRONTEND_URL}/certificates`);
+            await this.transactionalEmailService.sendCertificateExpiringEmail(
+                { name: student.name, email: student.email },
+                certificate.organizationId,
+                certificate.enrollment.course.organization.name,
+                courseName,
+                expiresAtLabel,
+                `${process.env.FRONTEND_URL}/certificates`,
+            );
 
             notifiedCount++;
         }

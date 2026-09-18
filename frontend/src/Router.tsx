@@ -26,12 +26,14 @@ import Students from '@/pages/Students';
 import Certificates from '@/pages/Certificates';
 import Roles from '@/pages/Roles';
 import Organizations from '@/pages/admin/Organizations';
+import EmailTemplates from '@/pages/admin/EmailTemplates';
+import EmailTemplateEditor from '@/pages/admin/EmailTemplateEditor';
 import MyCourses from '@/pages/MyCourses';
 import MyCertificates from '@/pages/MyCertificates';
 import MyDesignations from '@/pages/MyDesignations';
 import Settings from '@/pages/Settings';
 
-import { ProtectedRoute, PermissionRoute, SuperAdminRoute } from '@/components/common/ProtectedRoute';
+import { ProtectedRoute, PermissionRoute, SuperAdminRoute, RoleRoute } from '@/components/common/ProtectedRoute';
 
 export function Router() {
     return (
@@ -70,6 +72,12 @@ export function Router() {
             {/* Privadas — só SUPER_ADMIN */}
             <Route element={<SuperAdminRoute />}>
                 <Route path="/admin/organizations" element={<Organizations />} />
+            </Route>
+
+            {/* Privadas — SUPER_ADMIN edita os padrões globais, ORG_ADMIN só o override da própria academia */}
+            <Route element={<RoleRoute roles={['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN']} />}>
+                <Route path="/admin/email-templates" element={<EmailTemplates />} />
+                <Route path="/admin/email-templates/:id/edit" element={<EmailTemplateEditor />} />
             </Route>
 
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

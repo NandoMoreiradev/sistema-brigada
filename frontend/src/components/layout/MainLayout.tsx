@@ -20,6 +20,7 @@ import {
     Award,
     Settings,
     ChevronDown,
+    Mail,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -290,10 +291,16 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     ))}
 
                     {isOrgAdmin && (
-                        <NavItem to="/roles">
-                            <ShieldCheck size={18} />
-                            Cargos
-                        </NavItem>
+                        <>
+                            <NavItem to="/roles">
+                                <ShieldCheck size={18} />
+                                Cargos
+                            </NavItem>
+                            <NavItem to="/admin/email-templates">
+                                <Mail size={18} />
+                                Modelos de e-mail
+                            </NavItem>
+                        </>
                     )}
 
                     {isSuperAdmin && (

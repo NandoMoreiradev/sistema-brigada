@@ -15,6 +15,10 @@ export interface Organization {
     parentOrganizationId?: string | null;
     groupName?: string | null;
     enabledModules: string[];
+    /** Nunca vem a chave em si — só se a academia já tem uma configurada. */
+    hasCustomResendKey?: boolean;
+    emailFromAddress?: string | null;
+    emailFromName?: string | null;
 }
 
 export interface User {

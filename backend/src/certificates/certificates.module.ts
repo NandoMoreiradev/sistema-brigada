@@ -9,12 +9,12 @@ import { PublicBadgeController } from './public-badge.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MediaModule } from '../media/media.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { EmailService } from '../common/email.service';
+import { TransactionalEmailModule } from '../transactional-email/transactional-email.module';
 
 @Module({
-    imports: [PrismaModule, MediaModule, NotificationsModule],
+    imports: [PrismaModule, MediaModule, NotificationsModule, TransactionalEmailModule],
     controllers: [CertificatesController, CertificateTemplatesController, PublicBadgeController],
-    providers: [CertificatesService, CertificateTemplatesService, CertificatePdfService, CertificateExpirationScheduler, EmailService],
+    providers: [CertificatesService, CertificateTemplatesService, CertificatePdfService, CertificateExpirationScheduler],
     exports: [CertificatesService],
 })
 export class CertificatesModule {}

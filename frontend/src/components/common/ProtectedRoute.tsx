@@ -82,6 +82,40 @@ export const SuperAdminRoute = () => {
 };
 
 /**
+ * Igual a ProtectedRoute, mas só deixa passar quem tem um dos cargos de
+ * plataforma informados — usado em telas que SUPER_ADMIN e ORG_ADMIN dividem
+ * (ex: /admin/email-templates: SUPER_ADMIN edita os padrões globais,
+ * ORG_ADMIN só o override da própria academia), diferente de SuperAdminRoute
+ * (só SUPER_ADMIN) e de PermissionRoute (permissão de módulo, não cargo).
+ */
+export const RoleRoute = ({ roles }: { roles: string[] }) => {
+    const { isAuthenticated, isLoading, user } = useAuth();
+    const location = useLocation();
+
+    if (isLoading) {
+        return (
+            <SpinnerContainer>
+                <Spinner />
+            </SpinnerContainer>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    if (!user?.role || !roles.includes(user.role)) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return (
+        <MainLayout>
+            <Outlet />
+        </MainLayout>
+    );
+};
+
+/**
  * Igual a ProtectedRoute, mas só deixa passar quem tem a permissão de módulo
  * informada (Fase 3 de posse de dado, docs/decisoes.md) — usado nas listagens
  * completas (Turmas/Equipe/Alunos/Certificados) que agora ficam restritas a

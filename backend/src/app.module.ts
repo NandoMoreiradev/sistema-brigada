@@ -35,6 +35,9 @@ import { StaffModule } from './staff/staff.module';
 import { EventsModule } from './events/events.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { MeModule } from './me/me.module';
+import { CommunicationsModule } from './communications/communications.module';
+import { EmailTemplatesModule } from './email-templates/email-templates.module';
+import { TransactionalEmailModule } from './transactional-email/transactional-email.module';
 
 @Module({
     imports: [
@@ -53,6 +56,9 @@ import { MeModule } from './me/me.module';
         EventsModule,
         PermissionsModule,
         MeModule,
+        CommunicationsModule,
+        EmailTemplatesModule,
+        TransactionalEmailModule,
     ],
     controllers: [AppController],
 })

@@ -18,6 +18,7 @@ Codificação iniciada e em andamento. Módulos completos (backend + frontend, v
 - ✅ Equipe (staff) — promoção manual, certificação externa
 - ✅ Eventos polimórficos — assembleia/congresso/atuação de brigada/reunião, escala de staff, relatório de ocorrência, presença de reunião, **Google Meet automático** (pendência do mapeamento de reaproveitamento abaixo, já resolvida — inclui a tela `/settings` pra conectar a conta Google, sem a qual ninguém conseguia ativar isso, 2026-09-17); `DesignationsService.create` bloqueia escalar staff sem qualificação válida (decisão 19, completa em 2026-09-17)
 - ✅ Notificações reais — certificado emitido/vencendo (job diário + e-mail), designação, matrícula confirmada, sino no frontend
+- ✅ E-mail transacional completo (2026-09-18) — templates no banco (padrão global + override por academia), Resend por-academia com fallback pra conta global da plataforma, construtor visual drag-and-drop (portado do maskotCrmEdu) e criação de academia já define o ORG_ADMIN no mesmo formulário, que recebe e-mail de boas-vindas com link de ativação. Ver seção própria abaixo.
 - ✅ Permissões granulares — **Fase 1**: catálogo de permissões + cargos (`RoleAssignment`) configuráveis por organização, tela `/roles` (ver decisões 22-24)
 - ✅ Permissões — **Fase 2** (backend, 2026-09-17): `userHasPermission` extraído de `PermissionsGuard` para reuso em services; `AuthService.getProfile` devolve `studentProfile`/`staffMember`/`instructorCourseIds`; endpoints `GET /me/courses`, `/me/enrollments`, `/me/designations`, `/me/certificates`; checagem de posse adicionada em `CourseLessonsService` (create/update de aula), `ClassSessionsService` (diário/presença) e `DesignationsService.updateStatus` — só quem tem a permissão administrativa do módulo (`courses:manage`/`events:manage`) OU é o dono do dado (instrutor da turma, staff da própria designação) passa
 - ✅ Permissões — **Fase 3** (2026-09-17): listagem completa de Turmas/Equipe/Alunos/Certificados agora exige a permissão do módulo (`courses:manage`/`staff:manage`/`people:manage`/`certificates:manage`) tanto no backend (`GET` das listas + posse no detalhe de turma/certificado) quanto no frontend (`PermissionRoute`, nav condicional em `MainLayout`); quem não tem a permissão usa o recorte pessoal em `/my-courses`, `/my-certificates`, `/my-designations`; `/dashboard` deixou de ser placeholder — agora é "role-aware" (cards condicionais por papel acumulado: aluno/instrutor/staff/admin). **Eventos ficou de fora dessa restrição de propósito** — reuniões/assembleias são abertas a toda a organização por design (`meetings.service.ts`: presença é lista aberta, sem roster fixo), então `/events` continua acessível a qualquer autenticado.
@@ -70,6 +71,57 @@ Validado via Playwright com usuários reais (instrutor sem `events:manage` e adm
 1. **Login com 2FA nunca completava — o código correto era rejeitado no backend.** A tela de "Verificação em duas etapas" existia e coletava o código, mas `onSubmitTwoFactor` no `Login.tsx` nunca chamava a API de verificação — não tinha implementação nenhuma, só navegava direto (ou nem isso). Ao implementar a chamada de verdade (`POST /auth/2fa/authenticate` com o `temp_token`), apareceu um segundo bug: o endpoint usava o mesmo DTO estrito do turn-on/turn-off (`@Length(6, 6)`), que rejeita de cara um código de recuperação no formato `xxxx-xxxx-xxxx` (14 caracteres) antes mesmo de chegar na lógica do service que já sabia tratar os dois formatos. Criado `VerifyTwoFactorLoginDto` (`@MaxLength(20)`) usado só nesse endpoint de login — turn-on/turn-off continuam exigindo TOTP de 6 dígitos, como deve ser. Validado via Playwright: login completo com usuário de teste (2FA ativado, código TOTP gerado por `otplib` a partir do segredo decriptado do banco) chega em `/dashboard` de verdade.
 2. **Certificado não tinha "verso" com o conteúdo programático da turma**, diferente da referência física enviada pelo usuário (que tem 2ª página com carga horária/tópicos por módulo). Adicionado `Course.syllabus` (texto livre — carga horária/conteúdo variam demais entre cursos de brigada pra valer a pena modelar uma estrutura rígida de módulos/horas) com campo no formulário de turma (criação e edição) e nova página landscape A4 no PDF (`drawSyllabusPage`), gerada só quando a turma tem `syllabus` preenchido. Bug encontrado e corrigido durante a validação visual: a página nova usava `height` fixo no `.text()` do pdfkit, que silenciosamente corta o texto que não coube em vez de continuar em nova página — com um conteúdo programático realista (3 módulos, ~20 linhas) as últimas linhas ("RCP — Reanimação Cardiopulmonar", "Hemorragias") desapareciam sem nenhum erro. Corrigido removendo o `height` fixo (deixando o pdfkit paginar sozinho) e redesenhando a moldura em toda página extra via listener `pageAdded`. Validado gerando PDF de verdade e inspecionando visualmente (`pdftoppm`): com conteúdo longo, o texto completo aparece corretamente na 2ª página; sem `syllabus`, o certificado continua com 1 página só (sem regressão).
 
+## E-mail transacional completo + criação de academia com admin (2026-09-18)
+
+Até aqui, criar uma academia (`Organization`) não definia seu administrador — exigia um
+segundo passo manual via `POST /users` — e o envio de e-mail era mínimo (`EmailService`:
+2 métodos com HTML inline, só usados por reset de senha e alerta de certificado). Pedido
+explícito: no mesmo formulário de criação, o SUPER_ADMIN já define o ORG_ADMIN da
+academia, que recebe um e-mail de boas-vindas com link de ativação; e portar a
+infraestrutura de e-mail do maskotCrmEdu **por completo**, incluindo Resend por-academia
+(chave própria com fallback pra conta global da plataforma) e o construtor visual
+drag-and-drop real do maskotCrmEdu (não o pacote Unlayer, que está no `package.json` de
+lá mas nunca é importado em lugar nenhum — confirmado por grep).
+
+- **Backend**: `EmailTemplate` (Prisma) + `EmailTriggerType` (`ORGANIZATION_ADMIN_WELCOME`,
+  `PASSWORD_RESET`, `CERTIFICATE_EXPIRING`), `Organization.resendApiKey`/`emailFromAddress`/
+  `emailFromName`. Módulos novos: `communications/` (envio via Resend, resolve conta
+  própria-da-academia vs. global-da-plataforma), `email-templates/` (CRUD + busca por
+  gatilho, override de academia sobrepõe o padrão global), `transactional-email/`
+  (orquestração: monta o contexto de merge tags, renderiza e chama `communications`),
+  `common/merge-tag.service.ts` (motor de `{{tag}}` com filtros e condicionais). `EmailService`
+  antigo foi removido — `auth.service.ts` (reset de senha) e `certificates.service.ts`
+  (certificado vencendo) migrados pro novo sistema. `OrganizationsService.create()` agora
+  cria `Organization` + `User` (`ORG_ADMIN`, senha aleatória nunca exposta) na mesma
+  transação e dispara o e-mail de boas-vindas fora dela (fire-and-forget, nunca bloqueia
+  nem derruba a criação da academia). Link de ativação reaproveita
+  `AuthService.createPasswordResetToken` (agora público) — "definir minha primeira senha"
+  usa o mesmo fluxo de "redefinir senha", sem tela nova.
+- **Frontend**: formulário de criação de academia ganha nome/e-mail do admin (só na
+  criação); edição ganha seção de configuração de e-mail da academia (chave Resend nunca
+  volta em texto puro pro frontend, só um booleano "já configurada"). Nova tela
+  `/admin/email-templates` (lista) + `/admin/email-templates/:id/edit` (editor visual,
+  construtor `EmailBuilder` portado quase 1:1 de
+  `MaskotCrmEdu/frontend/src/components/email-builder/` — dnd-kit + tiptap, ~30 arquivos,
+  ~10 mil linhas — com o sub-recurso de "blocos reutilizáveis" removido de propósito, sem
+  model/backend próprio pra isso aqui).
+- **Fora de escopo, deliberadamente**: rastreio de abertura/bounce por webhook,
+  verificação de domínio DNS in-app (a academia usa a chave Resend da própria conta, já
+  verificada por fora), construtor de campanha em massa, qualquer lógica de billing/
+  suspensão de envio (a chave do produto original pra decidir remetente da plataforma vs.
+  da escola envolvia plano/pagamento — aqui virou uma regra fixa: boas-vindas/reset de
+  senha sempre saem pela plataforma, certificado vencendo sempre pela academia).
+- **Limite desta rodada**: sem Docker disponível no ambiente em que isso foi construído,
+  não foi possível rodar contra um Postgres real como na validação end-to-end de
+  2026-09-17 — a verificação foi `tsc --noEmit` limpo (backend e frontend) + a migration
+  SQL escrita à mão conferida contra `prisma migrate diff --from-empty` (bate 100%) +
+  revisão manual de código, que já pegou e corrigiu 3 bugs reais antes de qualquer teste
+  automatizado (e-mail de teste não processava merge tags sem `designJson`; e-mail de
+  certificado vencendo não populava o nome da academia no rodapé; `GROUP_ADMIN` liberado
+  no frontend mas bloqueado no backend). **Falta**: validar de ponta a ponta contra um
+  Postgres real (criar academia → e-mail chega → link ativa conta → editor visual salva e
+  reflete no próximo envio → chave Resend por-academia realmente isola o envio).
+
 ## Decisões fechadas
 
 ### Arquitetura geral
@@ -110,6 +162,14 @@ Validado via Playwright com usuários reais (instrutor sem `events:manage` e adm
 23. `ORG_ADMIN`/`GROUP_ADMIN` sempre têm acesso administrativo pleno — **não dependem de ter um cargo atribuído**. Cargo (`RoleAssignment`) é só para dar a alguém que não é admin um recorte de permissões específico.
 24. Catálogo de permissões da Fase 1 é **grosso**: 1 permissão por módulo de domínio (`courses:manage`, `events:manage`, `certificates:manage`, `staff:manage`, `people:manage`), não 1 por ação (create/read/update/delete separados). Refinar para granularidade maior é trabalho futuro, só se a equipe pedir.
 
+### E-mail transacional (fechadas em 2026-09-18)
+25. Criação de academia define o **ORG_ADMIN no mesmo formulário** (nome+e-mail) — sem passo manual separado via `POST /users` depois.
+26. Administrador recém-criado nunca recebe senha em texto puro — só um **link de ativação** que reaproveita o fluxo de "redefinir senha" já existente (mesmo token JWT stateless, mesma tela `/reset-password`).
+27. E-mails "da plataforma para a academia" (boas-vindas do admin, redefinição de senha) **sempre saem pela conta/remetente da plataforma**, mesmo que a academia tenha Resend próprio configurado — só o e-mail de certificado vencendo (academia para o próprio aluno) usa a conta da academia quando ela tem uma.
+28. Templates de e-mail ficam no banco (`EmailTemplate`), com **override por academia sobre um padrão global** — não hardcoded no código como antes.
+29. Construtor visual de e-mail é o **bespoke real do maskotCrmEdu** (dnd-kit + tiptap), não o pacote Unlayer — decisão consciente após checar que o Unlayer está listado no `package.json` de lá mas nunca é usado.
+30. **Fora do MVP deste módulo**: rastreio de abertura/bounce, verificação de domínio DNS in-app, construtor de campanha em massa, cota/billing de envio.
+
 ## Mapeamento de reaproveitamento (Maskot Edu → novo projeto)
 
 ### Reaproveitar quase pronto
@@ -124,6 +184,7 @@ Validado via Playwright com usuários reais (instrutor sem `events:manage` e adm
 | `StudentsService.enrollStudent()` | Fluxo de matrícula | Remover parte de `Lead`/financeiro | ✅ |
 | `UserAvailability` + `TimeOff` + `ScheduleSettings` + `EventType` + `Visit` + Google Calendar OAuth | Agenda de reuniões periódicas | Google Meet automático já ligado na criação de evento tipo REUNIAO | ✅ |
 | `notifications/` + push (web/mobile) | Alertas de vencimento de certificado | Push mobile fica pendente do app mobile; in-app + e-mail já funcionam | ✅ (in-app + e-mail) |
+| `communications/` + `email-templates/` + `transactional-email/` + `common/services/merge-tag.service.ts` + `components/email-builder/` (frontend) | Mesma estrutura, `School`→`Organization` | Sem billing/suspensão, sem tracking de bounce, sem verificação de domínio DNS, sem "blocos reutilizáveis" — ver decisões 25-30 | ✅ (falta validação end-to-end contra Postgres real, ver seção "E-mail transacional completo") |
 
 ### Construir do zero
 - `Event` genérico polimórfico (tronco + tabelas-filhas por tipo) — ver decisão 2. **✅**
