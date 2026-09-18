@@ -40,6 +40,10 @@ Primeira vez que o sistema rodou contra um Postgres real (ambiente local: Postgr
 
 Além das checagens por API, testado com cliques/preenchimento de formulário de verdade via Playwright (não só navegação): instrutor cria aula em vídeo pela UI (modal "Nova aula" → aparece na lista), aluno marca/desmarca aula como assistida pelo botão de progresso (alterna nos dois sentidos), instrutor sem `people:manage` abre a aba Presença de uma reunião, vê as 8 pessoas da organização no seletor (via `/users/roster`) e registra presença com sucesso ("Presença registrada."). Nenhum toast de erro inesperado em nenhum dos três fluxos.
 
+## Bug de deploy: `@nestjs/schedule` ESM quebrava o boot em produção (2026-09-18)
+
+Deploy no Railway crash-loopava com `Error [ERR_REQUIRE_ESM]: require() of ES Module /app/node_modules/@nestjs/schedule/dist/index.js from /app/dist/app.module.js not supported` — nunca detectado localmente porque `npm run build`/`tsc --noEmit` não executam o código, só compilam. `@nestjs/schedule@12.x` é ESM puro (`"type": "module"`), mas o projeto compila para CommonJS (`nest build -b swc`) e roda em Node 18. Rebaixado para `@nestjs/schedule@^6.1.3` (última major ainda CJS, compatível com `@nestjs/core ^11`, API idêntica — só usamos `@Cron`/`ScheduleModule.forRoot()`). Validado subindo o backend com `NODE_ENV=production node dist/main.js` de verdade (não só o `npm run build`) — mesmo cenário que quebrava no Railway.
+
 ## Duas lacunas fechadas: conexão Google Calendar e critérios de certificado (2026-09-17)
 
 Duas funcionalidades que já estavam prontas no backend/schema mas nunca tinham UI, encontradas ao revisar "o que falta" depois da validação:
