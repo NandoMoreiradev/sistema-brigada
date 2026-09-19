@@ -4,7 +4,7 @@
 // todas as rotas (decisão 5 do docs/decisoes.md: onboarding manual, sem
 // autocadastro). É o backend da tela `frontend/src/pages/admin/Organizations.tsx`.
 
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, HttpCode, HttpStatus } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
@@ -13,6 +13,8 @@ import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,5 +45,13 @@ export class OrganizationsController {
     @Delete(':id')
     remove(@Param('id') id: string) {
         return this.organizationsService.remove(id);
+    }
+
+    // Impersonação: SUPER_ADMIN "entra como" o ORG_ADMIN desta academia, sem
+    // saber/precisar da senha dela (ver AuthService.impersonateOrganizationAdmin).
+    @Post(':id/impersonate')
+    @HttpCode(HttpStatus.OK)
+    impersonate(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+        return this.organizationsService.impersonate(id, user);
     }
 }

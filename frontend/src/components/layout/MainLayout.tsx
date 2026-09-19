@@ -21,6 +21,7 @@ import {
     Settings,
     ChevronDown,
     Mail,
+    Eye,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -242,10 +243,41 @@ const Main = styled.div`
     overflow: hidden;
 `;
 
+const ImpersonationBar = styled.div`
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1.25rem;
+    background: ${({ theme }) => theme.colors.warning};
+    color: #4a3800;
+    font-size: 0.8125rem;
+    font-weight: 600;
+
+    button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: ${({ theme }) => theme.radii.pill};
+        border: 1px solid rgba(74, 56, 0, 0.3);
+        background: rgba(255, 255, 255, 0.5);
+        color: #4a3800;
+        font-size: 0.75rem;
+        font-weight: 700;
+        cursor: pointer;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+    }
+`;
+
 const ADMIN_ROLES = ['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN'];
 
 export function MainLayout({ children }: { children: ReactNode }) {
-    const { user, organization, signOut } = useAuth();
+    const { user, organization, signOut, isImpersonating, impersonatedOrganizationName, stopImpersonation } = useAuth();
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'SUPER_ADMIN';
     const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role) && !isSuperAdmin;
@@ -335,6 +367,13 @@ export function MainLayout({ children }: { children: ReactNode }) {
             </Sidebar>
 
             <Content>
+                {isImpersonating && (
+                    <ImpersonationBar>
+                        <Eye size={14} />
+                        Você está acessando como <strong>{impersonatedOrganizationName}</strong>
+                        <button onClick={stopImpersonation}>Voltar para admin</button>
+                    </ImpersonationBar>
+                )}
                 <Topbar>
                     <NotificationBell />
                     <TopbarDivider />

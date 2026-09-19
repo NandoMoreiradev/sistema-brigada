@@ -45,4 +45,11 @@ export const organizationsApi = {
     remove: async (id: string) => {
         await api.delete(`/organizations/${id}`);
     },
+    impersonate: async (id: string) => {
+        const { data } = await api.post<{
+            access_token: string;
+            impersonatedUser: { id: string; name: string; email: string };
+        }>(`/organizations/${id}/impersonate`);
+        return data;
+    },
 };

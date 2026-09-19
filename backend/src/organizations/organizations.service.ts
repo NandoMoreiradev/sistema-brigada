@@ -16,6 +16,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ListOrganizationsDto } from './dto/list-organizations.dto';
 import { AuthService } from '../auth/auth.service';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 
 @Injectable()
@@ -153,5 +154,14 @@ export class OrganizationsService {
     async remove(id: string) {
         await this.findOne(id);
         return this.prisma.organization.delete({ where: { id } });
+    }
+
+    async impersonate(id: string, admin: AuthenticatedUser) {
+        await this.findOne(id);
+        return this.authService.impersonateOrganizationAdmin(id, {
+            id: admin.id,
+            name: admin.name,
+            email: admin.email,
+        });
     }
 }

@@ -427,7 +427,10 @@ export class AuthService {
         return { access_token, rawRefreshToken };
     }
 
-    private async generateFinalAccessToken(user: Omit<User, 'password' | 'twoFactorSecret'>) {
+    private async generateFinalAccessToken(
+        user: Omit<User, 'password' | 'twoFactorSecret'>,
+        impersonatedBy?: { adminId: string; adminName: string; adminEmail: string } | null,
+    ) {
         let allowedOrganizationIds: string[] = [];
         if (user.organizationId) {
             allowedOrganizationIds.push(user.organizationId);
@@ -476,6 +479,7 @@ export class AuthService {
             isSuperAdminRoot: profileData.isSuperAdminRoot,
             systemRoleId: profileData.systemRoleId,
             systemRole: profileData.systemRole,
+            impersonatedBy: impersonatedBy ?? null,
         };
 
         const access_token = this.jwtService.sign(payload, {
@@ -545,6 +549,48 @@ export class AuthService {
         }
         const { password, twoFactorSecret, ...userWithoutSecrets } = user;
         return this.generateFinalAccessToken(userWithoutSecrets);
+    }
+
+    /**
+     * Emite um access_token para o ORG_ADMIN de `organizationId` em nome de um
+     * SUPER_ADMIN, sem exigir a senha da academia ("entrar como").
+     *
+     * DE PROPÓSITO sem refresh_token: a sessão impersonada não fica persistida em
+     * cookie — ela expira sozinha com o access_token (ACCESS_TOKEN_EXPIRES_IN,
+     * padrão 15min) em vez de durar 7 dias como uma sessão normal. Um F5 durante a
+     * impersonação perde o token em memória (tokenManager) e cai de volta pro
+     * refresh_token do SUPER_ADMIN, que nunca foi tocado — comportamento seguro por
+     * padrão, não um bug.
+     */
+    async impersonateOrganizationAdmin(
+        organizationId: string,
+        admin: { id: string; name: string; email: string },
+    ): Promise<{ access_token: string; impersonatedUser: { id: string; name: string; email: string } }> {
+        // GROUP_ADMIN entra na busca porque numa academia matriz (isMatrix) o
+        // administrador real costuma ser um GROUP_ADMIN com organizationId
+        // apontando pra própria matriz, não um ORG_ADMIN.
+        const targetUser = await this.prisma.user.findFirst({
+            where: { organizationId, role: { in: [Role.ORG_ADMIN, Role.GROUP_ADMIN] }, isActive: true },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        if (!targetUser) {
+            throw new NotFoundException('Esta academia ainda não tem um administrador ativo para acessar.');
+        }
+
+        this.logger.log(`[Impersonation] SUPER_ADMIN ${admin.email} acessando como ${targetUser.email} (org ${organizationId}).`);
+
+        const { password, twoFactorSecret, ...userWithoutSecrets } = targetUser;
+        const { access_token } = await this.generateFinalAccessToken(userWithoutSecrets, {
+            adminId: admin.id,
+            adminName: admin.name,
+            adminEmail: admin.email,
+        });
+
+        return {
+            access_token,
+            impersonatedUser: { id: targetUser.id, name: targetUser.name, email: targetUser.email },
+        };
     }
 
     // ─── Perfil / 2FA ──────────────────────────────────────────────────────
