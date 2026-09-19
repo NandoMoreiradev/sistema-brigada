@@ -191,7 +191,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
             <Sidebar>
                 <Brand>
                     <BrandIcon><Flame size={18} /></BrandIcon>
-                    Brigada Treinamentos
+                    Ignis
                 </Brand>
 
                 <Nav>

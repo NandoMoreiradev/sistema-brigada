@@ -1,6 +1,6 @@
 # Decisões do projeto — Escola de Treinamento de Brigada e Segurança
 
-> Nome do projeto ainda em aberto (pasta/repo temporariamente `brigada-treinamentos`). Base de código de referência: `maskotCrmEdu` (CRM/plataforma para escolas, NestJS + Prisma + React).
+> Nome do projeto/produto: **Ignis**. Base de código de referência: `maskotCrmEdu` (CRM/plataforma para escolas, NestJS + Prisma + React).
 
 ## Contexto
 
@@ -100,7 +100,7 @@ WhatsApp/Instagram/Messenger, chatbot de vendas, `EnrollmentCampaign` (é campan
 3. **App mobile** (decisão 12): Expo/React Native, foco em staff/instrutor em campo (escala, presença, ocorrência).
 
 ## Itens menores em aberto (não bloqueiam a codificação)
-- Nome definitivo do projeto/produto (e, por consequência, nome final da pasta/repo — hoje `brigada-treinamentos`).
+- Nome definitivo do projeto/produto: **fechado como Ignis** (2026-09-19). Nomes visíveis no código (títulos, telas de login, `package.json`) já atualizados; pasta local e repositório GitHub seguem com o nome antigo (`sistema-brigada`) até decisão de renomear o repo.
 - Layout de impressão do diploma (além do PDF gerado, algum requisito de gráfica/papel especial?).
 - Terminologia final dos papéis do sistema no schema (`SUPER_ADMIN`, admin de academia, instrutor, aluno, staff/brigadista etc.) — resolver ao desenhar o schema Prisma.
 - Refinar o catálogo de permissões (decisão 24) para granularidade por ação, se a equipe administrativa pedir.
