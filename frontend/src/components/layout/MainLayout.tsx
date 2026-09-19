@@ -248,28 +248,36 @@ export function MainLayout({ children }: { children: ReactNode }) {
     const { user, organization, signOut } = useAuth();
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-    const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role);
+    const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role) && !isSuperAdmin;
 
+    // SUPER_ADMIN é usuário de plataforma, sem organização própria e sem
+    // organização ativa selecionável na UI (ver docs/decisoes.md) — os itens
+    // abaixo (Turmas/Eventos/Equipe/Alunos/Certificados/Cargos/Modelos de
+    // e-mail) dependem de ActiveOrganizationId no backend e retornam 400 pra
+    // ele. Por isso o menu do SUPER_ADMIN mostra só a seção Plataforma.
+    //
     // Fase 3 de posse de dado (docs/decisoes.md): quem tem a permissão
     // administrativa do módulo vê a listagem completa da organização; quem
     // não tem vê só o recorte pessoal (/me/*). Eventos fica de fora dessa
     // troca de propósito — reuniões/assembleias são abertas a toda a
     // organização por design (ver meetings.service.ts), não só a quem
     // administra.
-    const navItems = [
-        { to: '/dashboard', label: 'Painel', icon: LayoutDashboard },
-        hasPermission(user, 'courses:manage')
-            ? { to: '/courses', label: 'Turmas', icon: GraduationCap }
-            : { to: '/my-courses', label: 'Minhas Turmas', icon: GraduationCap },
-        { to: '/events', label: 'Eventos', icon: CalendarClock },
-        hasPermission(user, 'staff:manage')
-            ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
-            : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
-        ...(hasPermission(user, 'people:manage') ? [{ to: '/students', label: 'Alunos', icon: Users }] : []),
-        hasPermission(user, 'certificates:manage')
-            ? { to: '/certificates', label: 'Certificados', icon: Award }
-            : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
-    ];
+    const navItems = isSuperAdmin
+        ? []
+        : [
+              { to: '/dashboard', label: 'Painel', icon: LayoutDashboard },
+              hasPermission(user, 'courses:manage')
+                  ? { to: '/courses', label: 'Turmas', icon: GraduationCap }
+                  : { to: '/my-courses', label: 'Minhas Turmas', icon: GraduationCap },
+              { to: '/events', label: 'Eventos', icon: CalendarClock },
+              hasPermission(user, 'staff:manage')
+                  ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
+                  : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
+              ...(hasPermission(user, 'people:manage') ? [{ to: '/students', label: 'Alunos', icon: Users }] : []),
+              hasPermission(user, 'certificates:manage')
+                  ? { to: '/certificates', label: 'Certificados', icon: Award }
+                  : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
+          ];
 
     return (
         <Shell>
@@ -305,7 +313,6 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
                     {isSuperAdmin && (
                         <>
-                            <NavDivider />
                             <NavSectionLabel>Plataforma</NavSectionLabel>
                             <NavItem to="/admin/organizations">
                                 <Building2 size={18} />
