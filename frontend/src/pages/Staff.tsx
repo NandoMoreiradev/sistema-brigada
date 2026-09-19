@@ -6,10 +6,12 @@
 // (ou foi cadastrado como pessoa qualquer), em vez de ter um formulário de
 // cadastro completo aqui.
 //
-// Certificação externa (decisão 10): registro manual de uma qualificação que
-// a pessoa já trazia de fora (ex: já é Bombeiro Civil ou Brigadista
-// Intermediário antes de entrar nesta academia) — o backend já suportava
-// isso (`POST /staff/:id/external-certifications`), só faltava esta tela.
+// Certificação externa (decisões 10/32): registro manual de uma qualificação
+// que a pessoa já trazia de fora (ex: já é Bombeiro Civil ou Brigadista
+// Intermediário antes de entrar nesta academia). Presa ao `User`
+// (`POST /users/:id/external-certifications`), não ao `StaffMember` — é um
+// fato sobre a pessoa, não sobre este papel — por isso o modal abaixo lê e
+// grava via `peopleApi`, e só usa o `member.user.id` daqui.
 
 import { useState } from 'react';
 import { ShieldCheck, Plus, Award } from 'lucide-react';
@@ -64,7 +66,7 @@ function CertificationsModal({ member, onClose }: { member: StaffMember; onClose
                     setIsUploading(false);
                 }
             }
-            return staffApi.addExternalCertification(member.id, {
+            return peopleApi.addExternalCertification(member.user.id, {
                 name: formData.name,
                 issuingOrg: formData.issuingOrg || undefined,
                 issuedAt: formData.issuedAt || undefined,
@@ -94,7 +96,7 @@ function CertificationsModal({ member, onClose }: { member: StaffMember; onClose
                         </tr>
                     </Thead>
                     <tbody>
-                        {member.externalCertifications.map((cert) => (
+                        {member.user.externalCertifications.map((cert) => (
                             <Tr key={cert.id}>
                                 <Td>{cert.name}</Td>
                                 <Td>{cert.issuingOrg || '—'}</Td>
@@ -112,7 +114,7 @@ function CertificationsModal({ member, onClose }: { member: StaffMember; onClose
                         ))}
                     </tbody>
                 </Table>
-                {member.externalCertifications.length === 0 && (
+                {member.user.externalCertifications.length === 0 && (
                     <EmptyState>Nenhuma certificação externa registrada ainda.</EmptyState>
                 )}
             </TableWrapper>
@@ -227,7 +229,7 @@ export default function Staff() {
                     </Thead>
                     <tbody>
                         {(staff ?? []).map((member) => {
-                            const hasExpired = member.externalCertifications.some((c) => isExpired(c.expiresAt));
+                            const hasExpired = member.user.externalCertifications.some((c) => isExpired(c.expiresAt));
                             return (
                                 <Tr key={member.id}>
                                     <Td>{member.user.name}</Td>
@@ -235,7 +237,7 @@ export default function Staff() {
                                     <Td>{member._count.designations}</Td>
                                     <Td>
                                         <Button $variant="ghost" onClick={() => setCertifyingMember(member)}>
-                                            <Award size={14} /> {member.externalCertifications.length}
+                                            <Award size={14} /> {member.user.externalCertifications.length}
                                             {hasExpired && <Badge $tone="danger">vencida</Badge>}
                                         </Button>
                                     </Td>

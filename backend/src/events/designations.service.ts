@@ -163,7 +163,6 @@ export class DesignationsService {
             where: { id: staffMemberId, organizationId },
             include: {
                 user: { select: { id: true, name: true, email: true } },
-                externalCertifications: { select: { expiresAt: true } },
             },
         });
         if (!staffMember) {
@@ -213,22 +212,25 @@ export class DesignationsService {
      * coordenador que não precisa de certificação específica) não é
      * bloqueado — não há nada para checar.
      */
-    private async assertHasValidQualification(staffMember: {
-        userId: string;
-        externalCertifications: { expiresAt: Date | null }[];
-    }) {
+    private async assertHasValidQualification(staffMember: { userId: string }) {
         const now = new Date();
         const isValid = (expiresAt: Date | null) => !expiresAt || expiresAt > now;
 
-        const courseCertificates = await this.prisma.certificate.findMany({
-            where: {
-                status: { not: CertificateStatus.REVOKED },
-                enrollment: { studentProfile: { userId: staffMember.userId } },
-            },
-            select: { expiresAt: true },
-        });
+        const [externalCertifications, courseCertificates] = await Promise.all([
+            this.prisma.externalCertification.findMany({
+                where: { userId: staffMember.userId },
+                select: { expiresAt: true },
+            }),
+            this.prisma.certificate.findMany({
+                where: {
+                    status: { not: CertificateStatus.REVOKED },
+                    enrollment: { studentProfile: { userId: staffMember.userId } },
+                },
+                select: { expiresAt: true },
+            }),
+        ]);
 
-        const qualifications = [...staffMember.externalCertifications, ...courseCertificates];
+        const qualifications = [...externalCertifications, ...courseCertificates];
         if (qualifications.length === 0) return;
 
         const hasValid = qualifications.some((q) => isValid(q.expiresAt));

@@ -31,6 +31,29 @@ export interface UpdatePersonInput {
     studentProfile?: StudentProfileInput;
 }
 
+/**
+ * Decisão 32 (docs/decisoes.md): certificação/qualificação prévia é presa
+ * direto na pessoa (`User`), não a um papel específico (staff/instrutor) —
+ * por isso mora aqui, junto do resto do cadastro de pessoa, e não em
+ * services/staff.ts.
+ */
+export interface ExternalCertification {
+    id: string;
+    name: string;
+    issuingOrg: string | null;
+    issuedAt: string | null;
+    expiresAt: string | null;
+    proofFileKey: string | null;
+}
+
+export interface CreateExternalCertificationInput {
+    name: string;
+    issuingOrg?: string;
+    issuedAt?: string;
+    expiresAt?: string;
+    proofFileKey?: string;
+}
+
 export const peopleApi = {
     list: async (params?: { search?: string; hasStudentProfile?: boolean }) => {
         const { data } = await api.get<Paginated<OrgPerson>>('/users', { params: { ...params, limit: 100 } });
@@ -51,6 +74,10 @@ export const peopleApi = {
     },
     setRoleAssignment: async (id: string, roleAssignmentId: string | null) => {
         const { data } = await api.put<OrgPerson>(`/users/${id}/role-assignment`, { roleAssignmentId });
+        return data;
+    },
+    addExternalCertification: async (userId: string, input: CreateExternalCertificationInput) => {
+        const { data } = await api.post<ExternalCertification>(`/users/${userId}/external-certifications`, input);
         return data;
     },
 };

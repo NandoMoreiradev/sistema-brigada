@@ -15,6 +15,7 @@ import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
+import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 
 const userListSelect = {
     id: true,
@@ -29,6 +30,7 @@ const userListSelect = {
     staffMember: { select: { id: true, status: true } },
     instructorAssignments: { select: { courseId: true } },
     roleAssignments: { select: { id: true, name: true } },
+    externalCertifications: true,
 } satisfies Prisma.UserSelect;
 
 @Injectable()
@@ -231,6 +233,31 @@ export class UsersService {
             where: { organizationId, isActive: true },
             select: { id: true, name: true },
             orderBy: { name: 'asc' },
+        });
+    }
+
+    /**
+     * Decisão 32 do docs/decisoes.md: certificação/qualificação prévia é um
+     * fato sobre a pessoa (`User`), não sobre um papel específico — qualquer
+     * pessoa cadastrada pode ter uma, esteja ou não promovida a staff de
+     * atuação, e independente de ser aluno/instrutor/admin.
+     */
+    async addExternalCertification(userId: string, organizationId: string, registeredByUserId: string, dto: CreateExternalCertificationDto) {
+        const user = await this.prisma.user.findFirst({ where: { id: userId, organizationId } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${userId} não encontrado nesta organização.`);
+        }
+
+        return this.prisma.externalCertification.create({
+            data: {
+                userId,
+                name: dto.name,
+                issuingOrg: dto.issuingOrg,
+                issuedAt: dto.issuedAt ? new Date(dto.issuedAt) : undefined,
+                expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
+                proofFileKey: dto.proofFileKey,
+                registeredByUserId,
+            },
         });
     }
 }

@@ -2,7 +2,6 @@ import { Controller, Get, Post, Body, Patch, Param, UseGuards, BadRequestExcepti
 import { StaffService } from './staff.service';
 import { PromoteStaffMemberDto } from './dto/promote-staff-member.dto';
 import { UpdateStaffStatusDto } from './dto/update-staff-status.dto';
-import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -51,16 +50,5 @@ export class StaffController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.staffService.updateStatus(id, this.requireOrganizationId(organizationId), dto.status);
-    }
-
-    @Post(':id/external-certifications')
-    @RequirePermission('staff:manage')
-    addExternalCertification(
-        @Param('id') id: string,
-        @Body() dto: CreateExternalCertificationDto,
-        @ActiveOrganizationId() organizationId: string | undefined,
-        @CurrentUser() user: AuthenticatedUser,
-    ) {
-        return this.staffService.addExternalCertification(id, this.requireOrganizationId(organizationId), user.id, dto);
     }
 }
