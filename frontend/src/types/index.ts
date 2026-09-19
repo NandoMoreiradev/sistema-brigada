@@ -52,6 +52,8 @@ export interface User {
 
 // ─── Turmas e matrícula (backend/src/courses, backend/src/users) ──────────
 
+export type PioneerStatus = 'AUXILIARY' | 'REGULAR';
+
 export interface StudentProfile {
     id: string;
     userId: string;
@@ -59,6 +61,10 @@ export interface StudentProfile {
     gender?: string | null;
     guardianName?: string | null;
     guardianPhone?: string | null;
+    baptismDate?: string | null;
+    pioneerStatus?: PioneerStatus | null;
+    signedPetitions?: string[];
+    profession?: string | null;
 }
 
 export interface OrgPerson {

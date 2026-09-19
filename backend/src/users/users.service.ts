@@ -65,6 +65,10 @@ export class UsersService {
                         healthInfo: dto.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
                         guardianName: dto.studentProfile.guardianName,
                         guardianPhone: dto.studentProfile.guardianPhone,
+                        baptismDate: dto.studentProfile.baptismDate ? new Date(dto.studentProfile.baptismDate) : undefined,
+                        pioneerStatus: dto.studentProfile.pioneerStatus,
+                        signedPetitions: dto.studentProfile.signedPetitions,
+                        profession: dto.studentProfile.profession,
                     },
                 });
             }
@@ -148,6 +152,10 @@ export class UsersService {
                     healthInfo: dto.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
                     guardianName: dto.studentProfile.guardianName,
                     guardianPhone: dto.studentProfile.guardianPhone,
+                    baptismDate: dto.studentProfile.baptismDate ? new Date(dto.studentProfile.baptismDate) : undefined,
+                    pioneerStatus: dto.studentProfile.pioneerStatus,
+                    signedPetitions: dto.studentProfile.signedPetitions,
+                    profession: dto.studentProfile.profession,
                 };
 
                 if (user.studentProfile) {

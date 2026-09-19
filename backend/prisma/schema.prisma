@@ -158,6 +158,11 @@ model SystemRole {
 
 // ================================= ACADÊMICO =================================
 
+enum PioneerStatus {
+  AUXILIARY
+  REGULAR
+}
+
 model StudentProfile {
   id             String    @id @default(cuid())
   userId         String    @unique
@@ -167,6 +172,14 @@ model StudentProfile {
   healthInfo     Json?
   guardianName   String?
   guardianPhone  String?
+  /// Data de batismo
+  baptismDate    DateTime?
+  /// Ausente = não é pioneiro
+  pioneerStatus  PioneerStatus?
+  /// Nomes das petições assinadas (ex: "Pioneiro regular"); vazio = nenhuma
+  signedPetitions String[] @default([])
+  /// Profissão ou área de estudo
+  profession     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

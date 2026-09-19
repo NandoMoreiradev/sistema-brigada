@@ -170,7 +170,8 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
 29. Construtor visual de e-mail é o **bespoke real do maskotCrmEdu** (dnd-kit + tiptap), não o pacote Unlayer — decisão consciente após checar que o Unlayer está listado no `package.json` de lá mas nunca é usado.
 30. **Fora do MVP deste módulo**: rastreio de abertura/bounce, verificação de domínio DNS in-app, construtor de campanha em massa, cota/billing de envio.
 
-## Mapeamento de reaproveitamento (Maskot Edu → novo projeto)
+### Cadastro — campos adicionais de pessoa (fechada em 2026-09-19)
+31. Adicionados a `StudentProfile` (não a `User` nem a `StaffMember`): `baptismDate`, `pioneerStatus` (enum `PioneerStatus`: `AUXILIARY`/`REGULAR`, ausente = não é pioneiro), `signedPetitions` (`String[]`, nomes livres das petições assinadas — não é um enum fechado porque a lista de petições é definida por cada organização/congregação, não pelo produto) e `profession` (texto livre, profissão ou área de estudo). Ficam em `StudentProfile` e não em `User` porque hoje **todo cadastro de pessoa passa pela tela de Alunos** (`Students.tsx`/`POST /users` com `studentProfile` aninhado — decisão 8): não existe formulário de cadastro completo separado para professor/staff (`Staff.tsx` só promove um `User` já existente, sem campos próprios). Terminologia (batismo/pioneiro/petição) é do domínio da organização-cliente atual (uso religioso do produto), não do "brigadista"/"bombeiro" do MVP original — ver cabeçalho deste documento.
 
 ### Reaproveitar quase pronto
 | Maskot Edu | Novo projeto | Observação | Status |

@@ -2,13 +2,17 @@
 // Cliente da API de `/users` (gestão de pessoas — alunos/instrutores/admins).
 
 import { api } from './api';
-import type { OrgPerson, Paginated } from '@/types';
+import type { OrgPerson, Paginated, PioneerStatus } from '@/types';
 
 export interface StudentProfileInput {
     birthDate?: string;
     gender?: string;
     guardianName?: string;
     guardianPhone?: string;
+    baptismDate?: string;
+    pioneerStatus?: PioneerStatus;
+    signedPetitions?: string[];
+    profession?: string;
 }
 
 export interface CreatePersonInput {

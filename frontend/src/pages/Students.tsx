@@ -14,7 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, ErrorText, Form, FormActions, FieldRow, HelpText } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, ErrorText, Form, FormActions, FieldRow, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { peopleApi, type CreatePersonInput } from '@/services/people';
 import { toast } from '@/utils/toast';
@@ -32,6 +32,10 @@ const createSchema = z.object({
     birthDate: z.string().optional(),
     guardianName: z.string().optional(),
     guardianPhone: z.string().optional(),
+    baptismDate: z.string().optional(),
+    pioneerStatus: z.enum(['', 'AUXILIARY', 'REGULAR']).optional(),
+    signedPetitions: z.string().optional(),
+    profession: z.string().optional(),
 });
 
 type FormData = z.infer<typeof createSchema>;
@@ -50,7 +54,19 @@ export default function Students() {
     });
 
     const openCreate = () => {
-        reset({ name: '', email: '', password: '', phone: '', birthDate: '', guardianName: '', guardianPhone: '' });
+        reset({
+            name: '',
+            email: '',
+            password: '',
+            phone: '',
+            birthDate: '',
+            guardianName: '',
+            guardianPhone: '',
+            baptismDate: '',
+            pioneerStatus: '',
+            signedPetitions: '',
+            profession: '',
+        });
         setModalOpen(true);
     };
 
@@ -76,6 +92,12 @@ export default function Students() {
                 birthDate: formData.birthDate || undefined,
                 guardianName: formData.guardianName || undefined,
                 guardianPhone: formData.guardianPhone || undefined,
+                baptismDate: formData.baptismDate || undefined,
+                pioneerStatus: formData.pioneerStatus || undefined,
+                profession: formData.profession || undefined,
+                signedPetitions: formData.signedPetitions
+                    ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
+                    : undefined,
             },
         });
     };
@@ -167,6 +189,32 @@ export default function Students() {
                     <Field>
                         <Label htmlFor="guardianPhone">Telefone do responsável</Label>
                         <Input id="guardianPhone" {...register('guardianPhone')} />
+                    </Field>
+
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="baptismDate">Data de batismo</Label>
+                            <Input id="baptismDate" type="date" {...register('baptismDate')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="pioneerStatus">Pioneiro</Label>
+                            <Select id="pioneerStatus" {...register('pioneerStatus')}>
+                                <option value="">Não é pioneiro</option>
+                                <option value="AUXILIARY">Pioneiro auxiliar</option>
+                                <option value="REGULAR">Pioneiro regular</option>
+                            </Select>
+                        </Field>
+                    </FieldRow>
+
+                    <Field>
+                        <Label htmlFor="profession">Profissão ou área de estudo</Label>
+                        <Input id="profession" {...register('profession')} />
+                    </Field>
+
+                    <Field>
+                        <Label htmlFor="signedPetitions">Petições assinadas</Label>
+                        <Input id="signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
+                        <HelpText>Separe múltiplas petições por vírgula. Deixe em branco se não houver petição assinada.</HelpText>
                     </Field>
 
                     <FormActions>
