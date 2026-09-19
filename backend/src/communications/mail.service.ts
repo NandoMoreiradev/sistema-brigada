@@ -37,19 +37,30 @@ export class MailService {
             this.configService.get<string>('DEFAULT_FROM_EMAIL') ?? 'Brigada <no-reply@example.com>';
     }
 
+    /**
+     * Silenciosa de propósito: usada pelos gatilhos transacionais (boas-vindas,
+     * reset de senha, certificado vencendo), que nunca podem derrubar o fluxo
+     * que os disparou por causa de uma falha de envio. Para caminhos onde o
+     * usuário PRECISA saber se falhou (ex.: "enviar e-mail de teste"), use
+     * `sendSingleOrThrow`.
+     */
     async sendSingle(options: SendSingleEmailOptions): Promise<void> {
+        try {
+            await this.sendSingleOrThrow(options);
+        } catch (error) {
+            this.logger.error(`Falha ao enviar e-mail para ${options.to}: ${(error as Error).message}`);
+        }
+    }
+
+    async sendSingleOrThrow(options: SendSingleEmailOptions): Promise<void> {
         const { organizationId, to, subject, html, replyTo } = options;
         const finalFrom = options.from ?? (await this.resolveFrom(organizationId));
 
-        try {
-            const { sender, isOrganizationOwned } = await this.emailSenderFactory.forOrganization(organizationId);
-            this.logger.log(
-                `[MailService] Enviando para ${to} via ${finalFrom} (conta: ${isOrganizationOwned ? 'academia' : 'plataforma'})`,
-            );
-            await sender.sendSingle({ from: finalFrom, to, subject, html, replyTo });
-        } catch (error) {
-            this.logger.error(`Falha ao enviar e-mail para ${to}: ${(error as Error).message}`);
-        }
+        const { sender, isOrganizationOwned } = await this.emailSenderFactory.forOrganization(organizationId);
+        this.logger.log(
+            `[MailService] Enviando para ${to} via ${finalFrom} (conta: ${isOrganizationOwned ? 'academia' : 'plataforma'})`,
+        );
+        await sender.sendSingle({ from: finalFrom, to, subject, html, replyTo });
     }
 
     private async resolveFrom(organizationId: string | null): Promise<string> {

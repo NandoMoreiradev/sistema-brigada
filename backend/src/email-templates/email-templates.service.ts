@@ -227,12 +227,19 @@ export class EmailTemplatesService {
 
         this.logger.log(`Enviando e-mail de teste (template: ${template.name}) para um endereço de teste.`);
 
-        await this.mailService.sendSingle({
-            organizationId,
-            to,
-            subject: `[TESTE] ${processedSubject}`,
-            html: finalHtml,
-        });
+        // sendSingleOrThrow (não sendSingle): um teste que "engole" o erro e sempre
+        // reporta sucesso não testa nada — é exatamente o problema que este endpoint
+        // existe pra resolver.
+        try {
+            await this.mailService.sendSingleOrThrow({
+                organizationId,
+                to,
+                subject: `[TESTE] ${processedSubject}`,
+                html: finalHtml,
+            });
+        } catch (error) {
+            throw new BadRequestException(`Não foi possível enviar o e-mail de teste: ${(error as Error).message}`);
+        }
 
         return { message: `E-mail de teste enviado para ${to} com sucesso.` };
     }

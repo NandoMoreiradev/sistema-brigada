@@ -47,6 +47,15 @@ export const organizationsApi = {
         const { data } = await api.patch<Organization>('/organizations/me', input);
         return data;
     },
+    sendTestEmail: async (to: string) => {
+        const { data } = await api.post<{ message: string }>('/organizations/me/test-email', { to });
+        return data;
+    },
+    /** Só leitura: domínios já cadastrados na conta Resend cuja chave a academia colou. */
+    getResendDomains: async () => {
+        const { data } = await api.get<{ domains: { name: string; status: string }[] }>('/organizations/me/resend-domains');
+        return data;
+    },
     list: async (search?: string) => {
         const { data } = await api.get<Paginated<Organization & { _count: { users: number; courses: number } }>>(
             '/organizations',

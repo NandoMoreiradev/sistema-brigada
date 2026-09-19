@@ -10,6 +10,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { UpdateMyOrganizationDto } from './dto/update-my-organization.dto';
 import { ListOrganizationsDto } from './dto/list-organizations.dto';
+import { SendTestEmailDto } from '../email-templates/dto/send-test-email.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
@@ -57,6 +58,21 @@ export class OrganizationsController {
     @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN)
     updateMine(@Body() dto: UpdateMyOrganizationDto, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.organizationsService.update(this.requireOrganizationId(organizationId), dto);
+    }
+
+    @Post('me/test-email')
+    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN)
+    @HttpCode(HttpStatus.OK)
+    sendTestEmail(@Body() dto: SendTestEmailDto, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.organizationsService.sendTestEmail(this.requireOrganizationId(organizationId), dto.to);
+    }
+
+    // Só leitura: status de verificação dos domínios já cadastrados na conta Resend cuja
+    // chave a academia colou (ver OrganizationsService.getResendDomainStatus).
+    @Get('me/resend-domains')
+    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN)
+    getResendDomains(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.organizationsService.getResendDomainStatus(this.requireOrganizationId(organizationId));
     }
 
     @Get(':id')
