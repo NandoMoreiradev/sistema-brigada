@@ -32,6 +32,11 @@ export const peopleApi = {
         const { data } = await api.get<Paginated<OrgPerson>>('/users', { params: { ...params, limit: 100 } });
         return data;
     },
+    /** Versão enxuta (só id+nome) aberta a qualquer autenticado — ver GET /users/roster no backend. */
+    roster: async () => {
+        const { data } = await api.get<{ id: string; name: string }[]>('/users/roster');
+        return data;
+    },
     create: async (input: CreatePersonInput) => {
         const { data } = await api.post<OrgPerson>('/users', input);
         return data;

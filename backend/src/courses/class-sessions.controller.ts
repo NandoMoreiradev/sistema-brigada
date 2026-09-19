@@ -1,10 +1,11 @@
 // backend/src/courses/class-sessions.controller.ts
 //
 // Agendamento de aula é trabalho administrativo (create/update/remove restrito
-// a admin), mas diário de aula e chamada são lançados por quem está em sala —
-// hoje isso inclui qualquer ORG_USER autenticado, porque o RBAC granular
-// (RoleAssignment/Permission) ainda não está populado neste projeto para
-// restringir "só o instrutor designado desta turma" (ver docs/decisoes.md).
+// a admin), mas diário de aula e chamada são lançados por quem está em sala.
+// O guard de role continua aberto a ALL_ORG_ROLES (senão exigiria
+// `courses:manage`, que é para quem administra a turma inteira), mas agora
+// ClassSessionsService.assertCanRecordClass checa posse — só quem tem
+// `courses:manage` OU é CourseInstructor desta turma passa (Fase 2, docs/decisoes.md).
 
 import { Controller, Get, Post, Put, Body, Patch, Param, Delete, UseGuards, BadRequestException } from '@nestjs/common';
 import { ClassSessionsService } from './class-sessions.service';
@@ -81,7 +82,7 @@ export class ClassSessionsController {
         @ActiveOrganizationId() organizationId: string | undefined,
         @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.classSessionsService.upsertLog(courseId, this.requireOrganizationId(organizationId), sessionId, user.id, dto);
+        return this.classSessionsService.upsertLog(courseId, this.requireOrganizationId(organizationId), sessionId, user, dto);
     }
 
     @Get(':sessionId/attendance')
@@ -101,7 +102,8 @@ export class ClassSessionsController {
         @Param('sessionId') sessionId: string,
         @Body() dto: MarkAttendanceDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.classSessionsService.markAttendance(courseId, this.requireOrganizationId(organizationId), sessionId, dto);
+        return this.classSessionsService.markAttendance(courseId, this.requireOrganizationId(organizationId), sessionId, user, dto);
     }
 }

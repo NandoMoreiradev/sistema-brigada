@@ -13,6 +13,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as dotenv from 'dotenv';
 import { PERMISSIONS_CATALOG } from '../src/permissions/permissions.catalog';
+import { DEFAULT_EMAIL_TEMPLATES } from './seed-data/default-email-templates';
 
 dotenv.config();
 
@@ -43,7 +44,14 @@ async function seedSuperAdmin() {
         console.log(`Atualizando Super Admin existente (${SUPER_ADMIN_EMAIL})...`);
         await prisma.user.update({
             where: { email: SUPER_ADMIN_EMAIL },
-            data: { password: hashedPassword, role: Role.SUPER_ADMIN, isActive: true },
+            // isSuperAdminRoot: true é essencial aqui, não só cosmético — sem ele,
+            // PermissionsGuard/userHasPermission bloqueia esse SUPER_ADMIN em toda
+            // rota com @RequirePermission (ex.: POST /users), porque o bypass de
+            // SUPER_ADMIN exige isSuperAdminRoot OU um SystemRole com a permissão.
+            // Sem isso, o onboarding manual de uma academia nova (decisão 5 do
+            // docs/decisoes.md) trava: dá pra criar a Organization mas não o
+            // primeiro ORG_ADMIN dela.
+            data: { password: hashedPassword, role: Role.SUPER_ADMIN, isActive: true, isSuperAdminRoot: true },
         });
     } else {
         console.log(`Criando novo Super Admin (${SUPER_ADMIN_EMAIL})...`);
@@ -53,6 +61,7 @@ async function seedSuperAdmin() {
                 email: SUPER_ADMIN_EMAIL,
                 password: hashedPassword,
                 role: Role.SUPER_ADMIN,
+                isSuperAdminRoot: true,
             },
         });
     }
@@ -74,9 +83,32 @@ async function seedPermissionsCatalog() {
     console.log('✅ Catálogo de permissões sincronizado.');
 }
 
+/**
+ * Idempotente sem sobrescrever: se o template global do gatilho já existe (seja do seed
+ * anterior, seja de uma edição manual de um SUPER_ADMIN pelo construtor visual), não mexe
+ * nele — só cria o que estiver faltando. Não dá pra usar `upsert` com a chave composta
+ * `organizationId_trigger` aqui porque o Prisma não aceita `null` no shorthand de chave
+ * única composta quando um dos campos é opcional (só em `findFirst`/`where` "cru").
+ */
+async function seedDefaultEmailTemplates() {
+    console.log(`Garantindo ${DEFAULT_EMAIL_TEMPLATES.length} template(s) de e-mail padrão...`);
+
+    for (const template of DEFAULT_EMAIL_TEMPLATES) {
+        const existing = await prisma.emailTemplate.findFirst({
+            where: { organizationId: null, trigger: template.trigger },
+        });
+        if (existing) continue;
+
+        await prisma.emailTemplate.create({ data: { ...template, organizationId: null } });
+    }
+
+    console.log('✅ Templates de e-mail padrão garantidos.');
+}
+
 async function main() {
     await seedSuperAdmin();
     await seedPermissionsCatalog();
+    await seedDefaultEmailTemplates();
 }
 
 main()

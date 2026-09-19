@@ -4,12 +4,19 @@
 // (`markProgress`) reavalia a elegibilidade de certificado do aluno (decisão
 // 16/17 do docs/decisoes.md — `Course.requireAllLessonsWatched`), do mesmo
 // jeito que lançar presença faz em class-sessions.service.ts.
+//
+// Fase 2 de posse de dado (docs/decisoes.md, decisão 22/25): create/update só
+// são permitidos a quem tem `courses:manage` (admin) OU é CourseInstructor
+// desta turma especificamente — antes disso, o controller liberava para
+// qualquer ORG_USER autenticado, mesmo de fora da turma.
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { CreateCourseLessonDto } from './dto/create-course-lesson.dto';
 import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 @Injectable()
 export class CourseLessonsService {
@@ -17,6 +24,18 @@ export class CourseLessonsService {
         private readonly prisma: PrismaService,
         private readonly certificatesService: CertificatesService,
     ) {}
+
+    private async assertCanEditLessons(courseId: string, user: AuthenticatedUser) {
+        if (userHasPermission(user, 'courses:manage')) return;
+
+        const isInstructor = await this.prisma.courseInstructor.findFirst({
+            where: { courseId, userId: user.id },
+            select: { id: true },
+        });
+        if (!isInstructor) {
+            throw new ForbiddenException('Você não é instrutor desta turma.');
+        }
+    }
 
     private async requireCourse(courseId: string, organizationId: string) {
         const course = await this.prisma.course.findFirst({ where: { id: courseId, organizationId } });
@@ -45,8 +64,9 @@ export class CourseLessonsService {
         return lesson;
     }
 
-    async create(courseId: string, organizationId: string, dto: CreateCourseLessonDto) {
+    async create(courseId: string, organizationId: string, dto: CreateCourseLessonDto, user: AuthenticatedUser) {
         await this.requireCourse(courseId, organizationId);
+        await this.assertCanEditLessons(courseId, user);
         await this.requireModuleInCourse(courseId, dto.moduleId);
 
         return this.prisma.courseLesson.create({
@@ -62,8 +82,9 @@ export class CourseLessonsService {
         });
     }
 
-    async update(courseId: string, organizationId: string, lessonId: string, dto: UpdateCourseLessonDto) {
+    async update(courseId: string, organizationId: string, lessonId: string, dto: UpdateCourseLessonDto, user: AuthenticatedUser) {
         await this.requireLesson(courseId, organizationId, lessonId);
+        await this.assertCanEditLessons(courseId, user);
         return this.prisma.courseLesson.update({ where: { id: lessonId }, data: dto });
     }
 

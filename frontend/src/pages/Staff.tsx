@@ -17,14 +17,22 @@ import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/com
 import { staffApi } from '@/services/staff';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 
 export default function Staff() {
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedUserId, setSelectedUserId] = useState('');
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // Esta página já exige `staff:manage` (PermissionRoute), mas escolher quem promover
+    // precisa da lista de pessoas, que é `people:manage` — um cargo com só
+    // `staff:manage` chegaria aqui e levaria um 403 (e o toast do interceptor global)
+    // ao carregar.
+    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data: staff, isLoading } = useQuery({ queryKey: ['staff'], queryFn: () => staffApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list() });
+    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
 
     const promoteMutation = useMutation({
         mutationFn: (userId: string) => staffApi.promote(userId),

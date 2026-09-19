@@ -208,4 +208,21 @@ export class UsersService {
 
         return user.studentProfile;
     }
+
+    /**
+     * Versão enxuta de `findAll` (só id+nome, sem e-mail/telefone/cargo) para
+     * seletores de pessoa em funcionalidades que são abertas a qualquer
+     * autenticado da organização — hoje só a presença de reunião
+     * (`meetings.service.ts`: "qualquer usuário pode ser marcado
+     * presente/ausente"). Por isso este método não é `@RequirePermission`
+     * como `findAll`: expõe só o suficiente pra montar um dropdown, nunca os
+     * campos sensíveis da listagem administrativa.
+     */
+    async findRoster(organizationId: string) {
+        return this.prisma.user.findMany({
+            where: { organizationId, isActive: true },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+        });
+    }
 }

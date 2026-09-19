@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { OrganizationsController } from './organizations.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+import { TransactionalEmailModule } from '../transactional-email/transactional-email.module';
 
 @Module({
-    imports: [PrismaModule],
+    imports: [PrismaModule, AuthModule, TransactionalEmailModule],
     controllers: [OrganizationsController],
     providers: [OrganizationsService],
     exports: [OrganizationsService],

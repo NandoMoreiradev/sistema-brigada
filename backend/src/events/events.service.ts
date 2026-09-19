@@ -7,19 +7,31 @@
 // (usa a integração OAuth do usuário que está criando o evento) — se ele não
 // tiver conectado o Google, o evento é criado normalmente sem `meetUrl`
 // (preenchível depois à mão).
+//
+// Reagendar/excluir uma REUNIAO que já tem `googleEventId` propaga para o
+// Google Calendar do criador (update()/remove() abaixo) — sem isso o convite
+// no Google ficava com a data antiga depois de um reagendamento pela UI.
+// Como no create(), qualquer falha aqui é só logada (GoogleCalendarService
+// nunca propaga erro) — o evento local é sempre a fonte da verdade.
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EventKind } from '@prisma/client';
 import { GoogleCalendarService } from '../user-integrations/google-calendar/google-calendar.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { ListEventsDto } from './dto/list-events.dto';
+import { parseAppDateTime } from '../common/datetime';
 
 const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA];
 
 const eventInclude = {
-    operation: { include: { _count: { select: { designations: true, occurrenceReports: true } } } },
+    operation: {
+        include: {
+            _count: { select: { designations: true, occurrenceReports: true } },
+            posts: { orderBy: { createdAt: 'asc' } },
+        },
+    },
     meeting: { include: { _count: { select: { attendances: true } } } },
     _count: { select: { files: true } },
 } satisfies Prisma.EventInclude;
@@ -32,8 +44,11 @@ export class EventsService {
     ) {}
 
     async create(dto: CreateEventDto, organizationId: string, createdByUserId: string) {
-        const startDate = new Date(dto.startDate);
-        const endDate = dto.endDate ? new Date(dto.endDate) : undefined;
+        const startDate = parseAppDateTime(dto.startDate);
+        const endDate = parseAppDateTime(dto.endDate);
+        if (endDate && endDate <= startDate) {
+            throw new BadRequestException('A data/hora de término deve ser depois da data/hora de início.');
+        }
 
         let meetUrl: string | null = null;
         let googleEventId: string | null = null;
@@ -113,16 +128,22 @@ export class EventsService {
     }
 
     async update(id: string, organizationId: string, dto: UpdateEventDto) {
-        await this.findOne(id, organizationId);
+        const existing = await this.findOne(id, organizationId);
 
-        return this.prisma.$transaction(async (tx) => {
+        const startDate = dto.startDate !== undefined ? parseAppDateTime(dto.startDate) : existing.startDate;
+        const endDate = dto.endDate !== undefined ? parseAppDateTime(dto.endDate) : (existing.endDate ?? undefined);
+        if (endDate && endDate <= startDate) {
+            throw new BadRequestException('A data/hora de término deve ser depois da data/hora de início.');
+        }
+
+        const updated = await this.prisma.$transaction(async (tx) => {
             await tx.event.update({
                 where: { id },
                 data: {
                     title: dto.title,
                     location: dto.location,
-                    startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-                    endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+                    startDate: dto.startDate !== undefined ? startDate : undefined,
+                    endDate: dto.endDate !== undefined ? endDate : undefined,
                     status: dto.status,
                 },
             });
@@ -136,10 +157,28 @@ export class EventsService {
 
             return tx.event.findUniqueOrThrow({ where: { id }, include: eventInclude });
         });
+
+        const reschedules = dto.title !== undefined || dto.location !== undefined || dto.startDate !== undefined || dto.endDate !== undefined;
+        if (reschedules && updated.meeting?.googleEventId) {
+            const startDate = updated.startDate;
+            const endDate = updated.endDate ?? new Date(startDate.getTime() + 60 * 60 * 1000);
+            await this.googleCalendarService.updateEvent(existing.createdByUserId, updated.meeting.googleEventId, {
+                summary: updated.title,
+                description: updated.meeting.agenda ?? undefined,
+                location: updated.location ?? undefined,
+                start: startDate,
+                end: endDate,
+            });
+        }
+
+        return updated;
     }
 
     async remove(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+        const event = await this.findOne(id, organizationId);
+        if (event.meeting?.googleEventId) {
+            await this.googleCalendarService.deleteEvent(event.createdByUserId, event.meeting.googleEventId);
+        }
         await this.prisma.event.delete({ where: { id } });
         return { id };
     }

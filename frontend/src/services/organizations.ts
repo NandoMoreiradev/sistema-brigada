@@ -3,13 +3,28 @@ import type { Organization, Paginated } from '@/types';
 
 export interface CreateOrganizationInput {
     name: string;
+    /** Definido no mesmo formulário de criação — vira o primeiro ORG_ADMIN da academia. */
+    adminName: string;
+    adminEmail: string;
     subdomain?: string;
     isMatrix?: boolean;
     parentOrganizationId?: string;
     groupName?: string;
 }
 
-export type UpdateOrganizationInput = Partial<CreateOrganizationInput>;
+// Não é `Partial<CreateOrganizationInput>`: adminName/adminEmail só existem na criação
+// (definir o administrador é um passo único). Em compensação, a edição ganha os campos de
+// configuração de e-mail da academia (chave Resend própria + remetente).
+export interface UpdateOrganizationInput {
+    name?: string;
+    subdomain?: string;
+    isMatrix?: boolean;
+    parentOrganizationId?: string;
+    groupName?: string;
+    resendApiKey?: string;
+    emailFromAddress?: string;
+    emailFromName?: string;
+}
 
 export const organizationsApi = {
     list: async (search?: string) => {

@@ -25,6 +25,11 @@ model Organization {
   parentOrganizationId String?
   groupName            String?
   enabledModules       String[]  @default([])
+  /// Chave Resend própria da academia. Quando ausente, o envio cai para
+  /// RESEND_API_KEY (conta global da plataforma) — ver EmailSenderFactory.
+  resendApiKey         String?
+  emailFromAddress     String?
+  emailFromName        String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   deletedAt            DateTime?
@@ -38,6 +43,7 @@ model Organization {
   events              Event[]
   rooms               Room[]
   certificateTemplate CertificateTemplate?
+  emailTemplates      EmailTemplate[]
 
   @@index([parentOrganizationId])
 }
@@ -78,6 +84,7 @@ model User {
   meetingAttendances    MeetingAttendance[]
   integrations          UserIntegration[]
   notifications         Notification[]
+  createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
 
   @@index([organizationId])
 }
@@ -183,6 +190,12 @@ model Course {
   /// Validade em meses do certificado emitido nesta turma (decisão 19)
   recyclingValidityMonths      Int?
   recommendedRecyclingCourseId String?
+  /// Conteúdo programático (texto livre) — vira uma 2ª página no PDF do
+  /// certificado quando preenchido (ver certificate-pdf.service.ts). Texto
+  /// livre em vez de uma estrutura rígida de módulos/tópicos porque cursos
+  /// de brigada variam muito de formato (decisão 17) — a academia escreve do
+  /// jeito que já usa na ementa impressa dela.
+  syllabus                     String?   @db.Text
   active                       Boolean   @default(true)
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
@@ -417,10 +430,48 @@ model EventOperation {
   /// Decisão 15: só contagem agregada do público, sem registro nominal
   estimatedAudienceCount Int?
   notes                  String? @db.Text
+  /// Planta baixa do local (imagem) onde os postos de atuação são plotados — ver EventPost.posX/posY
+  floorPlanKey           String?
+  floorPlanUrl           String?
 
   event             Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
   designations      Designation[]
   occurrenceReports OccurrenceReport[]
+  posts             EventPost[]
+  teams             Team[]
+}
+
+/// Posto de atuação (local físico) dentro do evento — ex.: "Portão A", "Palco", "Enfermaria".
+/// posX/posY são relativos (0 a 1) à imagem da planta baixa, pra não depender da resolução da imagem.
+model EventPost {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  capacity         Int?
+  notes            String?  @db.Text
+  posX             Float?
+  posY             Float?
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@index([eventOperationId])
+}
+
+/// Agrupamento nomeado de designações do MESMO evento (decisão do produto: "dupla"/"trio" não é
+/// um vínculo permanente entre pessoas — é só um rótulo por ocasião de escala. A mesma pessoa pode
+/// estar numa Team com Fulano de manhã e em outra Team, com Beltrano, à tarde, no mesmo evento).
+model Team {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@index([eventOperationId])
 }
 
 enum DesignationStatus {
@@ -439,13 +490,19 @@ model Designation {
   shiftStart       DateTime
   shiftEnd         DateTime
   status           DesignationStatus @default(PENDING)
+  postId           String?
+  teamId           String?
   createdAt        DateTime          @default(now())
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
   staffMember    StaffMember    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  post           EventPost?     @relation(fields: [postId], references: [id], onDelete: SetNull)
+  team           Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@index([eventOperationId])
   @@index([staffMemberId])
+  @@index([postId])
+  @@index([teamId])
 }
 
 model OccurrenceReport {
@@ -613,6 +670,41 @@ model Notification {
 
   @@index([userId, read])
   @@index([organizationId])
+}
+
+// ================================= E-MAIL TRANSACIONAL =================================
+// Adaptado de email-templates/ + communications/ do maskotCrmEdu, sem os pedaços que não têm
+// destino neste produto: sem billing/suspensão de envio, sem verificação de domínio DNS
+// in-app (a academia usa a chave Resend da própria conta, já configurada por fora), sem
+// tracking de abertura/bounce por webhook, sem construtor de campanha em massa.
+
+enum EmailTriggerType {
+  ORGANIZATION_ADMIN_WELCOME
+  PASSWORD_RESET
+  CERTIFICATE_EXPIRING
+}
+
+/// organizationId = null -> template padrão global (usado quando a academia não tem override).
+/// designJson = null -> envio usa só `body` (HTML puro); populado quando alguém salva pelo
+/// construtor visual (frontend/src/components/email-builder, portado do maskotCrmEdu).
+model EmailTemplate {
+  id             String            @id @default(cuid())
+  name           String
+  subject        String
+  body           String            @db.Text
+  designJson     Json?
+  trigger        EmailTriggerType?
+  organizationId String?
+  createdById    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("EmailTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, trigger])
+  @@index([organizationId])
+  @@index([trigger])
 }
 
 // ================================= DISPONIBILIDADE =================================

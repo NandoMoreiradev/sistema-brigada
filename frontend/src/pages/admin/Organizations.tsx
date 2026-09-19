@@ -7,27 +7,51 @@
 
 import { useState } from 'react';
 import { Building2, Plus } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import styled from 'styled-components';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, ErrorText, CheckboxField, Form, FormActions, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { organizationsApi, type CreateOrganizationInput } from '@/services/organizations';
+import { organizationsApi, type CreateOrganizationInput, type UpdateOrganizationInput } from '@/services/organizations';
 import { toast } from '@/utils/toast';
 import type { Organization } from '@/types';
 
-const schema = z.object({
+// Dois schemas em vez de um `z.object` com `.refine()` condicional: adminName/adminEmail só
+// existem na criação (ver CreateOrganizationInput), e o resolver do useForm troca entre eles
+// conforme `editing` — mais simples do que fechar sobre estado mutável dentro de um refine.
+const baseFields = {
     name: z.string().min(1, 'Informe o nome da academia'),
     subdomain: z.string().optional(),
     isMatrix: z.boolean().optional(),
     groupName: z.string().optional(),
+    resendApiKey: z.string().optional(),
+    emailFromAddress: z.string().email('E-mail inválido').optional().or(z.literal('')),
+    emailFromName: z.string().optional(),
+};
+
+const createSchema = z.object({
+    ...baseFields,
+    adminName: z.string().min(1, 'Informe o nome do administrador'),
+    adminEmail: z.string().min(1, 'Informe o e-mail do administrador').email('E-mail inválido'),
 });
 
-type FormData = z.infer<typeof schema>;
+const editSchema = z.object(baseFields);
+
+type FormData = z.infer<typeof createSchema>;
+
+const SectionTitle = styled.h4`
+    margin: 0.5rem 0 -0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: ${({ theme }) => theme.colors.textDark};
+    border-top: 1px solid #e9ecef;
+    padding-top: 1rem;
+`;
 
 export default function Organizations() {
     const [modalOpen, setModalOpen] = useState(false);
@@ -39,13 +63,16 @@ export default function Organizations() {
         queryFn: () => organizationsApi.list(),
     });
 
+    // editSchema não tem adminName/adminEmail (só existem na criação) — o resolver muda
+    // conforme `editing`, mas os dois validam o mesmo `FormData` na prática (o formulário só
+    // renderiza os campos de admin quando !editing), daí o cast.
     const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
-        resolver: zodResolver(schema),
+        resolver: (editing ? zodResolver(editSchema) : zodResolver(createSchema)) as Resolver<FormData>,
     });
 
     const openCreate = () => {
         setEditing(null);
-        reset({ name: '', subdomain: '', isMatrix: false, groupName: '' });
+        reset({ name: '', subdomain: '', isMatrix: false, groupName: '', adminName: '', adminEmail: '' });
         setModalOpen(true);
     };
 
@@ -56,14 +83,17 @@ export default function Organizations() {
             subdomain: organization.subdomain || '',
             isMatrix: organization.isMatrix,
             groupName: organization.groupName || '',
+            resendApiKey: '',
+            emailFromAddress: organization.emailFromAddress || '',
+            emailFromName: organization.emailFromName || '',
         });
         setModalOpen(true);
     };
 
     const saveMutation = useMutation({
-        mutationFn: async (input: CreateOrganizationInput) => {
-            if (editing) return organizationsApi.update(editing.id, input);
-            return organizationsApi.create(input);
+        mutationFn: async (input: CreateOrganizationInput | UpdateOrganizationInput) => {
+            if (editing) return organizationsApi.update(editing.id, input as UpdateOrganizationInput);
+            return organizationsApi.create(input as CreateOrganizationInput);
         },
         onSuccess: () => {
             toast.success(editing ? 'Academia atualizada com sucesso.' : 'Academia criada com sucesso.');
@@ -76,8 +106,23 @@ export default function Organizations() {
     });
 
     const onSubmit = (formData: FormData) => {
+        if (editing) {
+            saveMutation.mutate({
+                name: formData.name,
+                subdomain: formData.subdomain || undefined,
+                isMatrix: formData.isMatrix,
+                groupName: formData.groupName || undefined,
+                resendApiKey: formData.resendApiKey || undefined,
+                emailFromAddress: formData.emailFromAddress || undefined,
+                emailFromName: formData.emailFromName || undefined,
+            });
+            return;
+        }
+
         saveMutation.mutate({
             name: formData.name,
+            adminName: formData.adminName!,
+            adminEmail: formData.adminEmail!,
             subdomain: formData.subdomain || undefined,
             isMatrix: formData.isMatrix,
             groupName: formData.groupName || undefined,
@@ -158,6 +203,52 @@ export default function Organizations() {
                         <input type="checkbox" {...register('isMatrix')} />
                         É uma academia matriz (tem filiais)
                     </CheckboxField>
+
+                    {!editing && (
+                        <>
+                            <SectionTitle>Administrador da academia</SectionTitle>
+                            <Field>
+                                <Label htmlFor="adminName">Nome do administrador</Label>
+                                <Input id="adminName" {...register('adminName')} />
+                                {errors.adminName && <ErrorText>{errors.adminName.message}</ErrorText>}
+                            </Field>
+                            <Field>
+                                <Label htmlFor="adminEmail">E-mail do administrador</Label>
+                                <Input id="adminEmail" type="email" {...register('adminEmail')} />
+                                {errors.adminEmail && <ErrorText>{errors.adminEmail.message}</ErrorText>}
+                                <HelpText>Essa pessoa recebe um e-mail para definir a própria senha e acessar como administradora da academia.</HelpText>
+                            </Field>
+                        </>
+                    )}
+
+                    {editing && (
+                        <>
+                            <SectionTitle>Configurações de e-mail</SectionTitle>
+                            <Field>
+                                <Label htmlFor="resendApiKey">Chave Resend própria (opcional)</Label>
+                                <Input
+                                    id="resendApiKey"
+                                    type="password"
+                                    placeholder={editing.hasCustomResendKey ? 'Configurada — digite para trocar' : 're_...'}
+                                    {...register('resendApiKey')}
+                                />
+                                <HelpText>
+                                    {editing.hasCustomResendKey
+                                        ? 'Esta academia já tem uma chave Resend própria configurada. Deixe em branco para mantê-la.'
+                                        : 'Sem chave própria, os e-mails desta academia saem pela conta compartilhada da plataforma.'}
+                                </HelpText>
+                            </Field>
+                            <Field>
+                                <Label htmlFor="emailFromAddress">E-mail de remetente (opcional)</Label>
+                                <Input id="emailFromAddress" type="email" placeholder="contato@suaacademia.com.br" {...register('emailFromAddress')} />
+                                {errors.emailFromAddress && <ErrorText>{errors.emailFromAddress.message}</ErrorText>}
+                            </Field>
+                            <Field>
+                                <Label htmlFor="emailFromName">Nome de remetente (opcional)</Label>
+                                <Input id="emailFromName" {...register('emailFromName')} />
+                            </Field>
+                        </>
+                    )}
 
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>
