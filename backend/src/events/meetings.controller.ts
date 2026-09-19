@@ -8,6 +8,8 @@ import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.g
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
@@ -51,7 +53,8 @@ export class MeetingsController {
         @Param('eventId') eventId: string,
         @Body() dto: MarkMeetingAttendanceDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.meetingsService.markAttendance(eventId, this.requireOrganizationId(organizationId), dto);
+        return this.meetingsService.markAttendance(eventId, this.requireOrganizationId(organizationId), dto, user);
     }
 }

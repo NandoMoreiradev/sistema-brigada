@@ -22,6 +22,7 @@ import { eventsApi, designationsApi, occurrenceReportsApi, meetingsApi, eventFil
 import { staffApi } from '@/services/staff';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
 import type { AttendanceStatus } from '@/types';
 
 const TabsList = styled(Tabs.List)`
@@ -379,9 +380,10 @@ function AttendanceTab({ eventId }: { eventId: string }) {
     const [userId, setUserId] = useState('');
     const [status, setStatus] = useState<AttendanceStatus>('PRESENT');
     const queryClient = useQueryClient();
+    const { user } = useAuth();
 
     const { data: attendance } = useQuery({ queryKey: ['events', eventId, 'attendance'], queryFn: () => meetingsApi.getAttendance(eventId) });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list() });
+    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: !!user });
 
     const markMutation = useMutation({
         mutationFn: (records: { userId: string; status: AttendanceStatus }[]) => meetingsApi.markAttendance(eventId, records),
@@ -394,28 +396,61 @@ function AttendanceTab({ eventId }: { eventId: string }) {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível registrar a presença.'),
     });
 
+    // GROUP_ADMIN/ORG_ADMIN/SUPER_ADMIN e quem tem `events:manage` podem
+    // registrar ou corrigir a presença de qualquer pessoa; os demais só
+    // marcam a própria presença, uma única vez (regra espelhada no backend).
+    const canManageOthers =
+        user?.role === 'GROUP_ADMIN' ||
+        user?.role === 'ORG_ADMIN' ||
+        user?.role === 'SUPER_ADMIN' ||
+        (user?.permissions ?? []).includes('events:manage');
+
     const recordedUserIds = new Set((attendance ?? []).map((a) => a.user.id));
+    const myRecord = user ? (attendance ?? []).find((a) => a.user.id === user.id) : undefined;
 
     return (
         <>
             <ToolbarRow>
-                <Button onClick={() => setModalOpen(true)}><Plus size={16} /> Registrar presença</Button>
+                {!myRecord && user && (
+                    <>
+                        <Button
+                            onClick={() => markMutation.mutate([{ userId: user.id, status: 'PRESENT' }])}
+                            disabled={markMutation.isPending}
+                        >
+                            <Plus size={16} /> Marcar minha presença
+                        </Button>
+                        <Button
+                            $variant="secondary"
+                            onClick={() => markMutation.mutate([{ userId: user.id, status: 'JUSTIFIED_ABSENT' }])}
+                            disabled={markMutation.isPending}
+                        >
+                            Registrar ausência justificada
+                        </Button>
+                    </>
+                )}
+                {canManageOthers && (
+                    <Button $variant="secondary" onClick={() => setModalOpen(true)}>
+                        <Plus size={16} /> Registrar presença de outra pessoa
+                    </Button>
+                )}
             </ToolbarRow>
             <TableWrapper>
                 <Table>
-                    <Thead><tr><Th>Pessoa</Th><Th>Status</Th><Th>Alterar</Th></tr></Thead>
+                    <Thead><tr><Th>Pessoa</Th><Th>Status</Th>{canManageOthers && <Th>Alterar</Th>}</tr></Thead>
                     <tbody>
                         {(attendance ?? []).map((a) => (
                             <Tr key={a.user.id}>
                                 <Td>{a.user.name}</Td>
                                 <Td><Badge $tone={a.status === 'PRESENT' ? 'success' : 'neutral'}>{ATTENDANCE_LABEL[a.status]}</Badge></Td>
-                                <Td>
-                                    <Select value={a.status} onChange={(e) => markMutation.mutate([{ userId: a.user.id, status: e.target.value as AttendanceStatus }])}>
-                                        <option value="PRESENT">{ATTENDANCE_LABEL.PRESENT}</option>
-                                        <option value="ABSENT">{ATTENDANCE_LABEL.ABSENT}</option>
-                                        <option value="JUSTIFIED_ABSENT">{ATTENDANCE_LABEL.JUSTIFIED_ABSENT}</option>
-                                    </Select>
-                                </Td>
+                                {canManageOthers && (
+                                    <Td>
+                                        <Select value={a.status} onChange={(e) => markMutation.mutate([{ userId: a.user.id, status: e.target.value as AttendanceStatus }])}>
+                                            <option value="PRESENT">{ATTENDANCE_LABEL.PRESENT}</option>
+                                            <option value="ABSENT">{ATTENDANCE_LABEL.ABSENT}</option>
+                                            <option value="JUSTIFIED_ABSENT">{ATTENDANCE_LABEL.JUSTIFIED_ABSENT}</option>
+                                        </Select>
+                                    </Td>
+                                )}
                             </Tr>
                         ))}
                     </tbody>
@@ -423,31 +458,33 @@ function AttendanceTab({ eventId }: { eventId: string }) {
                 {(attendance ?? []).length === 0 && <EmptyState>Nenhuma presença registrada ainda.</EmptyState>}
             </TableWrapper>
 
-            <Modal open={modalOpen} onOpenChange={setModalOpen} title="Registrar presença">
-                <Form onSubmit={(e) => { e.preventDefault(); if (userId) markMutation.mutate([{ userId, status }]); }}>
-                    <Field>
-                        <Label htmlFor="user">Pessoa</Label>
-                        <Select id="user" value={userId} onChange={(e) => setUserId(e.target.value)}>
-                            <option value="">Selecione</option>
-                            {(peopleData?.data ?? []).filter((p) => !recordedUserIds.has(p.id)).map((p) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </Select>
-                    </Field>
-                    <Field>
-                        <Label htmlFor="status">Status</Label>
-                        <Select id="status" value={status} onChange={(e) => setStatus(e.target.value as AttendanceStatus)}>
-                            <option value="PRESENT">{ATTENDANCE_LABEL.PRESENT}</option>
-                            <option value="ABSENT">{ATTENDANCE_LABEL.ABSENT}</option>
-                            <option value="JUSTIFIED_ABSENT">{ATTENDANCE_LABEL.JUSTIFIED_ABSENT}</option>
-                        </Select>
-                    </Field>
-                    <FormActions>
-                        <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={!userId || markMutation.isPending}>{markMutation.isPending ? 'Salvando...' : 'Registrar'}</Button>
-                    </FormActions>
-                </Form>
-            </Modal>
+            {canManageOthers && (
+                <Modal open={modalOpen} onOpenChange={setModalOpen} title="Registrar presença de outra pessoa">
+                    <Form onSubmit={(e) => { e.preventDefault(); if (userId) markMutation.mutate([{ userId, status }]); }}>
+                        <Field>
+                            <Label htmlFor="user">Pessoa</Label>
+                            <Select id="user" value={userId} onChange={(e) => setUserId(e.target.value)}>
+                                <option value="">Selecione</option>
+                                {(peopleData?.data ?? []).filter((p) => !recordedUserIds.has(p.id)).map((p) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </Select>
+                        </Field>
+                        <Field>
+                            <Label htmlFor="status">Status</Label>
+                            <Select id="status" value={status} onChange={(e) => setStatus(e.target.value as AttendanceStatus)}>
+                                <option value="PRESENT">{ATTENDANCE_LABEL.PRESENT}</option>
+                                <option value="ABSENT">{ATTENDANCE_LABEL.ABSENT}</option>
+                                <option value="JUSTIFIED_ABSENT">{ATTENDANCE_LABEL.JUSTIFIED_ABSENT}</option>
+                            </Select>
+                        </Field>
+                        <FormActions>
+                            <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                            <Button type="submit" disabled={!userId || markMutation.isPending}>{markMutation.isPending ? 'Salvando...' : 'Registrar'}</Button>
+                        </FormActions>
+                    </Form>
+                </Modal>
+            )}
         </>
     );
 }

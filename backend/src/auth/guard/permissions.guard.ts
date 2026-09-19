@@ -21,6 +21,33 @@ import { ForbiddenErrorHelper } from '../types/forbidden-error-codes';
 export const PERMISSION_KEY = 'requiredPermission';
 export const RequirePermission = (permission: string) => SetMetadata(PERMISSION_KEY, permission);
 
+/**
+ * Mesma lógica de bypass usada pelo PermissionsGuard, extraída para uso fora
+ * de um guard — ex.: quando um service precisa decidir em runtime se o
+ * usuário atual pode agir em nome de outro usuário (ver MeetingsService.markAttendance).
+ */
+export function userHasPermission(user: AuthenticatedUser | undefined, permission: string): boolean {
+    if (!user || !user.permissions) {
+        return false;
+    }
+
+    if (user.role === Role.SUPER_ADMIN) {
+        if (user.isSuperAdminRoot) {
+            return true;
+        }
+        if (user.systemRole?.permissions) {
+            return user.systemRole.permissions.some((p) => p === '*' || p === permission);
+        }
+        return false;
+    }
+
+    if (user.role === Role.GROUP_ADMIN || user.role === Role.ORG_ADMIN) {
+        return true;
+    }
+
+    return user.permissions.includes(permission);
+}
+
 @Injectable()
 export class PermissionsGuard implements CanActivate {
     private readonly logger = new Logger(PermissionsGuard.name);
@@ -42,47 +69,8 @@ export class PermissionsGuard implements CanActivate {
         const request = context.switchToHttp().getRequest();
         const user = request.user as AuthenticatedUser;
 
-        if (!user || !user.permissions) {
+        if (!userHasPermission(user, requiredPermission)) {
             const errorResponse = ForbiddenErrorHelper.createPermissionDeniedError(requiredPermission, user?.email);
-            throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
-        }
-
-        // =====================================================================
-        // SUPER ADMIN
-        // =====================================================================
-        if (user.role === Role.SUPER_ADMIN) {
-            // 1. Root Admin: acesso total irrestrito
-            if (user.isSuperAdminRoot) {
-                return true;
-            }
-
-            // 2. Super Admin com SystemRole: permissões granulares (ou coringa '*')
-            if (user.systemRole?.permissions) {
-                const hasSystemPermission = user.systemRole.permissions.some(
-                    (p) => p === '*' || p === requiredPermission,
-                );
-                if (hasSystemPermission) {
-                    return true;
-                }
-            }
-
-            // Não é Root e não tem a permissão via SystemRole: bloqueia.
-            const errorResponse = ForbiddenErrorHelper.createPermissionDeniedError(requiredPermission, user.email);
-            throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
-        }
-
-        // =====================================================================
-        // GROUP_ADMIN / ORG_ADMIN — já são "dono" da organização, não dependem
-        // de RoleAssignment para ter acesso administrativo pleno.
-        // =====================================================================
-        if (user.role === Role.GROUP_ADMIN || user.role === Role.ORG_ADMIN) {
-            return true;
-        }
-
-        const hasPermission = user.permissions.includes(requiredPermission);
-
-        if (!hasPermission) {
-            const errorResponse = ForbiddenErrorHelper.createPermissionDeniedError(requiredPermission, user.email);
             throw new HttpException(errorResponse, HttpStatus.FORBIDDEN);
         }
 
