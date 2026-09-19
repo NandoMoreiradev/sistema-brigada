@@ -11,15 +11,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { eventsApi, type EventKind, type CreateEventInput } from '@/services/events';
+import { eventsApi, type CreateEventInput } from '@/services/events';
 import { toast } from '@/utils/toast';
-import type { EventStatus } from '@/types';
+import { formatAppDate } from '@/utils/datetime';
+import { KIND_LABEL, STATUS_LABEL, STATUS_TONE } from '@/utils/eventLabels';
 
 const schema = z.object({
     kind: z.enum(['ASSEMBLEIA', 'CONGRESSO', 'ATUACAO_BRIGADA', 'REUNIAO']),
@@ -32,27 +32,6 @@ const schema = z.object({
     agenda: z.string().optional(),
 });
 type FormData = z.infer<typeof schema>;
-
-const KIND_LABEL: Record<EventKind, string> = {
-    ASSEMBLEIA: 'Assembleia',
-    CONGRESSO: 'Congresso',
-    ATUACAO_BRIGADA: 'Atuação de brigada',
-    REUNIAO: 'Reunião',
-};
-
-const STATUS_LABEL: Record<EventStatus, string> = {
-    SCHEDULED: 'Agendado',
-    ONGOING: 'Em andamento',
-    COMPLETED: 'Concluído',
-    CANCELLED: 'Cancelado',
-};
-
-const STATUS_TONE: Record<EventStatus, 'neutral' | 'success' | 'info' | 'danger'> = {
-    SCHEDULED: 'info',
-    ONGOING: 'success',
-    COMPLETED: 'neutral',
-    CANCELLED: 'danger',
-};
 
 export default function Events() {
     const [modalOpen, setModalOpen] = useState(false);
@@ -128,7 +107,7 @@ export default function Events() {
                             <Tr key={event.id} onClick={() => navigate(`/events/${event.id}`)} style={{ cursor: 'pointer' }}>
                                 <Td>{event.title}</Td>
                                 <Td><Badge $tone="info">{KIND_LABEL[event.kind]}</Badge></Td>
-                                <Td>{format(new Date(event.startDate), 'dd/MM/yyyy')}</Td>
+                                <Td>{formatAppDate(event.startDate, 'dd/MM/yyyy')}</Td>
                                 <Td>{event.location || '—'}</Td>
                                 <Td><Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge></Td>
                                 <Td>

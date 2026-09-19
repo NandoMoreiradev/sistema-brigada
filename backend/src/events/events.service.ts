@@ -8,13 +8,14 @@
 // tiver conectado o Google, o evento é criado normalmente sem `meetUrl`
 // (preenchível depois à mão).
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EventKind } from '@prisma/client';
 import { GoogleCalendarService } from '../user-integrations/google-calendar/google-calendar.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { ListEventsDto } from './dto/list-events.dto';
+import { parseAppDateTime } from '../common/datetime';
 
 const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA];
 
@@ -32,8 +33,11 @@ export class EventsService {
     ) {}
 
     async create(dto: CreateEventDto, organizationId: string, createdByUserId: string) {
-        const startDate = new Date(dto.startDate);
-        const endDate = dto.endDate ? new Date(dto.endDate) : undefined;
+        const startDate = parseAppDateTime(dto.startDate);
+        const endDate = parseAppDateTime(dto.endDate);
+        if (endDate && endDate <= startDate) {
+            throw new BadRequestException('A data/hora de término deve ser depois da data/hora de início.');
+        }
 
         let meetUrl: string | null = null;
         let googleEventId: string | null = null;
@@ -113,7 +117,29 @@ export class EventsService {
     }
 
     async update(id: string, organizationId: string, dto: UpdateEventDto) {
-        await this.findOne(id, organizationId);
+        const existing = await this.findOne(id, organizationId);
+
+        const startDate = dto.startDate !== undefined ? parseAppDateTime(dto.startDate) : existing.startDate;
+        const endDate = dto.endDate !== undefined ? parseAppDateTime(dto.endDate) : (existing.endDate ?? undefined);
+        if (endDate && endDate <= startDate) {
+            throw new BadRequestException('A data/hora de término deve ser depois da data/hora de início.');
+        }
+
+        // Mantém o evento no Google Calendar do organizador em dia — sem isso,
+        // mudar data/local/título aqui não se refletia no convite já enviado.
+        if (existing.kind === EventKind.REUNIAO && existing.meeting?.googleEventId) {
+            const dateChanged = dto.startDate !== undefined || dto.endDate !== undefined;
+            const detailsChanged = dto.title !== undefined || dto.location !== undefined;
+            if (dateChanged || detailsChanged) {
+                await this.googleCalendarService.updateEvent(existing.createdByUserId, existing.meeting.googleEventId, {
+                    summary: dto.title ?? existing.title,
+                    description: existing.meeting.agenda ?? undefined,
+                    location: (dto.location ?? existing.location) ?? undefined,
+                    start: startDate,
+                    end: endDate ?? new Date(startDate.getTime() + 60 * 60 * 1000),
+                });
+            }
+        }
 
         return this.prisma.$transaction(async (tx) => {
             await tx.event.update({
@@ -121,8 +147,8 @@ export class EventsService {
                 data: {
                     title: dto.title,
                     location: dto.location,
-                    startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-                    endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+                    startDate: dto.startDate !== undefined ? startDate : undefined,
+                    endDate: dto.endDate !== undefined ? endDate : undefined,
                     status: dto.status,
                 },
             });
@@ -139,7 +165,10 @@ export class EventsService {
     }
 
     async remove(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+        const event = await this.findOne(id, organizationId);
+        if (event.kind === EventKind.REUNIAO && event.meeting?.googleEventId) {
+            await this.googleCalendarService.deleteEvent(event.createdByUserId, event.meeting.googleEventId);
+        }
         await this.prisma.event.delete({ where: { id } });
         return { id };
     }

@@ -9,20 +9,30 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Select, Textarea, Form, FormActions } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { eventsApi, designationsApi, occurrenceReportsApi, meetingsApi, eventFilesApi, type DesignationStatus } from '@/services/events';
+import {
+    eventsApi,
+    designationsApi,
+    occurrenceReportsApi,
+    meetingsApi,
+    eventFilesApi,
+    type DesignationStatus,
+    type AppEvent,
+} from '@/services/events';
+import { mediaApi } from '@/services/media';
 import { staffApi } from '@/services/staff';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
-import type { AttendanceStatus } from '@/types';
+import { formatAppDate, toDateTimeLocalValue } from '@/utils/datetime';
+import { KIND_LABEL, STATUS_LABEL, STATUS_TONE, EVENT_STATUS_VALUES } from '@/utils/eventLabels';
+import type { AttendanceStatus, EventStatus } from '@/types';
 
 const TabsList = styled(Tabs.List)`
     display: flex;
@@ -79,6 +89,13 @@ const ToolbarRow = styled.div`
     margin-bottom: 0.75rem;
 `;
 
+const HeaderActions = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+`;
+
 const DESIGNATION_STATUS_LABEL: Record<DesignationStatus, string> = {
     PENDING: 'Pendente',
     CONFIRMED: 'Confirmada',
@@ -102,8 +119,29 @@ export default function EventDetail() {
     const { id } = useParams<{ id: string }>();
     const eventId = id!;
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
 
     const { data: event } = useQuery({ queryKey: ['events', eventId], queryFn: () => eventsApi.get(eventId) });
+
+    const statusMutation = useMutation({
+        mutationFn: (status: EventStatus) => eventsApi.update(eventId, { status }),
+        onSuccess: () => {
+            toast.success('Status atualizado.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId] });
+            queryClient.invalidateQueries({ queryKey: ['events'] });
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atualizar o status.'),
+    });
+
+    const removeMutation = useMutation({
+        mutationFn: () => eventsApi.remove(eventId),
+        onSuccess: () => {
+            toast.success('Evento excluído.');
+            queryClient.invalidateQueries({ queryKey: ['events'] });
+            navigate('/events');
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível excluir o evento.'),
+    });
 
     if (!event) {
         return (
@@ -115,15 +153,42 @@ export default function EventDetail() {
 
     const isOperation = event.kind !== 'REUNIAO';
 
+    const handleDelete = () => {
+        const confirmed = window.confirm(
+            `Excluir o evento "${event.title}"? Escala, ocorrências e arquivos associados deixarão de aparecer no sistema. Essa ação não pode ser desfeita.`,
+        );
+        if (confirmed) removeMutation.mutate();
+    };
+
     return (
-        <PageLayout title={event.title} subtitle={format(new Date(event.startDate), 'dd/MM/yyyy HH:mm')} icon={<CalendarClock size={16} />}>
+        <PageLayout title={event.title} subtitle={formatAppDate(event.startDate, 'dd/MM/yyyy HH:mm')} icon={<CalendarClock size={16} />}>
             <BackLink onClick={() => navigate('/events')}>
                 <ArrowLeft size={14} /> Voltar para eventos
             </BackLink>
 
+            <HeaderActions>
+                <EditEventButton event={event} />
+                <Button $variant="ghost" onClick={handleDelete} disabled={removeMutation.isPending}>
+                    <Trash2 size={14} /> Excluir evento
+                </Button>
+            </HeaderActions>
+
             <InfoRow>
                 {event.location && <span><strong>Local:</strong> {event.location}</span>}
-                <span><strong>Status:</strong> {event.status}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <strong>Status:</strong>
+                    <Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge>
+                    <Select
+                        value={event.status}
+                        onChange={(e) => statusMutation.mutate(e.target.value as EventStatus)}
+                        disabled={statusMutation.isPending}
+                        style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem' }}
+                    >
+                        {EVENT_STATUS_VALUES.map((status) => (
+                            <option key={status} value={status}>{STATUS_LABEL[status]}</option>
+                        ))}
+                    </Select>
+                </span>
                 {isOperation && event.operation?.estimatedAudienceCount != null && (
                     <span><strong>Público estimado:</strong> {event.operation.estimatedAudienceCount}</span>
                 )}
@@ -160,6 +225,105 @@ export default function EventDetail() {
                 <Tabs.Content value="files"><FilesTab eventId={eventId} /></Tabs.Content>
             </Tabs.Root>
         </PageLayout>
+    );
+}
+
+interface EditEventForm {
+    title: string;
+    location: string;
+    startDate: string;
+    endDate: string;
+    estimatedAudienceCount: string;
+    notes: string;
+}
+
+/** Botão + modal de edição do tronco do evento. `kind` é imutável (decisão 2 do docs/decisoes.md) — a pauta de reunião tem endpoint próprio (aba Reunião). */
+function EditEventButton({ event }: { event: AppEvent }) {
+    const [modalOpen, setModalOpen] = useState(false);
+    const queryClient = useQueryClient();
+    const isOperation = event.kind !== 'REUNIAO';
+
+    const { register, handleSubmit, reset } = useForm<EditEventForm>();
+
+    const openModal = () => {
+        reset({
+            title: event.title,
+            location: event.location ?? '',
+            startDate: toDateTimeLocalValue(event.startDate),
+            endDate: toDateTimeLocalValue(event.endDate),
+            estimatedAudienceCount: event.operation?.estimatedAudienceCount != null ? String(event.operation.estimatedAudienceCount) : '',
+            notes: event.operation?.notes ?? '',
+        });
+        setModalOpen(true);
+    };
+
+    const updateMutation = useMutation({
+        mutationFn: (input: EditEventForm) =>
+            eventsApi.update(event.id, {
+                title: input.title,
+                location: input.location || undefined,
+                startDate: input.startDate,
+                endDate: input.endDate || undefined,
+                estimatedAudienceCount: input.estimatedAudienceCount ? Number(input.estimatedAudienceCount) : undefined,
+                notes: input.notes || undefined,
+            }),
+        onSuccess: () => {
+            toast.success('Evento atualizado.');
+            queryClient.invalidateQueries({ queryKey: ['events', event.id] });
+            queryClient.invalidateQueries({ queryKey: ['events'] });
+            setModalOpen(false);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível salvar as alterações.'),
+    });
+
+    return (
+        <>
+            <Button $variant="secondary" onClick={openModal}>
+                <Pencil size={14} /> Editar evento
+            </Button>
+            <Modal open={modalOpen} onOpenChange={setModalOpen} title={`Editar: ${KIND_LABEL[event.kind]}`} width="560px">
+                <Form onSubmit={handleSubmit((data) => updateMutation.mutate(data))}>
+                    <Field>
+                        <Label htmlFor="edit-title">Título</Label>
+                        <Input id="edit-title" {...register('title', { required: true })} />
+                    </Field>
+
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="edit-startDate">Data/hora de início</Label>
+                            <Input id="edit-startDate" type="datetime-local" {...register('startDate', { required: true })} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="edit-endDate">Data/hora de término (opcional)</Label>
+                            <Input id="edit-endDate" type="datetime-local" {...register('endDate')} />
+                        </Field>
+                    </FieldRow>
+
+                    <Field>
+                        <Label htmlFor="edit-location">Local</Label>
+                        <Input id="edit-location" {...register('location')} />
+                    </Field>
+
+                    {isOperation && (
+                        <>
+                            <Field>
+                                <Label htmlFor="edit-estimatedAudienceCount">Estimativa de público (opcional)</Label>
+                                <Input id="edit-estimatedAudienceCount" type="number" min={0} {...register('estimatedAudienceCount')} />
+                            </Field>
+                            <Field>
+                                <Label htmlFor="edit-notes">Observações</Label>
+                                <Textarea id="edit-notes" {...register('notes')} />
+                            </Field>
+                        </>
+                    )}
+
+                    <FormActions>
+                        <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                        <Button type="submit" disabled={updateMutation.isPending}>{updateMutation.isPending ? 'Salvando...' : 'Salvar'}</Button>
+                    </FormActions>
+                </Form>
+            </Modal>
+        </>
     );
 }
 
@@ -212,7 +376,7 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                             <Tr key={d.id}>
                                 <Td>{d.staffMember.user.name}</Td>
                                 <Td>{d.role}</Td>
-                                <Td>{format(new Date(d.shiftStart), 'dd/MM HH:mm')} — {format(new Date(d.shiftEnd), 'HH:mm')}</Td>
+                                <Td>{formatAppDate(d.shiftStart, 'dd/MM HH:mm')} — {formatAppDate(d.shiftEnd, 'HH:mm')}</Td>
                                 <Td><Badge $tone={d.status === 'CONFIRMED' ? 'success' : d.status === 'DECLINED' ? 'danger' : 'warning'}>{DESIGNATION_STATUS_LABEL[d.status]}</Badge></Td>
                                 <Td>
                                     <Select value={d.status} onChange={(e) => statusMutation.mutate({ designationId: d.id, status: e.target.value as DesignationStatus })}>
@@ -295,7 +459,7 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                 <Td><Badge>{OCCURRENCE_TYPES.find((t) => t.value === r.type)?.label ?? r.type}</Badge></Td>
                                 <Td>{r.title}</Td>
                                 <Td>{r.description || '—'}</Td>
-                                <Td>{format(new Date(r.createdAt), 'dd/MM/yyyy HH:mm')}</Td>
+                                <Td>{formatAppDate(r.createdAt, 'dd/MM/yyyy HH:mm')}</Td>
                             </Tr>
                         ))}
                     </tbody>
@@ -454,24 +618,49 @@ function AttendanceTab({ eventId }: { eventId: string }) {
 
 function FilesTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
+    const [mode, setMode] = useState<'link' | 'upload'>('link');
+    const [file, setFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
     const queryClient = useQueryClient();
     const { data: files } = useQuery({ queryKey: ['events', eventId, 'files'], queryFn: () => eventFilesApi.list(eventId) });
-    const { register, handleSubmit, reset } = useForm<{ name: string; externalUrl: string }>();
+    const { register, handleSubmit, reset, watch } = useForm<{ name: string; externalUrl: string }>();
+    const name = watch('name');
 
     const createMutation = useMutation({
-        mutationFn: (input: { name: string; externalUrl: string }) => eventFilesApi.create(eventId, input),
+        mutationFn: async (input: { name: string; externalUrl: string }) => {
+            if (mode === 'upload') {
+                if (!file) throw new Error('Selecione um arquivo para enviar.');
+                setIsUploading(true);
+                try {
+                    const { storageKey } = await mediaApi.upload(file, 'event-files');
+                    return eventFilesApi.create(eventId, { name: input.name, storageKey });
+                } finally {
+                    setIsUploading(false);
+                }
+            }
+            return eventFilesApi.create(eventId, { name: input.name, externalUrl: input.externalUrl });
+        },
         onSuccess: () => {
             toast.success('Arquivo adicionado.');
             queryClient.invalidateQueries({ queryKey: ['events', eventId, 'files'] });
             setModalOpen(false);
         },
-        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível adicionar o arquivo.'),
+        onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Não foi possível adicionar o arquivo.'),
     });
+
+    const openModal = () => {
+        reset({ name: '', externalUrl: '' });
+        setMode('link');
+        setFile(null);
+        setModalOpen(true);
+    };
+
+    const canSubmit = mode === 'link' ? true : Boolean(file);
 
     return (
         <>
             <ToolbarRow>
-                <Button onClick={() => { reset({ name: '', externalUrl: '' }); setModalOpen(true); }}>
+                <Button onClick={openModal}>
                     <Plus size={16} /> Adicionar link/arquivo
                 </Button>
             </ToolbarRow>
@@ -489,7 +678,7 @@ function FilesTab({ eventId }: { eventId: string }) {
                                         </a>
                                     ) : '—'}
                                 </Td>
-                                <Td>{format(new Date(f.createdAt), 'dd/MM/yyyy')}</Td>
+                                <Td>{formatAppDate(f.createdAt, 'dd/MM/yyyy')}</Td>
                             </Tr>
                         ))}
                     </tbody>
@@ -503,13 +692,36 @@ function FilesTab({ eventId }: { eventId: string }) {
                         <Label htmlFor="name">Nome</Label>
                         <Input id="name" placeholder="ex: Pauta da reunião" {...register('name', { required: true })} />
                     </Field>
+
                     <Field>
-                        <Label htmlFor="externalUrl">Link</Label>
-                        <Input id="externalUrl" placeholder="https://..." {...register('externalUrl', { required: true })} />
+                        <Label htmlFor="mode">Tipo de anexo</Label>
+                        <Select id="mode" value={mode} onChange={(e) => { setMode(e.target.value as 'link' | 'upload'); setFile(null); }}>
+                            <option value="link">Link (URL já hospedada)</option>
+                            <option value="upload">Enviar arquivo</option>
+                        </Select>
                     </Field>
+
+                    {mode === 'link' ? (
+                        <Field>
+                            <Label htmlFor="externalUrl">Link</Label>
+                            <Input id="externalUrl" placeholder="https://..." {...register('externalUrl', { required: mode === 'link' })} />
+                        </Field>
+                    ) : (
+                        <Field>
+                            <Label htmlFor="file">Arquivo</Label>
+                            <input
+                                id="file"
+                                type="file"
+                                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                            />
+                        </Field>
+                    )}
+
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? 'Salvando...' : 'Adicionar'}</Button>
+                        <Button type="submit" disabled={!name || !canSubmit || createMutation.isPending}>
+                            {isUploading ? 'Enviando...' : createMutation.isPending ? 'Salvando...' : 'Adicionar'}
+                        </Button>
                     </FormActions>
                 </Form>
             </Modal>
