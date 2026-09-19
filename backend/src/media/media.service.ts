@@ -38,6 +38,7 @@ const allowedMimeTypes: Record<UploadContext, string[]> = {
     'event-files': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
     'event-floor-plan': IMAGE_TYPES,
     avatars: IMAGE_TYPES,
+    'email-templates': IMAGE_TYPES,
 };
 
 @Injectable()

@@ -24,13 +24,15 @@ const AuthLayoutContainer = styled.div`
     min-height: 100vh;
     min-height: 100dvh;
     position: relative;
-    background: linear-gradient(135deg, #b02a1f 0%, #d9480f 50%, #e8590c 100%);
+    background: linear-gradient(135deg, #8a1f16 0%, #b02a1f 35%, #d9480f 70%, #e8590c 100%);
+    overflow: hidden;
 
     &::before {
         content: '';
         position: absolute;
         inset: 0;
-        background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+        background: radial-gradient(circle at 15% 10%, rgba(255, 255, 255, 0.09) 0%, transparent 45%),
+            radial-gradient(circle at 85% 90%, rgba(255, 255, 255, 0.07) 0%, transparent 45%);
         pointer-events: none;
     }
 `;
@@ -64,11 +66,11 @@ const AuthCard = styled.div`
     background: rgba(255, 255, 255, 0.12);
     border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25), 0 8px 32px rgba(0, 0, 0, 0.12);
     text-align: center;
     animation: ${fadeIn} 0.5s ease-out;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 
     @media (max-width: 500px) {
         max-width: 90%;
@@ -83,6 +85,8 @@ const LogoBadge = styled.div`
     margin: 0 auto 1.5rem;
     border-radius: 16px;
     background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;

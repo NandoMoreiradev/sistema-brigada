@@ -1,15 +1,28 @@
 // backend/src/events/designations.service.ts
 // Escala de staff em evento de atuação (decisão 14: turnos/horários, não uma
 // designação única para o evento inteiro).
+//
+// Fase 2 de posse de dado (docs/decisoes.md, decisão 22): `updateStatus`
+// (confirmar/recusar escala) passa a exigir `events:manage` (admin) OU que a
+// designação seja do próprio StaffMember do usuário chamador — antes disso
+// qualquer ORG_USER autenticado podia confirmar/recusar a designação de
+// qualquer outra pessoa.
+//
+// Decisão 19 (docs/decisoes.md): `create`/`createBulk` bloqueiam designar um
+// staff cuja única qualificação registrada (certificado de turma OU
+// certificação externa) esteja vencida — completa a parte de "gestão ativa"
+// da reciclagem que faltava (o alerta de vencimento já existia).
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
-import { DesignationStatus } from '@prisma/client';
+import { DesignationStatus, CertificateStatus } from '@prisma/client';
 import { parseAppDateTime } from '../common/datetime';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 const designationInclude = {
     staffMember: { include: { user: { select: { id: true, name: true, email: true } } } },
@@ -43,6 +56,7 @@ export class DesignationsService {
         }
 
         const staffMember = await this.validateStaffAvailability(dto.staffMemberId, organizationId, shiftStart, shiftEnd);
+        await this.assertHasValidQualification(staffMember);
 
         const designation = await this.prisma.designation.create({
             data: {
@@ -96,11 +110,13 @@ export class DesignationsService {
             throw new BadRequestException('Uma equipe (dupla/trio) precisa de pelo menos 2 pessoas.');
         }
 
-        // Valida todo mundo (pertence à org + sem conflito de horário) ANTES de
-        // criar qualquer coisa — não queremos escalar metade do grupo e falhar no meio.
+        // Valida todo mundo (pertence à org + sem conflito de horário + qualificação
+        // em dia) ANTES de criar qualquer coisa — não queremos escalar metade do
+        // grupo e falhar no meio.
         const staffMembers = await Promise.all(
             staffMemberIds.map((id) => this.validateStaffAvailability(id, organizationId, shiftStart, shiftEnd)),
         );
+        await Promise.all(staffMembers.map((staffMember) => this.assertHasValidQualification(staffMember)));
 
         const teamName = dto.asTeam ? dto.teamName?.trim() || (await this.generateTeamName(operationId, staffMembers.length)) : undefined;
 
@@ -145,7 +161,10 @@ export class DesignationsService {
     private async validateStaffAvailability(staffMemberId: string, organizationId: string, shiftStart: Date, shiftEnd: Date) {
         const staffMember = await this.prisma.staffMember.findFirst({
             where: { id: staffMemberId, organizationId },
-            include: { user: { select: { id: true, name: true, email: true } } },
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+                externalCertifications: { select: { expiresAt: true } },
+            },
         });
         if (!staffMember) {
             throw new NotFoundException(`Membro de equipe (ID ${staffMemberId}) não pertence a esta organização.`);
@@ -187,6 +206,39 @@ export class DesignationsService {
         return `${noun} ${existingCount + 1}`;
     }
 
+    /**
+     * Decisão 19: bloqueia a designação quando o staff tem uma qualificação
+     * (certificado de turma concluída OU certificação externa) vencida e
+     * nenhuma outra ainda válida. Quem nunca teve nenhuma das duas (ex.:
+     * coordenador que não precisa de certificação específica) não é
+     * bloqueado — não há nada para checar.
+     */
+    private async assertHasValidQualification(staffMember: {
+        userId: string;
+        externalCertifications: { expiresAt: Date | null }[];
+    }) {
+        const now = new Date();
+        const isValid = (expiresAt: Date | null) => !expiresAt || expiresAt > now;
+
+        const courseCertificates = await this.prisma.certificate.findMany({
+            where: {
+                status: { not: CertificateStatus.REVOKED },
+                enrollment: { studentProfile: { userId: staffMember.userId } },
+            },
+            select: { expiresAt: true },
+        });
+
+        const qualifications = [...staffMember.externalCertifications, ...courseCertificates];
+        if (qualifications.length === 0) return;
+
+        const hasValid = qualifications.some((q) => isValid(q.expiresAt));
+        if (!hasValid) {
+            throw new ConflictException(
+                'Este membro da equipe não tem certificado ou certificação válida no momento — a mais recente está vencida.',
+            );
+        }
+    }
+
     async findAll(eventId: string, organizationId: string) {
         const operation = await this.eventsService.requireEventOperation(eventId, organizationId);
         return this.prisma.designation.findMany({
@@ -196,7 +248,13 @@ export class DesignationsService {
         });
     }
 
-    async updateStatus(eventId: string, organizationId: string, designationId: string, status: DesignationStatus) {
+    async updateStatus(
+        eventId: string,
+        organizationId: string,
+        designationId: string,
+        status: DesignationStatus,
+        user: AuthenticatedUser,
+    ) {
         const event = await this.eventsService.findOne(eventId, organizationId);
         if (!event.operation) {
             throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
@@ -207,6 +265,11 @@ export class DesignationsService {
         });
         if (!designation) {
             throw new NotFoundException(`Designação com ID ${designationId} não encontrada neste evento.`);
+        }
+
+        const isOwnDesignation = designation.staffMember.userId === user.id;
+        if (!isOwnDesignation && !userHasPermission(user, 'events:manage')) {
+            throw new ForbiddenException('Você só pode confirmar ou recusar a própria designação.');
         }
 
         const updated = await this.prisma.designation.update({ where: { id: designationId }, data: { status }, include: designationInclude });

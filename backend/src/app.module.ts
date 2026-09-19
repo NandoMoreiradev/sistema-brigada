@@ -8,7 +8,8 @@
 // brigada/reunião — o tronco polimórfico `Event`, ver docs/decisoes.md) e
 // Permissions (catálogo de permissões + CRUD de cargo/RoleAssignment por
 // organização, que ativa o `@RequirePermission` já usado nos controllers
-// acima).
+// acima) e Me (Fase 2 de posse de dado — endpoints /me/* com o recorte do
+// próprio usuário autenticado, ver docs/decisoes.md).
 //
 // `ScheduleModule.forRoot()` habilita `@Cron(...)` em qualquer provider da
 // aplicação — usado hoje só pelo job diário de certificados vencendo em
@@ -33,6 +34,10 @@ import { CertificatesModule } from './certificates/certificates.module';
 import { StaffModule } from './staff/staff.module';
 import { EventsModule } from './events/events.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { MeModule } from './me/me.module';
+import { CommunicationsModule } from './communications/communications.module';
+import { EmailTemplatesModule } from './email-templates/email-templates.module';
+import { TransactionalEmailModule } from './transactional-email/transactional-email.module';
 
 @Module({
     imports: [
@@ -50,6 +55,10 @@ import { PermissionsModule } from './permissions/permissions.module';
         StaffModule,
         EventsModule,
         PermissionsModule,
+        MeModule,
+        CommunicationsModule,
+        EmailTemplatesModule,
+        TransactionalEmailModule,
     ],
     controllers: [AppController],
 })

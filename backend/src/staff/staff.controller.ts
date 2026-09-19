@@ -6,8 +6,6 @@ import { CreateExternalCertificationDto } from './dto/create-external-certificat
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
-import { Roles } from '../auth/decorator/roles.decorator';
-import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
@@ -34,8 +32,13 @@ export class StaffController {
         return this.staffService.promote(dto.userId, this.requireOrganizationId(organizationId), user.id);
     }
 
+    /**
+     * Fase 3 de posse de dado (docs/decisoes.md): a listagem completa da
+     * equipe fica atrás de `staff:manage` — quem só quer ver a própria
+     * designação usa `GET /me/designations`, não esta lista.
+     */
     @Get()
-    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER)
+    @RequirePermission('staff:manage')
     findAll(@ActiveOrganizationId() organizationId: string | undefined) {
         return this.staffService.findAll(this.requireOrganizationId(organizationId));
     }

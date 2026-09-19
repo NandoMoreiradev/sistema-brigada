@@ -20,6 +20,8 @@ import { eventsApi, type CreateEventInput } from '@/services/events';
 import { toast } from '@/utils/toast';
 import { formatAppDate } from '@/utils/datetime';
 import { KIND_LABEL, STATUS_LABEL, STATUS_TONE } from '@/utils/eventLabels';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 
 const schema = z.object({
     kind: z.enum(['ASSEMBLEIA', 'CONGRESSO', 'ATUACAO_BRIGADA', 'REUNIAO']),
@@ -37,6 +39,12 @@ export default function Events() {
     const [modalOpen, setModalOpen] = useState(false);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // A página /events é aberta a toda a organização (reuniões/assembleias não são
+    // um módulo administrativo, ver docs/decisoes.md), mas criar evento exige
+    // `events:manage` no backend — sem esconder o botão, quem não tem a permissão
+    // via um 403 inesperado do interceptor global ao tentar salvar.
+    const canManageEvents = hasPermission(user, 'events:manage');
 
     const { data, isLoading } = useQuery({ queryKey: ['events'], queryFn: () => eventsApi.list() });
 
@@ -85,9 +93,11 @@ export default function Events() {
             subtitle="Assembleias, congressos e atuações de brigada"
             icon={<CalendarClock size={16} />}
             actions={
-                <Button onClick={openCreate}>
-                    <Plus size={16} /> Novo evento
-                </Button>
+                canManageEvents ? (
+                    <Button onClick={openCreate}>
+                        <Plus size={16} /> Novo evento
+                    </Button>
+                ) : undefined
             }
         >
             <TableWrapper>

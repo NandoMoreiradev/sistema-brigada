@@ -1,10 +1,12 @@
 // backend/src/courses/courses.controller.ts
 //
-// Leitura liberada para qualquer papel autenticado da organização (portal
-// único com views por papel — decisão 11 do docs/decisoes.md); escrita exige
-// a permissão `courses:manage` (SUPER_ADMIN/GROUP_ADMIN/ORG_ADMIN sempre
-// passam via bypass do PermissionsGuard; ORG_USER precisa de um cargo com
-// essa permissão — ver backend/src/permissions/).
+// Fase 3 de posse de dado (docs/decisoes.md): a listagem completa (`findAll`)
+// fica atrás de `courses:manage` — quem só quer ver a própria turma (aluno
+// matriculado ou instrutor) usa `GET /me/courses`, não esta lista. O detalhe
+// (`findOne`) continua aberto a ALL_ORG_ROLES no guard, mas
+// CoursesService.findOne checa posse por dentro (courses:manage OU
+// instrutor/matriculado nesta turma específica) — é isso que permite ao
+// aluno/instrutor abrir a própria turma sem enxergar as outras.
 
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { CoursesService } from './courses.service';
@@ -44,15 +46,19 @@ export class CoursesController {
     }
 
     @Get()
-    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER)
+    @RequirePermission('courses:manage')
     findAll(@Query() query: ListCoursesDto, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.coursesService.findAll(this.requireOrganizationId(organizationId), query);
     }
 
     @Get(':id')
     @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER)
-    findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.coursesService.findOne(id, this.requireOrganizationId(organizationId));
+    findOne(
+        @Param('id') id: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.coursesService.findOne(id, this.requireOrganizationId(organizationId), user);
     }
 
     @Patch(':id')

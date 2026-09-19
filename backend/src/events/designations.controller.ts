@@ -9,6 +9,8 @@ import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.g
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
@@ -51,7 +53,12 @@ export class DesignationsController {
         return this.designationsService.findAll(eventId, this.requireOrganizationId(organizationId));
     }
 
-    /** Confirmar/recusar a própria escala é o caso de uso mais comum — por isso liberado a qualquer papel autenticado. */
+    /**
+     * Confirmar/recusar a própria escala é o caso de uso mais comum — por isso
+     * o guard de role fica aberto a qualquer papel autenticado. A posse (só a
+     * própria designação, a menos que tenha `events:manage`) é checada dentro
+     * de DesignationsService.updateStatus (Fase 2, docs/decisoes.md).
+     */
     @Patch(':designationId/status')
     @Roles(...ALL_ORG_ROLES)
     updateStatus(
@@ -59,8 +66,15 @@ export class DesignationsController {
         @Param('designationId') designationId: string,
         @Body() dto: UpdateDesignationStatusDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.designationsService.updateStatus(eventId, this.requireOrganizationId(organizationId), designationId, dto.status);
+        return this.designationsService.updateStatus(
+            eventId,
+            this.requireOrganizationId(organizationId),
+            designationId,
+            dto.status,
+            user,
+        );
     }
 
     @Delete(':designationId')
