@@ -25,6 +25,11 @@ model Organization {
   parentOrganizationId String?
   groupName            String?
   enabledModules       String[]  @default([])
+  /// Chave Resend própria da academia. Quando ausente, o envio cai para
+  /// RESEND_API_KEY (conta global da plataforma) — ver EmailSenderFactory.
+  resendApiKey         String?
+  emailFromAddress     String?
+  emailFromName        String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   deletedAt            DateTime?
@@ -38,6 +43,7 @@ model Organization {
   events              Event[]
   rooms               Room[]
   certificateTemplate CertificateTemplate?
+  emailTemplates      EmailTemplate[]
 
   @@index([parentOrganizationId])
 }
@@ -78,6 +84,7 @@ model User {
   meetingAttendances    MeetingAttendance[]
   integrations          UserIntegration[]
   notifications         Notification[]
+  createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
 
   @@index([organizationId])
 }
@@ -183,6 +190,12 @@ model Course {
   /// Validade em meses do certificado emitido nesta turma (decisão 19)
   recyclingValidityMonths      Int?
   recommendedRecyclingCourseId String?
+  /// Conteúdo programático (texto livre) — vira uma 2ª página no PDF do
+  /// certificado quando preenchido (ver certificate-pdf.service.ts). Texto
+  /// livre em vez de uma estrutura rígida de módulos/tópicos porque cursos
+  /// de brigada variam muito de formato (decisão 17) — a academia escreve do
+  /// jeito que já usa na ementa impressa dela.
+  syllabus                     String?   @db.Text
   active                       Boolean   @default(true)
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
@@ -613,6 +626,41 @@ model Notification {
 
   @@index([userId, read])
   @@index([organizationId])
+}
+
+// ================================= E-MAIL TRANSACIONAL =================================
+// Adaptado de email-templates/ + communications/ do maskotCrmEdu, sem os pedaços que não têm
+// destino neste produto: sem billing/suspensão de envio, sem verificação de domínio DNS
+// in-app (a academia usa a chave Resend da própria conta, já configurada por fora), sem
+// tracking de abertura/bounce por webhook, sem construtor de campanha em massa.
+
+enum EmailTriggerType {
+  ORGANIZATION_ADMIN_WELCOME
+  PASSWORD_RESET
+  CERTIFICATE_EXPIRING
+}
+
+/// organizationId = null -> template padrão global (usado quando a academia não tem override).
+/// designJson = null -> envio usa só `body` (HTML puro); populado quando alguém salva pelo
+/// construtor visual (frontend/src/components/email-builder, portado do maskotCrmEdu).
+model EmailTemplate {
+  id             String            @id @default(cuid())
+  name           String
+  subject        String
+  body           String            @db.Text
+  designJson     Json?
+  trigger        EmailTriggerType?
+  organizationId String?
+  createdById    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("EmailTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, trigger])
+  @@index([organizationId])
+  @@index([trigger])
 }
 
 // ================================= DISPONIBILIDADE =================================

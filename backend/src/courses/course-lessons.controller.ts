@@ -7,6 +7,11 @@
 // matrícula etc.). Só a exclusão de aula fica atrás de `courses:manage` —
 // apagar conteúdo de terceiros é uma ação mais sensível que publicar o
 // próprio. Marcar progresso é sempre sobre o próprio usuário autenticado.
+//
+// Fase 2 (docs/decisoes.md, decisão 22/25): o guard de role continua aberto a
+// ALL_ORG_ROLES (senão voltaríamos a exigir `courses:manage`), mas agora o
+// service (CourseLessonsService.assertCanEditLessons) checa posse — só quem
+// tem `courses:manage` OU é CourseInstructor desta turma passa.
 
 import { Controller, Post, Body, Patch, Put, Param, Delete, UseGuards, BadRequestException } from '@nestjs/common';
 import { CourseLessonsService } from './course-lessons.service';
@@ -42,8 +47,9 @@ export class CourseLessonsController {
         @Param('courseId') courseId: string,
         @Body() dto: CreateCourseLessonDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.courseLessonsService.create(courseId, this.requireOrganizationId(organizationId), dto);
+        return this.courseLessonsService.create(courseId, this.requireOrganizationId(organizationId), dto, user);
     }
 
     @Patch(':lessonId')
@@ -53,8 +59,9 @@ export class CourseLessonsController {
         @Param('lessonId') lessonId: string,
         @Body() dto: UpdateCourseLessonDto,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.courseLessonsService.update(courseId, this.requireOrganizationId(organizationId), lessonId, dto);
+        return this.courseLessonsService.update(courseId, this.requireOrganizationId(organizationId), lessonId, dto, user);
     }
 
     @Delete(':lessonId')

@@ -19,6 +19,8 @@ import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, Fi
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { eventsApi, type EventKind, type CreateEventInput } from '@/services/events';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import type { EventStatus } from '@/types';
 
 const schema = z.object({
@@ -33,21 +35,21 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
-const KIND_LABEL: Record<EventKind, string> = {
+export const KIND_LABEL: Record<EventKind, string> = {
     ASSEMBLEIA: 'Assembleia',
     CONGRESSO: 'Congresso',
     ATUACAO_BRIGADA: 'Atuação de brigada',
     REUNIAO: 'Reunião',
 };
 
-const STATUS_LABEL: Record<EventStatus, string> = {
+export const STATUS_LABEL: Record<EventStatus, string> = {
     SCHEDULED: 'Agendado',
     ONGOING: 'Em andamento',
     COMPLETED: 'Concluído',
     CANCELLED: 'Cancelado',
 };
 
-const STATUS_TONE: Record<EventStatus, 'neutral' | 'success' | 'info' | 'danger'> = {
+export const STATUS_TONE: Record<EventStatus, 'neutral' | 'success' | 'info' | 'danger'> = {
     SCHEDULED: 'info',
     ONGOING: 'success',
     COMPLETED: 'neutral',
@@ -58,6 +60,12 @@ export default function Events() {
     const [modalOpen, setModalOpen] = useState(false);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // A página /events é aberta a toda a organização (reuniões/assembleias não são
+    // um módulo administrativo, ver docs/decisoes.md), mas criar evento exige
+    // `events:manage` no backend — sem esconder o botão, quem não tem a permissão
+    // via um 403 inesperado do interceptor global ao tentar salvar.
+    const canManageEvents = hasPermission(user, 'events:manage');
 
     const { data, isLoading } = useQuery({ queryKey: ['events'], queryFn: () => eventsApi.list() });
 
@@ -106,9 +114,11 @@ export default function Events() {
             subtitle="Assembleias, congressos e atuações de brigada"
             icon={<CalendarClock size={16} />}
             actions={
-                <Button onClick={openCreate}>
-                    <Plus size={16} /> Novo evento
-                </Button>
+                canManageEvents ? (
+                    <Button onClick={openCreate}>
+                        <Plus size={16} /> Novo evento
+                    </Button>
+                ) : undefined
             }
         >
             <TableWrapper>

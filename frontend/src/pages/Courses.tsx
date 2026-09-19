@@ -16,11 +16,13 @@ import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Textarea, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import type { EventStatus } from '@/types';
 
 const schema = z.object({
@@ -30,6 +32,11 @@ const schema = z.object({
     endDate: z.string().optional(),
     category: z.string().optional(),
     vacancies: z.string().optional(),
+    minAttendancePercent: z.string().optional(),
+    requireAllLessonsWatched: z.boolean().optional(),
+    recyclingValidityMonths: z.string().optional(),
+    recommendedRecyclingCourseId: z.string().optional(),
+    syllabus: z.string().optional(),
     instructorUserIds: z.array(z.string()).optional(),
 });
 
@@ -53,9 +60,15 @@ export default function Courses() {
     const [modalOpen, setModalOpen] = useState(false);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    // Esta página já exige `courses:manage` (PermissionRoute), mas escolher instrutor
+    // ao criar turma precisa da lista de pessoas, que é `people:manage` — um cargo com
+    // só `courses:manage` chegaria aqui e levaria um 403 (e o toast do interceptor
+    // global) ao carregar, sem nem tentar usar o formulário.
+    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data, isLoading } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list() });
+    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
 
     const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -63,7 +76,20 @@ export default function Courses() {
     });
 
     const openCreate = () => {
-        reset({ title: '', location: '', startDate: '', endDate: '', category: '', vacancies: '', instructorUserIds: [] });
+        reset({
+            title: '',
+            location: '',
+            startDate: '',
+            endDate: '',
+            category: '',
+            vacancies: '',
+            minAttendancePercent: '75',
+            requireAllLessonsWatched: true,
+            recyclingValidityMonths: '',
+            recommendedRecyclingCourseId: '',
+            syllabus: '',
+            instructorUserIds: [],
+        });
         setModalOpen(true);
     };
 
@@ -88,6 +114,11 @@ export default function Courses() {
             endDate: formData.endDate || undefined,
             category: formData.category || undefined,
             vacancies: formData.vacancies ? Number(formData.vacancies) : undefined,
+            minAttendancePercent: formData.minAttendancePercent ? Number(formData.minAttendancePercent) : undefined,
+            requireAllLessonsWatched: formData.requireAllLessonsWatched,
+            recyclingValidityMonths: formData.recyclingValidityMonths ? Number(formData.recyclingValidityMonths) : undefined,
+            recommendedRecyclingCourseId: formData.recommendedRecyclingCourseId || undefined,
+            syllabus: formData.syllabus || undefined,
             instructorUserIds: formData.instructorUserIds,
         });
     };
@@ -179,6 +210,46 @@ export default function Courses() {
                     <Field>
                         <Label htmlFor="location">Local</Label>
                         <Input id="location" {...register('location')} />
+                    </Field>
+
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="minAttendancePercent">Presença mínima p/ certificado (%)</Label>
+                            <Input id="minAttendancePercent" type="number" min={0} max={100} {...register('minAttendancePercent')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="recyclingValidityMonths">Validade do certificado (meses, opcional)</Label>
+                            <Input id="recyclingValidityMonths" type="number" min={1} placeholder="sem vencimento" {...register('recyclingValidityMonths')} />
+                        </Field>
+                    </FieldRow>
+
+                    <Field>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                            <input type="checkbox" {...register('requireAllLessonsWatched')} />
+                            Exigir todas as vídeo-aulas assistidas para emitir o certificado
+                        </label>
+                    </Field>
+
+                    {courses.length > 0 && (
+                        <Field>
+                            <Label htmlFor="recommendedRecyclingCourseId">Curso de reciclagem recomendado (opcional)</Label>
+                            <select id="recommendedRecyclingCourseId" {...register('recommendedRecyclingCourseId')} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #ced4da' }}>
+                                <option value="">Nenhum</option>
+                                {courses.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.event.title}</option>
+                                ))}
+                            </select>
+                        </Field>
+                    )}
+
+                    <Field>
+                        <Label htmlFor="syllabus">Conteúdo programático (opcional)</Label>
+                        <Textarea
+                            id="syllabus"
+                            rows={5}
+                            placeholder="Cole ou escreva a ementa da turma — vira uma 2ª página no PDF do certificado."
+                            {...register('syllabus')}
+                        />
                     </Field>
 
                     <Field>

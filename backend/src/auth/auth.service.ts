@@ -37,7 +37,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { TwoFactorAuthService } from './two-factor-auth.service';
 import { ConfigService } from '@nestjs/config';
-import { EmailService } from '../common/email.service';
+import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 
 // Hash bcrypt válido, computado uma única vez no carregamento do módulo. Usado
 // como alvo de comparação quando o e-mail não existe, para igualar o tempo de
@@ -55,6 +55,9 @@ type UserWithProfileRelations = Prisma.UserGetPayload<{
                 roleAssignment: { include: { permissions: { select: { id: true } } } };
             };
         };
+        studentProfile: true;
+        staffMember: true;
+        instructorAssignments: { select: { courseId: true } };
     };
 }>;
 
@@ -65,7 +68,7 @@ export class AuthService {
     constructor(
         private jwtService: JwtService,
         private prisma: PrismaService,
-        private emailService: EmailService,
+        private transactionalEmailService: TransactionalEmailService,
         private twoFactorAuthService: TwoFactorAuthService,
         private readonly configService: ConfigService,
     ) {}
@@ -95,6 +98,11 @@ export class AuthService {
                         roleAssignment: { include: { permissions: { select: { id: true } } } },
                     },
                 },
+                studentProfile: true,
+                staffMember: true,
+                // Fase 2 (posse de dado, docs/decisoes.md) — permite ao frontend saber
+                // "de quais turmas sou instrutor" sem precisar de um endpoint à parte.
+                instructorAssignments: { select: { courseId: true } },
             },
         })) as UserWithProfileRelations | null;
 
@@ -155,7 +163,7 @@ export class AuthService {
 
         const accessibleOrganizations = Array.from(accessibleOrganizationsMap.values());
 
-        const { password, twoFactorSecret, roleAssignments, allowedOrganizations, ...userProfile } =
+        const { password, twoFactorSecret, roleAssignments, allowedOrganizations, instructorAssignments, ...userProfile } =
             userWithRelations;
 
         return {
@@ -166,6 +174,10 @@ export class AuthService {
             isSuperAdminRoot: userWithRelations.isSuperAdminRoot,
             systemRoleId: userWithRelations.systemRoleId,
             systemRole: userWithRelations.systemRole,
+            // Fase 2 (posse de dado): studentProfile/staffMember já vêm em userProfile
+            // (relações 1:1 no schema); instructorCourseIds precisa desse achatamento
+            // porque é uma relação N:N (CourseInstructor).
+            instructorCourseIds: instructorAssignments.map((assignment) => assignment.courseId),
         };
     }
 
@@ -244,7 +256,10 @@ export class AuthService {
             try {
                 const token = this.createPasswordResetToken(user.id);
                 const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-                await this.emailService.sendPasswordResetEmail(user.email, user.name, resetLink);
+                await this.transactionalEmailService.sendPasswordResetEmail(
+                    { name: user.name, email: user.email, organizationId: user.organizationId },
+                    resetLink,
+                );
             } catch (error) {
                 this.logger.error(`Falha ao processar a solicitação de redefinição de senha para ${email}: ${error.message}`);
             }
@@ -321,8 +336,12 @@ export class AuthService {
      * sem tabela, o token não pode ser invalidado individualmente antes de
      * expirar (ex.: ao emitir um segundo pedido de reset, o primeiro token
      * ainda funcionaria até expirar) — aceitável para uma janela curta (1h).
+     *
+     * Público porque também é reaproveitado por OrganizationsService.create() para o link de
+     * ativação do administrador recém-criado de uma academia ("definir minha primeira senha"
+     * é, na prática, o mesmo fluxo de "redefinir minha senha").
      */
-    private createPasswordResetToken(userId: string): string {
+    createPasswordResetToken(userId: string): string {
         return this.jwtService.sign(
             { sub: userId, purpose: 'password-reset' },
             { secret: this.configService.get<string>('JWT_SECRET'), expiresIn: '1h' },

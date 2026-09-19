@@ -15,7 +15,7 @@ import { EventsService } from './events.service';
 import { UpdateMeetingDto } from './dto/update-meeting.dto';
 import { MarkMeetingAttendanceDto } from './dto/mark-meeting-attendance.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
-import { userHasPermission } from '../auth/guard/permissions.guard';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 @Injectable()
 export class MeetingsService {

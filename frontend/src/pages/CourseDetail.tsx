@@ -23,6 +23,8 @@ import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/com
 import { coursesApi, roomsApi, classSessionsApi, enrollmentsApi, courseModulesApi, courseLessonsApi } from '@/services/courses';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission } from '@/utils/permissions';
 import type { AttendanceStatus, EnrollmentStatus } from '@/types';
 
 const TabsList = styled(Tabs.List)`
@@ -86,6 +88,14 @@ const sessionSchema = z.object({
 });
 type SessionFormData = z.infer<typeof sessionSchema>;
 
+interface EditCourseFormData {
+    minAttendancePercent: string;
+    requireAllLessonsWatched: boolean;
+    recyclingValidityMonths: string;
+    recommendedRecyclingCourseId: string;
+    syllabus: string;
+}
+
 const ATTENDANCE_LABEL: Record<AttendanceStatus, string> = {
     PRESENT: 'Presente',
     ABSENT: 'Ausente',
@@ -112,17 +122,67 @@ export default function CourseDetail() {
 
     const [sessionModalOpen, setSessionModalOpen] = useState(false);
     const [enrollModalOpen, setEnrollModalOpen] = useState(false);
+    const [editModalOpen, setEditModalOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+    const { user } = useAuth();
+    // Matricular aluno (mutation abaixo) exige `courses:manage` no backend — buscar a
+    // lista de pessoas sem essa permissão só gera um 403 (e o toast de erro do
+    // interceptor global) para quem nunca vai conseguir usar o dropdown mesmo.
+    const canManageEnrollments = hasPermission(user, 'courses:manage');
+    // Editar critérios de certificado também exige courses:manage (PATCH /courses/:id).
+    const canEditCourse = canManageEnrollments;
 
     const { data: course } = useQuery({ queryKey: ['courses', courseId], queryFn: () => coursesApi.get(courseId) });
     const { data: sessions } = useQuery({ queryKey: ['courses', courseId, 'sessions'], queryFn: () => classSessionsApi.list(courseId) });
     const { data: enrollments } = useQuery({ queryKey: ['courses', courseId, 'enrollments'], queryFn: () => enrollmentsApi.list(courseId) });
     const { data: rooms } = useQuery({ queryKey: ['rooms'], queryFn: () => roomsApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', { hasStudentProfile: true }], queryFn: () => peopleApi.list({ hasStudentProfile: true }) });
+    const { data: peopleData } = useQuery({
+        queryKey: ['people', { hasStudentProfile: true }],
+        queryFn: () => peopleApi.list({ hasStudentProfile: true }),
+        enabled: canManageEnrollments,
+    });
+    // Só pra popular o seletor de "curso de reciclagem recomendado" no modal de editar.
+    const { data: allCoursesData } = useQuery({
+        queryKey: ['courses'],
+        queryFn: () => coursesApi.list(),
+        enabled: canEditCourse,
+    });
 
     const invalidateCourse = () => {
         queryClient.invalidateQueries({ queryKey: ['courses', courseId] });
     };
+
+    const { register: registerEdit, handleSubmit: handleSubmitEdit, reset: resetEdit } = useForm<EditCourseFormData>();
+
+    const openEdit = () => {
+        if (!course) return;
+        resetEdit({
+            minAttendancePercent: String(course.minAttendancePercent),
+            requireAllLessonsWatched: course.requireAllLessonsWatched,
+            recyclingValidityMonths: course.recyclingValidityMonths ? String(course.recyclingValidityMonths) : '',
+            recommendedRecyclingCourseId: course.recommendedRecyclingCourseId || '',
+            syllabus: course.syllabus || '',
+        });
+        setEditModalOpen(true);
+    };
+
+    const updateCourseMutation = useMutation({
+        mutationFn: (input: EditCourseFormData) =>
+            coursesApi.update(courseId, {
+                minAttendancePercent: input.minAttendancePercent ? Number(input.minAttendancePercent) : undefined,
+                requireAllLessonsWatched: input.requireAllLessonsWatched,
+                recyclingValidityMonths: input.recyclingValidityMonths ? Number(input.recyclingValidityMonths) : undefined,
+                recommendedRecyclingCourseId: input.recommendedRecyclingCourseId || undefined,
+                syllabus: input.syllabus || undefined,
+            }),
+        onSuccess: () => {
+            toast.success('Critérios de certificado atualizados.');
+            invalidateCourse();
+            setEditModalOpen(false);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível salvar.'),
+    });
 
     const { register: registerSession, handleSubmit: handleSubmitSession, reset: resetSession, formState: { errors: sessionErrors } } = useForm<SessionFormData>({
         resolver: zodResolver(sessionSchema),
@@ -179,6 +239,7 @@ export default function CourseDetail() {
             title={course.event.title}
             subtitle={course.category || undefined}
             icon={<ClipboardList size={16} />}
+            actions={canEditCourse ? <Button $variant="secondary" onClick={openEdit}>Editar critérios</Button> : undefined}
         >
             <BackLink onClick={() => navigate('/courses')}>
                 <ArrowLeft size={14} /> Voltar para turmas
@@ -190,6 +251,8 @@ export default function CourseDetail() {
                 <span><strong>Instrutores:</strong> {course.instructors.map((i) => i.user.name).join(', ') || '—'}</span>
                 <span><strong>Matriculados:</strong> {course._count.enrollments}{course.vacancies ? ` / ${course.vacancies}` : ''}</span>
                 <span><strong>Presença mínima p/ certificado:</strong> {course.minAttendancePercent}%</span>
+                <span><strong>Todas as aulas obrigatórias:</strong> {course.requireAllLessonsWatched ? 'Sim' : 'Não'}</span>
+                <span><strong>Validade do certificado:</strong> {course.recyclingValidityMonths ? `${course.recyclingValidityMonths} meses` : 'Sem vencimento'}</span>
             </InfoRow>
 
             <Tabs.Root defaultValue="sessions">
@@ -243,11 +306,13 @@ export default function CourseDetail() {
                 </Tabs.Content>
 
                 <Tabs.Content value="enrollments">
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-                        <Button onClick={() => setEnrollModalOpen(true)}>
-                            <Plus size={16} /> Matricular aluno
-                        </Button>
-                    </div>
+                    {canManageEnrollments && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                            <Button onClick={() => setEnrollModalOpen(true)}>
+                                <Plus size={16} /> Matricular aluno
+                            </Button>
+                        </div>
+                    )}
                     <TableWrapper>
                         <Table>
                             <Thead>
@@ -354,6 +419,52 @@ export default function CourseDetail() {
                     onClose={() => setActiveSessionId(null)}
                 />
             )}
+
+            {/* Editar critérios de certificado (decisão 17/19, docs/decisoes.md) */}
+            <Modal open={editModalOpen} onOpenChange={setEditModalOpen} title="Editar critérios de certificado">
+                <Form onSubmit={handleSubmitEdit((data) => updateCourseMutation.mutate(data))}>
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="editMinAttendancePercent">Presença mínima p/ certificado (%)</Label>
+                            <Input id="editMinAttendancePercent" type="number" min={0} max={100} {...registerEdit('minAttendancePercent')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="editRecyclingValidityMonths">Validade do certificado (meses, opcional)</Label>
+                            <Input id="editRecyclingValidityMonths" type="number" min={1} placeholder="sem vencimento" {...registerEdit('recyclingValidityMonths')} />
+                        </Field>
+                    </FieldRow>
+                    <Field>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                            <input type="checkbox" {...registerEdit('requireAllLessonsWatched')} />
+                            Exigir todas as vídeo-aulas assistidas para emitir o certificado
+                        </label>
+                    </Field>
+                    <Field>
+                        <Label htmlFor="editRecommendedRecyclingCourseId">Curso de reciclagem recomendado (opcional)</Label>
+                        <Select id="editRecommendedRecyclingCourseId" {...registerEdit('recommendedRecyclingCourseId')}>
+                            <option value="">Nenhum</option>
+                            {(allCoursesData?.data ?? []).filter((c) => c.id !== courseId).map((c) => (
+                                <option key={c.id} value={c.id}>{c.event.title}</option>
+                            ))}
+                        </Select>
+                    </Field>
+                    <Field>
+                        <Label htmlFor="editSyllabus">Conteúdo programático (opcional)</Label>
+                        <Textarea
+                            id="editSyllabus"
+                            rows={5}
+                            placeholder="Cole ou escreva a ementa da turma — vira uma 2ª página no PDF do certificado."
+                            {...registerEdit('syllabus')}
+                        />
+                    </Field>
+                    <FormActions>
+                        <Button type="button" $variant="secondary" onClick={() => setEditModalOpen(false)}>Cancelar</Button>
+                        <Button type="submit" disabled={updateCourseMutation.isPending}>
+                            {updateCourseMutation.isPending ? 'Salvando...' : 'Salvar'}
+                        </Button>
+                    </FormActions>
+                </Form>
+            </Modal>
         </PageLayout>
     );
 }
