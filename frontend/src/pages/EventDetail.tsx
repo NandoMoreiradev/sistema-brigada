@@ -5,7 +5,7 @@
 // de brigada mostram Escala + Ocorrências; reunião mostra Pauta/Ata + Presença.
 // Arquivos é comum aos dois.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Popover from '@radix-ui/react-popover';
@@ -636,7 +636,7 @@ const FloorPlanCanvas = styled.div<{ $placing: boolean }>`
     img { display: block; max-width: 100%; user-select: none; -webkit-user-drag: none; }
 `;
 
-const Pin = styled.button<{ $tone: 'success' | 'warning' | 'info' }>`
+const Pin = styled.button<{ $tone: 'success' | 'warning' | 'info'; $dragging?: boolean }>`
     position: absolute;
     transform: translate(-50%, -50%);
     min-width: 28px;
@@ -648,7 +648,9 @@ const Pin = styled.button<{ $tone: 'success' | 'warning' | 'info' }>`
     color: white;
     font-size: 0.6875rem;
     font-weight: 700;
-    cursor: pointer;
+    cursor: ${({ $dragging }) => ($dragging ? 'grabbing' : 'grab')};
+    touch-action: none;
+    opacity: ${({ $dragging }) => ($dragging ? 0.85 : 1)};
     background: ${({ $tone, theme }) =>
         $tone === 'success' ? theme.colors.success : $tone === 'warning' ? theme.colors.warning : theme.colors.primary};
 `;
@@ -692,6 +694,9 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
     const [isPlacing, setIsPlacing] = useState(false);
     const [pendingPos, setPendingPos] = useState<{ x: number; y: number } | null>(null);
     const [shiftFilter, setShiftFilter] = useState('all');
+    const [dragging, setDragging] = useState<{ postId: string; x: number; y: number } | null>(null);
+    const canvasRef = useRef<HTMLDivElement>(null);
+    const draggedRef = useRef(false);
 
     const { register, handleSubmit, reset } = useForm<{ name: string; capacity: string }>();
 
@@ -729,6 +734,63 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
         },
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover o posto.'),
     });
+
+    const movePostMutation = useMutation({
+        mutationFn: ({ postId, posX, posY }: { postId: string; posX: number; posY: number }) =>
+            eventPostsApi.update(eventId, postId, { posX, posY }),
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: ['events', eventId] });
+            setDragging(null);
+        },
+        onError: async (error: any) => {
+            toast.error(error?.response?.data?.message || 'Não foi possível mover o posto.');
+            await queryClient.invalidateQueries({ queryKey: ['events', eventId] });
+            setDragging(null);
+        },
+    });
+
+    const clampRatio = (value: number) => Math.min(1, Math.max(0, value));
+
+    const relativePosFromEvent = (clientX: number, clientY: number) => {
+        const rect = canvasRef.current!.getBoundingClientRect();
+        return { x: clampRatio((clientX - rect.left) / rect.width), y: clampRatio((clientY - rect.top) / rect.height) };
+    };
+
+    /** Arrastar um posto reposiciona (persiste no pointerup); um clique sem arrastar continua abrindo o popover. */
+    const handlePinPointerDown = (e: React.PointerEvent<HTMLButtonElement>, post: EventPost) => {
+        if (isPlacing) return;
+        e.stopPropagation();
+        draggedRef.current = false;
+
+        const handleMove = (moveEvent: PointerEvent) => {
+            draggedRef.current = true;
+            setDragging({ postId: post.id, ...relativePosFromEvent(moveEvent.clientX, moveEvent.clientY) });
+        };
+        const handleUp = (upEvent: PointerEvent) => {
+            window.removeEventListener('pointermove', handleMove);
+            window.removeEventListener('pointerup', handleUp);
+            if (draggedRef.current) {
+                // Mantém `dragging` (já na posição final) até a mutation assentar — evita
+                // o pino "voltar" pra posição antiga por um instante enquanto o cache não atualiza.
+                const finalPos = relativePosFromEvent(upEvent.clientX, upEvent.clientY);
+                setDragging({ postId: post.id, ...finalPos });
+                movePostMutation.mutate({ postId: post.id, posX: finalPos.x, posY: finalPos.y });
+            } else {
+                setDragging(null);
+            }
+        };
+        window.addEventListener('pointermove', handleMove);
+        window.addEventListener('pointerup', handleUp);
+    };
+
+    const handlePinClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (draggedRef.current) {
+            // Só suprime o clique que ENCERROU o arrasto — sem isso o popover abriria sozinho logo após soltar.
+            e.preventDefault();
+            draggedRef.current = false;
+        }
+    };
 
     const shiftOptions = useMemo(() => {
         const seen = new Map<string, { shiftStart: string; shiftEnd: string }>();
@@ -784,10 +846,19 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
                 </div>
             </ToolbarRow>
 
-            <FloorPlanCanvas $placing={isPlacing} onClick={handleCanvasClick}>
+            {posts.length > 0 && !isPlacing && (
+                <p style={{ fontSize: '0.75rem', color: '#888', marginTop: 0, marginBottom: '0.5rem' }}>
+                    Arraste um posto na planta para reposicioná-lo.
+                </p>
+            )}
+
+            <FloorPlanCanvas ref={canvasRef} $placing={isPlacing} onClick={handleCanvasClick}>
                 <img src={floorPlanUrl} alt="Planta baixa do local" />
                 {posts.map((post) => {
                     if (post.posX == null || post.posY == null) return null;
+                    const isDraggingThis = dragging?.postId === post.id;
+                    const posX = isDraggingThis ? dragging.x : post.posX;
+                    const posY = isDraggingThis ? dragging.y : post.posY;
                     const occupants = designationsForPost(post.id);
                     const tone = post.capacity
                         ? occupants.length >= post.capacity ? 'success' : 'warning'
@@ -797,8 +868,10 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
                             <Popover.Trigger asChild>
                                 <Pin
                                     $tone={tone}
-                                    style={{ left: `${post.posX * 100}%`, top: `${post.posY * 100}%` }}
-                                    onClick={(e) => e.stopPropagation()}
+                                    $dragging={isDraggingThis}
+                                    style={{ left: `${posX * 100}%`, top: `${posY * 100}%` }}
+                                    onPointerDown={(e) => handlePinPointerDown(e, post)}
+                                    onClick={handlePinClick}
                                 >
                                     {occupants.length}{post.capacity ? `/${post.capacity}` : ''}
                                 </Pin>
