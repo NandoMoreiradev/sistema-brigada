@@ -37,7 +37,7 @@ export default function LoginScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             <View style={styles.card}>
-                <Text style={styles.title}>Brigada Treinamentos</Text>
+                <Text style={styles.title}>Ignis</Text>
                 <Text style={styles.subtitle}>Entre com sua conta</Text>
 
                 <Text style={styles.label}>E-mail</Text>

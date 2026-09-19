@@ -277,7 +277,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
                 <Brand>
                     <BrandIcon><Flame size={18} /></BrandIcon>
                     <BrandText>
-                        <strong>Brigada Treinamentos</strong>
+                        <strong>Ignis</strong>
                         <span>Portal de treinamentos</span>
                     </BrandText>
                 </Brand>

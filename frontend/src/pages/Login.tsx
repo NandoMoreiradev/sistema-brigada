@@ -197,7 +197,7 @@ export default function Login() {
     }
 
     return (
-        <AuthLayout title="Brigada Treinamentos" subtitle="Entre com sua conta">
+        <AuthLayout title="Ignis" subtitle="Entre com sua conta">
             <Form onSubmit={handleSubmit(onSubmit)}>
                 <Field>
                     <Label htmlFor="email">E-mail</Label>
