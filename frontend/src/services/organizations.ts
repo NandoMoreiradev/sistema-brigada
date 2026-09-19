@@ -26,7 +26,27 @@ export interface UpdateOrganizationInput {
     emailFromName?: string;
 }
 
+// Subconjunto de UpdateOrganizationInput: espelha UpdateMyOrganizationDto no backend
+// (sem isMatrix/parentOrganizationId — hierarquia é definida pelo SUPER_ADMIN, não
+// autoatendimento da própria academia).
+export interface UpdateMyOrganizationInput {
+    name?: string;
+    subdomain?: string;
+    groupName?: string;
+    resendApiKey?: string;
+    emailFromAddress?: string;
+    emailFromName?: string;
+}
+
 export const organizationsApi = {
+    getMine: async () => {
+        const { data } = await api.get<Organization>('/organizations/me');
+        return data;
+    },
+    updateMine: async (input: UpdateMyOrganizationInput) => {
+        const { data } = await api.patch<Organization>('/organizations/me', input);
+        return data;
+    },
     list: async (search?: string) => {
         const { data } = await api.get<Paginated<Organization & { _count: { users: number; courses: number } }>>(
             '/organizations',
