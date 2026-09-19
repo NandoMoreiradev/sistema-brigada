@@ -9,6 +9,8 @@ import { MeetingsService } from './meetings.service';
 import { MeetingsController } from './meetings.controller';
 import { EventFilesService } from './event-files.service';
 import { EventFilesController } from './event-files.controller';
+import { EventPostsService } from './event-posts.service';
+import { EventPostsController } from './event-posts.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UserIntegrationsModule } from '../user-integrations/user-integrations.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -21,8 +23,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
         OccurrenceReportsController,
         MeetingsController,
         EventFilesController,
+        EventPostsController,
     ],
-    providers: [EventsService, DesignationsService, OccurrenceReportsService, MeetingsService, EventFilesService],
+    providers: [EventsService, DesignationsService, OccurrenceReportsService, MeetingsService, EventFilesService, EventPostsService],
     exports: [EventsService],
 })
 export class EventsModule {}

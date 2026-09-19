@@ -14,18 +14,24 @@
 // Como no create(), qualquer falha aqui é só logada (GoogleCalendarService
 // nunca propaga erro) — o evento local é sempre a fonte da verdade.
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, EventKind } from '@prisma/client';
 import { GoogleCalendarService } from '../user-integrations/google-calendar/google-calendar.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { ListEventsDto } from './dto/list-events.dto';
+import { parseAppDateTime } from '../common/datetime';
 
 const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA];
 
 const eventInclude = {
-    operation: { include: { _count: { select: { designations: true, occurrenceReports: true } } } },
+    operation: {
+        include: {
+            _count: { select: { designations: true, occurrenceReports: true } },
+            posts: { orderBy: { createdAt: 'asc' } },
+        },
+    },
     meeting: { include: { _count: { select: { attendances: true } } } },
     _count: { select: { files: true } },
 } satisfies Prisma.EventInclude;
@@ -38,8 +44,11 @@ export class EventsService {
     ) {}
 
     async create(dto: CreateEventDto, organizationId: string, createdByUserId: string) {
-        const startDate = new Date(dto.startDate);
-        const endDate = dto.endDate ? new Date(dto.endDate) : undefined;
+        const startDate = parseAppDateTime(dto.startDate);
+        const endDate = parseAppDateTime(dto.endDate);
+        if (endDate && endDate <= startDate) {
+            throw new BadRequestException('A data/hora de término deve ser depois da data/hora de início.');
+        }
 
         let meetUrl: string | null = null;
         let googleEventId: string | null = null;
@@ -121,14 +130,20 @@ export class EventsService {
     async update(id: string, organizationId: string, dto: UpdateEventDto) {
         const existing = await this.findOne(id, organizationId);
 
+        const startDate = dto.startDate !== undefined ? parseAppDateTime(dto.startDate) : existing.startDate;
+        const endDate = dto.endDate !== undefined ? parseAppDateTime(dto.endDate) : (existing.endDate ?? undefined);
+        if (endDate && endDate <= startDate) {
+            throw new BadRequestException('A data/hora de término deve ser depois da data/hora de início.');
+        }
+
         const updated = await this.prisma.$transaction(async (tx) => {
             await tx.event.update({
                 where: { id },
                 data: {
                     title: dto.title,
                     location: dto.location,
-                    startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-                    endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+                    startDate: dto.startDate !== undefined ? startDate : undefined,
+                    endDate: dto.endDate !== undefined ? endDate : undefined,
                     status: dto.status,
                 },
             });

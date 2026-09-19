@@ -17,6 +17,8 @@ const allowedContexts = [
     'external-certifications',
     // EventFile.storageKey (pauta, ata, comprovantes de evento)
     'event-files',
+    // EventOperation.floorPlanKey (planta baixa do local, pra plotar EventPost)
+    'event-floor-plan',
     // User.avatarUrl
     'avatars',
     // Imagens inseridas no construtor visual de templates de e-mail (bloco "Imagem")

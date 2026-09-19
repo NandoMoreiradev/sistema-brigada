@@ -36,6 +36,7 @@ const allowedMimeTypes: Record<UploadContext, string[]> = {
     certificates: ['application/pdf'],
     'external-certifications': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
     'event-files': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
+    'event-floor-plan': IMAGE_TYPES,
     avatars: IMAGE_TYPES,
     'email-templates': IMAGE_TYPES,
 };

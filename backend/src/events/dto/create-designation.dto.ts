@@ -20,6 +20,11 @@ export class CreateDesignationDto {
     @IsDateString()
     shiftEnd: string;
 
+    /** Posto de atuação (EventPost) onde essa pessoa vai ficar nesse turno. */
+    @IsString()
+    @IsOptional()
+    postId?: string;
+
     @IsString()
     @IsOptional()
     notes?: string;

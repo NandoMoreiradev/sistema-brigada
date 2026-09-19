@@ -430,10 +430,48 @@ model EventOperation {
   /// Decisão 15: só contagem agregada do público, sem registro nominal
   estimatedAudienceCount Int?
   notes                  String? @db.Text
+  /// Planta baixa do local (imagem) onde os postos de atuação são plotados — ver EventPost.posX/posY
+  floorPlanKey           String?
+  floorPlanUrl           String?
 
   event             Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
   designations      Designation[]
   occurrenceReports OccurrenceReport[]
+  posts             EventPost[]
+  teams             Team[]
+}
+
+/// Posto de atuação (local físico) dentro do evento — ex.: "Portão A", "Palco", "Enfermaria".
+/// posX/posY são relativos (0 a 1) à imagem da planta baixa, pra não depender da resolução da imagem.
+model EventPost {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  capacity         Int?
+  notes            String?  @db.Text
+  posX             Float?
+  posY             Float?
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@index([eventOperationId])
+}
+
+/// Agrupamento nomeado de designações do MESMO evento (decisão do produto: "dupla"/"trio" não é
+/// um vínculo permanente entre pessoas — é só um rótulo por ocasião de escala. A mesma pessoa pode
+/// estar numa Team com Fulano de manhã e em outra Team, com Beltrano, à tarde, no mesmo evento).
+model Team {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@index([eventOperationId])
 }
 
 enum DesignationStatus {
@@ -452,13 +490,19 @@ model Designation {
   shiftStart       DateTime
   shiftEnd         DateTime
   status           DesignationStatus @default(PENDING)
+  postId           String?
+  teamId           String?
   createdAt        DateTime          @default(now())
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
   staffMember    StaffMember    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  post           EventPost?     @relation(fields: [postId], references: [id], onDelete: SetNull)
+  team           Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@index([eventOperationId])
   @@index([staffMemberId])
+  @@index([postId])
+  @@index([teamId])
 }
 
 model OccurrenceReport {
