@@ -12,6 +12,7 @@ export type UploadContext =
     | 'certificates'
     | 'external-certifications'
     | 'event-files'
+    | 'event-floor-plan'
     | 'avatars';
 
 export const mediaApi = {

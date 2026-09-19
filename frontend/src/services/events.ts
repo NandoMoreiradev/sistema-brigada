@@ -7,10 +7,27 @@ import type { AttendanceStatus, EventStatus, Paginated } from '@/types';
 export type EventKind = 'ASSEMBLEIA' | 'CONGRESSO' | 'ATUACAO_BRIGADA' | 'REUNIAO';
 export type DesignationStatus = 'PENDING' | 'CONFIRMED' | 'DECLINED';
 
+export interface EventPost {
+    id: string;
+    name: string;
+    capacity: number | null;
+    notes: string | null;
+    posX: number | null;
+    posY: number | null;
+}
+
+export interface Team {
+    id: string;
+    name: string;
+}
+
 export interface EventOperation {
     id: string;
     estimatedAudienceCount: number | null;
     notes: string | null;
+    floorPlanKey: string | null;
+    floorPlanUrl: string | null;
+    posts: EventPost[];
     _count: { designations: number; occurrenceReports: number };
 }
 
@@ -75,6 +92,8 @@ export interface Designation {
     shiftEnd: string;
     status: DesignationStatus;
     staffMember: { id: string; user: { id: string; name: string; email: string } };
+    post: EventPost | null;
+    team: Team | null;
 }
 
 export const designationsApi = {
@@ -82,8 +101,23 @@ export const designationsApi = {
         const { data } = await api.get<Designation[]>(`/events/${eventId}/designations`);
         return data;
     },
-    create: async (eventId: string, input: { staffMemberId: string; role: string; shiftStart: string; shiftEnd: string }) => {
+    create: async (eventId: string, input: { staffMemberId: string; role: string; shiftStart: string; shiftEnd: string; postId?: string }) => {
         const { data } = await api.post<Designation>(`/events/${eventId}/designations`, input);
+        return data;
+    },
+    createBulk: async (
+        eventId: string,
+        input: {
+            staffMemberIds: string[];
+            role: string;
+            shiftStart: string;
+            shiftEnd: string;
+            postId?: string;
+            asTeam?: boolean;
+            teamName?: string;
+        },
+    ) => {
+        const { data } = await api.post<Designation[]>(`/events/${eventId}/designations/bulk`, input);
         return data;
     },
     updateStatus: async (eventId: string, designationId: string, status: DesignationStatus) => {
@@ -92,6 +126,28 @@ export const designationsApi = {
     },
     remove: async (eventId: string, designationId: string) => {
         await api.delete(`/events/${eventId}/designations/${designationId}`);
+    },
+};
+
+export const eventPostsApi = {
+    list: async (eventId: string) => {
+        const { data } = await api.get<EventPost[]>(`/events/${eventId}/posts`);
+        return data;
+    },
+    create: async (eventId: string, input: { name: string; capacity?: number; notes?: string; posX?: number; posY?: number }) => {
+        const { data } = await api.post<EventPost>(`/events/${eventId}/posts`, input);
+        return data;
+    },
+    update: async (eventId: string, postId: string, input: Partial<{ name: string; capacity: number; notes: string; posX: number; posY: number }>) => {
+        const { data } = await api.patch<EventPost>(`/events/${eventId}/posts/${postId}`, input);
+        return data;
+    },
+    remove: async (eventId: string, postId: string) => {
+        await api.delete(`/events/${eventId}/posts/${postId}`);
+    },
+    setFloorPlan: async (eventId: string, input: { floorPlanKey: string; floorPlanUrl: string }) => {
+        const { data } = await api.patch<{ floorPlanKey: string; floorPlanUrl: string }>(`/events/${eventId}/posts/floor-plan`, input);
+        return data;
     },
 };
 

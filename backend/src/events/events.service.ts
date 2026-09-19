@@ -20,7 +20,12 @@ import { parseAppDateTime } from '../common/datetime';
 const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA];
 
 const eventInclude = {
-    operation: { include: { _count: { select: { designations: true, occurrenceReports: true } } } },
+    operation: {
+        include: {
+            _count: { select: { designations: true, occurrenceReports: true } },
+            posts: { orderBy: { createdAt: 'asc' } },
+        },
+    },
     meeting: { include: { _count: { select: { attendances: true } } } },
     _count: { select: { files: true } },
 } satisfies Prisma.EventInclude;

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Delete, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { DesignationsService } from './designations.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
+import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
 import { UpdateDesignationStatusDto } from './dto/update-designation-status.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -31,6 +32,17 @@ export class DesignationsController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.designationsService.create(eventId, this.requireOrganizationId(organizationId), dto);
+    }
+
+    /** Escala várias pessoas de uma vez pro mesmo turno/posto — opcionalmente formando uma dupla/trio/equipe (asTeam). */
+    @Post('bulk')
+    @RequirePermission('events:manage')
+    createBulk(
+        @Param('eventId') eventId: string,
+        @Body() dto: CreateBulkDesignationDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.designationsService.createBulk(eventId, this.requireOrganizationId(organizationId), dto);
     }
 
     @Get()
