@@ -11,6 +11,14 @@ export interface UpdateProfileInput {
 }
 
 export const authApi = {
+    forgotPassword: async (email: string) => {
+        const { data } = await api.post<{ message: string }>('/auth/forgot-password', { email });
+        return data;
+    },
+    resetPassword: async (token: string, newPassword: string) => {
+        const { data } = await api.post<{ message: string }>('/auth/reset-password', { token, newPassword });
+        return data;
+    },
     updateProfile: async (input: UpdateProfileInput) => {
         const { data } = await api.patch<{ access_token: string }>('/auth/profile', input);
         return data;
