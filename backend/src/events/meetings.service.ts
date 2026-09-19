@@ -3,12 +3,19 @@
 // ClassSession, não há uma "matrícula" prévia definindo quem deveria vir —
 // por isso a presença é uma lista aberta (qualquer usuário da organização
 // pode ser adicionado como presente/ausente), sem roster fixo pré-calculado.
+//
+// Quem pode registrar a presença de quem: cada usuário só pode marcar a
+// PRÓPRIA presença, e uma única vez (autoconfirmação, não editável depois
+// por ele mesmo). Quem tem a permissão `events:manage` pode registrar ou
+// corrigir a presença de qualquer pessoa da organização, a qualquer momento.
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { UpdateMeetingDto } from './dto/update-meeting.dto';
 import { MarkMeetingAttendanceDto } from './dto/mark-meeting-attendance.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 @Injectable()
 export class MeetingsService {
@@ -35,8 +42,22 @@ export class MeetingsService {
         });
     }
 
-    async markAttendance(eventId: string, organizationId: string, dto: MarkMeetingAttendanceDto) {
+    async markAttendance(eventId: string, organizationId: string, dto: MarkMeetingAttendanceDto, currentUser: AuthenticatedUser) {
         const meeting = await this.eventsService.requireMeeting(eventId, organizationId);
+        const canManageOthers = userHasPermission(currentUser, 'events:manage');
+
+        if (!canManageOthers) {
+            if (dto.records.length !== 1 || dto.records[0].userId !== currentUser.id) {
+                throw new ForbiddenException('Você só pode marcar a própria presença.');
+            }
+
+            const existing = await this.prisma.meetingAttendance.findUnique({
+                where: { meetingId_userId: { meetingId: meeting.id, userId: currentUser.id } },
+            });
+            if (existing) {
+                throw new BadRequestException('Sua presença já foi registrada e não pode ser alterada.');
+            }
+        }
 
         const userIds = dto.records.map((r) => r.userId);
         const validUsers = await this.prisma.user.findMany({ where: { id: { in: userIds }, organizationId }, select: { id: true } });

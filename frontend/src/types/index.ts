@@ -30,6 +30,9 @@ export interface User {
     organizationId?: string | null;
     avatarUrl?: string | null;
     directPermissions: string[];
+    // Permissões já resolvidas para a organização ativa (directPermissions +
+    // RoleAssignment), como devolvidas por GET /auth/profile.
+    permissions?: string[];
     isTwoFactorEnabled: boolean;
     isSuperAdminRoot: boolean;
     isActive: boolean;
