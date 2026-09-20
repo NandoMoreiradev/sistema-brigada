@@ -85,6 +85,7 @@ model User {
   integrations          UserIntegration[]
   notifications         Notification[]
   createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
+  externalCertifications ExternalCertification[]
 
   @@index([organizationId])
 }
@@ -158,6 +159,11 @@ model SystemRole {
 
 // ================================= ACADÊMICO =================================
 
+enum PioneerStatus {
+  AUXILIARY
+  REGULAR
+}
+
 model StudentProfile {
   id             String    @id @default(cuid())
   userId         String    @unique
@@ -167,6 +173,14 @@ model StudentProfile {
   healthInfo     Json?
   guardianName   String?
   guardianPhone  String?
+  /// Data de batismo
+  baptismDate    DateTime?
+  /// Ausente = não é pioneiro
+  pioneerStatus  PioneerStatus?
+  /// Nomes das petições assinadas (ex: "Pioneiro regular"); vazio = nenhuma
+  signedPetitions String[] @default([])
+  /// Profissão ou área de estudo
+  profession     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -564,17 +578,21 @@ model StaffMember {
   approvedByUserId String
   approvedAt       DateTime    @default(now())
 
-  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  externalCertifications ExternalCertification[]
-  designations           Designation[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  designations Designation[]
 
   @@index([organizationId])
 }
 
-/// Decisão 10: certificação de profissional externo à escola, registro manual pelo admin
+/// Decisão 32: certificação/qualificação prévia registrada manualmente pelo
+/// admin (ex: já é Bombeiro Civil ou Brigadista Intermediário antes de entrar
+/// na academia) — presa direto no `User`, não em `StaffMember` (decisão 10
+/// original), porque é um fato sobre a pessoa, não sobre o papel dela: um
+/// professor/instrutor que nunca foi promovido a staff de atuação também
+/// pode ter uma qualificação prévia registrada.
 model ExternalCertification {
   id                 String    @id @default(cuid())
-  staffMemberId      String
+  userId             String
   name               String
   issuingOrg         String?
   issuedAt           DateTime?
@@ -583,9 +601,9 @@ model ExternalCertification {
   registeredByUserId String
   createdAt          DateTime  @default(now())
 
-  staffMember StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([staffMemberId])
+  @@index([userId])
   @@index([expiresAt])
 }
 

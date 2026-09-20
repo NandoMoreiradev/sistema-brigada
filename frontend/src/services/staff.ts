@@ -1,11 +1,11 @@
 import { api } from './api';
+import type { ExternalCertification } from './people';
 
 export interface StaffMember {
     id: string;
     status: 'ACTIVE' | 'INACTIVE';
     approvedAt: string;
-    user: { id: string; name: string; email: string; phone?: string | null };
-    externalCertifications: Array<{ id: string; name: string; issuingOrg: string | null; expiresAt: string | null }>;
+    user: { id: string; name: string; email: string; phone?: string | null; externalCertifications: ExternalCertification[] };
     _count: { designations: number };
 }
 

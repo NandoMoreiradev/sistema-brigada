@@ -1,7 +1,9 @@
-// backend/src/staff/dto/create-external-certification.dto.ts
+// backend/src/users/dto/create-external-certification.dto.ts
 //
-// Decisão 10 do docs/decisoes.md: certificação de profissional externo (não
-// formado pela escola) é registro manual pelo admin, sem autocadastro.
+// Decisão 10/32 do docs/decisoes.md: certificação/qualificação que a pessoa
+// já trazia de fora (não formada por esta academia) é registro manual pelo
+// admin, sem autocadastro. Presa direto ao `User` (decisão 32) — qualquer
+// pessoa cadastrada pode ter uma, não só quem foi promovido a staff.
 
 import { IsString, IsNotEmpty, IsOptional, IsDateString } from 'class-validator';
 

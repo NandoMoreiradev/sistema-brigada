@@ -4,17 +4,15 @@
 // docs/decisoes.md), promovido manualmente pelo admin (decisão 9) — pode ser
 // aluno formado da própria escola ou profissional externo (decisão 6),
 // mas mesmo o externo ainda precisa de um `User` (criado via `users/`) antes
-// de virar `StaffMember`; certificação de terceiro registrada manualmente
-// (decisão 10) é o que `ExternalCertification` cobre para quem não se formou
-// aqui.
+// de virar `StaffMember`. Certificação/qualificação prévia (decisão 10)
+// mora em `users/` desde a decisão 32 — é um fato sobre a pessoa, não sobre
+// este papel — por isso só aparece aqui de leitura, via `user.externalCertifications`.
 
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 
 const staffInclude = {
-    user: { select: { id: true, name: true, email: true, phone: true } },
-    externalCertifications: true,
+    user: { select: { id: true, name: true, email: true, phone: true, externalCertifications: true } },
     _count: { select: { designations: true } },
 } as const;
 
@@ -63,20 +61,5 @@ export class StaffService {
         await this.findOne(id, organizationId);
         await this.prisma.staffMember.update({ where: { id }, data: { status } });
         return this.findOne(id, organizationId);
-    }
-
-    async addExternalCertification(staffId: string, organizationId: string, registeredByUserId: string, dto: CreateExternalCertificationDto) {
-        await this.findOne(staffId, organizationId);
-        return this.prisma.externalCertification.create({
-            data: {
-                staffMemberId: staffId,
-                name: dto.name,
-                issuingOrg: dto.issuingOrg,
-                issuedAt: dto.issuedAt ? new Date(dto.issuedAt) : undefined,
-                expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
-                proofFileKey: dto.proofFileKey,
-                registeredByUserId,
-            },
-        });
     }
 }

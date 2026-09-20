@@ -16,12 +16,15 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { SetRoleAssignmentDto } from './dto/set-role-assignment.dto';
+import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as const;
 
@@ -85,5 +88,21 @@ export class UsersController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.usersService.setRoleAssignment(id, this.requireOrganizationId(organizationId), dto.roleAssignmentId ?? null);
+    }
+
+    /**
+     * Decisão 32 do docs/decisoes.md: certificação/qualificação prévia é um
+     * fato sobre a pessoa, não sobre um papel específico (staff/instrutor) —
+     * por isso mora aqui, em `users`, e não em `staff`.
+     */
+    @Post(':id/external-certifications')
+    @RequirePermission('people:manage')
+    addExternalCertification(
+        @Param('id') id: string,
+        @Body() dto: CreateExternalCertificationDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.usersService.addExternalCertification(id, this.requireOrganizationId(organizationId), user.id, dto);
     }
 }
