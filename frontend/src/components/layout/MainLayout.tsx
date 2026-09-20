@@ -21,6 +21,7 @@ import {
     Settings,
     ChevronDown,
     Mail,
+    Eye,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -242,34 +243,73 @@ const Main = styled.div`
     overflow: hidden;
 `;
 
+const ImpersonationBar = styled.div`
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1.25rem;
+    background: ${({ theme }) => theme.colors.warning};
+    color: #4a3800;
+    font-size: 0.8125rem;
+    font-weight: 600;
+
+    button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: ${({ theme }) => theme.radii.pill};
+        border: 1px solid rgba(74, 56, 0, 0.3);
+        background: rgba(255, 255, 255, 0.5);
+        color: #4a3800;
+        font-size: 0.75rem;
+        font-weight: 700;
+        cursor: pointer;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+    }
+`;
+
 const ADMIN_ROLES = ['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN'];
 
 export function MainLayout({ children }: { children: ReactNode }) {
-    const { user, organization, signOut } = useAuth();
+    const { user, organization, signOut, isImpersonating, impersonatedOrganizationName, stopImpersonation } = useAuth();
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-    const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role);
+    const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role) && !isSuperAdmin;
 
+    // SUPER_ADMIN é usuário de plataforma, sem organização própria e sem
+    // organização ativa selecionável na UI (ver docs/decisoes.md) — os itens
+    // abaixo (Turmas/Eventos/Equipe/Alunos/Certificados/Cargos/Modelos de
+    // e-mail) dependem de ActiveOrganizationId no backend e retornam 400 pra
+    // ele. Por isso o menu do SUPER_ADMIN mostra só a seção Plataforma.
+    //
     // Fase 3 de posse de dado (docs/decisoes.md): quem tem a permissão
     // administrativa do módulo vê a listagem completa da organização; quem
     // não tem vê só o recorte pessoal (/me/*). Eventos fica de fora dessa
     // troca de propósito — reuniões/assembleias são abertas a toda a
     // organização por design (ver meetings.service.ts), não só a quem
     // administra.
-    const navItems = [
-        { to: '/dashboard', label: 'Painel', icon: LayoutDashboard },
-        hasPermission(user, 'courses:manage')
-            ? { to: '/courses', label: 'Turmas', icon: GraduationCap }
-            : { to: '/my-courses', label: 'Minhas Turmas', icon: GraduationCap },
-        { to: '/events', label: 'Eventos', icon: CalendarClock },
-        hasPermission(user, 'staff:manage')
-            ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
-            : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
-        ...(hasPermission(user, 'people:manage') ? [{ to: '/students', label: 'Alunos', icon: Users }] : []),
-        hasPermission(user, 'certificates:manage')
-            ? { to: '/certificates', label: 'Certificados', icon: Award }
-            : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
-    ];
+    const navItems = isSuperAdmin
+        ? []
+        : [
+              { to: '/dashboard', label: 'Painel', icon: LayoutDashboard },
+              hasPermission(user, 'courses:manage')
+                  ? { to: '/courses', label: 'Turmas', icon: GraduationCap }
+                  : { to: '/my-courses', label: 'Minhas Turmas', icon: GraduationCap },
+              { to: '/events', label: 'Eventos', icon: CalendarClock },
+              hasPermission(user, 'staff:manage')
+                  ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
+                  : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
+              ...(hasPermission(user, 'people:manage') ? [{ to: '/students', label: 'Alunos', icon: Users }] : []),
+              hasPermission(user, 'certificates:manage')
+                  ? { to: '/certificates', label: 'Certificados', icon: Award }
+                  : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
+          ];
 
     return (
         <Shell>
@@ -305,7 +345,6 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
                     {isSuperAdmin && (
                         <>
-                            <NavDivider />
                             <NavSectionLabel>Plataforma</NavSectionLabel>
                             <NavItem to="/admin/organizations">
                                 <Building2 size={18} />
@@ -328,6 +367,13 @@ export function MainLayout({ children }: { children: ReactNode }) {
             </Sidebar>
 
             <Content>
+                {isImpersonating && (
+                    <ImpersonationBar>
+                        <Eye size={14} />
+                        Você está acessando como <strong>{impersonatedOrganizationName}</strong>
+                        <button onClick={stopImpersonation}>Voltar para admin</button>
+                    </ImpersonationBar>
+                )}
                 <Topbar>
                     <NotificationBell />
                     <TopbarDivider />

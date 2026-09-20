@@ -7,16 +7,19 @@
 // hierarquia matriz/filial (isMatrix/parentOrganizationId) já é suportada
 // diretamente pelos campos do model `Organization`.
 
-import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Role } from '@prisma/client';
+import { Resend } from 'resend';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { ListOrganizationsDto } from './dto/list-organizations.dto';
 import { AuthService } from '../auth/auth.service';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
+import { MailService } from '../communications/mail.service';
 
 @Injectable()
 export class OrganizationsService {
@@ -26,6 +29,7 @@ export class OrganizationsService {
         private readonly prisma: PrismaService,
         private readonly authService: AuthService,
         private readonly transactionalEmailService: TransactionalEmailService,
+        private readonly mailService: MailService,
     ) {}
 
     async create(dto: CreateOrganizationDto) {
@@ -153,5 +157,75 @@ export class OrganizationsService {
     async remove(id: string) {
         await this.findOne(id);
         return this.prisma.organization.delete({ where: { id } });
+    }
+
+    async impersonate(id: string, admin: AuthenticatedUser) {
+        await this.findOne(id);
+        return this.authService.impersonateOrganizationAdmin(id, {
+            id: admin.id,
+            name: admin.name,
+            email: admin.email,
+        });
+    }
+
+    /**
+     * Envia um e-mail de teste usando a configuração de remetente ATUALMENTE salva da
+     * academia (chave Resend própria se houver, senão a da plataforma). Usa
+     * `sendSingleOrThrow` — diferente dos e-mails transacionais, aqui o objetivo é
+     * justamente descobrir se a configuração funciona, então o erro real do Resend
+     * (chave inválida, domínio não verificado etc.) precisa chegar até quem clicou.
+     */
+    async sendTestEmail(id: string, to: string): Promise<{ message: string }> {
+        await this.findOne(id);
+
+        try {
+            await this.mailService.sendSingleOrThrow({
+                organizationId: id,
+                to,
+                subject: 'E-mail de teste — configuração de envio (Ignis)',
+                html: '<p>Se você recebeu este e-mail, a configuração de envio da sua academia no Ignis está funcionando corretamente.</p>',
+            });
+        } catch (error) {
+            throw new BadRequestException(`Não foi possível enviar o e-mail de teste: ${(error as Error).message}`);
+        }
+
+        return { message: `E-mail de teste enviado para ${to} com sucesso.` };
+    }
+
+    /**
+     * Lê (só leitura — não cria/edita nada) os domínios já cadastrados na CONTA Resend cuja
+     * chave a academia colou, pra ela ver aqui dentro se o domínio do remetente escolhido já
+     * está verificado, sem precisar abrir o painel do Resend. A verificação em si (adicionar
+     * o domínio, configurar DNS, clicar em verificar) continua acontecendo só em
+     * resend.com — decisão consciente de manter "bring your own key" (ver docs/decisoes.md).
+     * Sem chave própria configurada, retorna lista vazia (a academia está usando a conta
+     * compartilhada da plataforma, cujos domínios não são dela pra gerenciar).
+     */
+    async getResendDomainStatus(id: string): Promise<{ domains: { name: string; status: string }[] }> {
+        const organization = await this.prisma.organization.findUnique({
+            where: { id },
+            select: { resendApiKey: true },
+        });
+
+        if (!organization) {
+            throw new NotFoundException(`Academia com ID ${id} não encontrada.`);
+        }
+
+        if (!organization.resendApiKey) {
+            return { domains: [] };
+        }
+
+        try {
+            const resend = new Resend(organization.resendApiKey);
+            const { data, error } = await resend.domains.list();
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            return { domains: (data?.data ?? []).map((domain) => ({ name: domain.name, status: domain.status })) };
+        } catch (error) {
+            throw new BadRequestException(`Não foi possível consultar os domínios do Resend: ${(error as Error).message}`);
+        }
     }
 }

@@ -3,7 +3,8 @@
 // Router novo e enxuto para este produto — NÃO é uma cópia do Router.tsx do
 // maskotCrmEdu (aquele tinha ~150+ rotas de CRM/WhatsApp/marketing que não
 // existem aqui). Estrutura:
-//   - Pública: /login, /badge/:token (validação de crachá, sem exigir login)
+//   - Pública: /login, /forgot-password, /reset-password, /badge/:token
+//     (validação de crachá, sem exigir login)
 //   - Privada (qualquer autenticado): /dashboard, /courses/:id, /events,
 //     /events/:id, /roles, /my-courses, /my-certificates, /my-designations
 //   - Privada + permissão de módulo (Fase 3, docs/decisoes.md): /courses,
@@ -15,6 +16,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import Login from '@/pages/Login';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
 import BadgePage from '@/pages/public/BadgePage';
 import Dashboard from '@/pages/Dashboard';
 import Courses from '@/pages/Courses';
@@ -40,6 +43,8 @@ export function Router() {
         <Routes>
             {/* Públicas */}
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/badge/:token" element={<BadgePage />} />
 
             {/* Privadas — qualquer autenticado */}

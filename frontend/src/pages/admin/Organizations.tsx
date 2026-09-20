@@ -19,6 +19,7 @@ import { Field, Label, Input, ErrorText, CheckboxField, Form, FormActions, HelpT
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { organizationsApi, type CreateOrganizationInput, type UpdateOrganizationInput } from '@/services/organizations';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Organization } from '@/types';
 
 // Dois schemas em vez de um `z.object` com `.refine()` condicional: adminName/adminEmail só
@@ -57,6 +58,7 @@ export default function Organizations() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<Organization | null>(null);
     const queryClient = useQueryClient();
+    const { startImpersonation } = useAuth();
 
     const { data, isLoading } = useQuery({
         queryKey: ['organizations'],
@@ -102,6 +104,37 @@ export default function Organizations() {
         },
         onError: (error: any) => {
             toast.error(error?.response?.data?.message || 'Não foi possível salvar a academia.');
+        },
+    });
+
+    const removeMutation = useMutation({
+        mutationFn: (id: string) => organizationsApi.remove(id),
+        onSuccess: () => {
+            toast.success('Academia removida com sucesso.');
+            queryClient.invalidateQueries({ queryKey: ['organizations'] });
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Não foi possível remover a academia.');
+        },
+    });
+
+    const handleRemove = (organization: Organization) => {
+        if (confirm(`Remover a academia "${organization.name}"? Isso também desativa os usuários, turmas e eventos dela.`)) {
+            removeMutation.mutate(organization.id);
+        }
+    };
+
+    const impersonateMutation = useMutation({
+        mutationFn: (organization: Organization) => organizationsApi.impersonate(organization.id),
+        onSuccess: (data, organization) => {
+            startImpersonation({
+                accessToken: data.access_token,
+                organizationId: organization.id,
+                organizationName: organization.name,
+            });
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Não foi possível acessar como esta academia.');
         },
     });
 
@@ -167,8 +200,22 @@ export default function Organizations() {
                                 <Td>{(organization as any)._count?.users ?? 0}</Td>
                                 <Td>{(organization as any)._count?.courses ?? 0}</Td>
                                 <Td>
+                                    <Button
+                                        $variant="secondary"
+                                        disabled={impersonateMutation.isPending}
+                                        onClick={() => impersonateMutation.mutate(organization)}
+                                    >
+                                        Acessar como
+                                    </Button>
                                     <Button $variant="ghost" onClick={() => openEdit(organization)}>
                                         Editar
+                                    </Button>
+                                    <Button
+                                        $variant="danger"
+                                        disabled={removeMutation.isPending}
+                                        onClick={() => handleRemove(organization)}
+                                    >
+                                        Remover
                                     </Button>
                                 </Td>
                             </Tr>

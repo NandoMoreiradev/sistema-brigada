@@ -9,6 +9,8 @@
 // Prefixos de rotas que são abertas para o público
 export const PUBLIC_ROUTE_PREFIXES = [
     '/login',
+    '/forgot-password',
+    '/reset-password',
     '/badge/', // validação pública de crachá (/badge/:token)
 ];
 

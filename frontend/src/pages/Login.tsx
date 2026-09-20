@@ -3,13 +3,16 @@
 // adaptado do maskotCrmEdu. Estilo minimalista — ainda não é o design final.
 
 import { useState } from 'react';
-import styled from 'styled-components';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Lock, Eye, EyeOff, KeyRound, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthLayout } from '@/components/layout/AuthLayout';
+import {
+    Form, Field, Label, InputWrapper, InputIcon, Input, ToggleVisibilityButton, ErrorText,
+    SubmitButton, AuthLink, LinkRow,
+} from '@/components/auth/AuthFormControls';
 import { toast } from '@/utils/toast';
 
 const schema = z.object({
@@ -18,112 +21,6 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
-
-const Form = styled.form`
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    text-align: left;
-`;
-
-const Field = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-`;
-
-const Label = styled.label`
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.9);
-`;
-
-const InputWrapper = styled.div`
-    position: relative;
-    display: flex;
-    align-items: center;
-`;
-
-const InputIcon = styled.div`
-    position: absolute;
-    left: 0.85rem;
-    display: flex;
-    color: #adb5bd;
-    pointer-events: none;
-`;
-
-const Input = styled.input`
-    width: 100%;
-    padding: 0.7rem 0.85rem 0.7rem 2.5rem;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.92);
-    font-size: 0.9375rem;
-    box-sizing: border-box;
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
-
-    &:focus {
-        outline: none;
-        border-color: white;
-        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
-    }
-`;
-
-const ToggleVisibilityButton = styled.button`
-    position: absolute;
-    right: 0.6rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    color: #868e96;
-    cursor: pointer;
-    padding: 0.3rem;
-    border-radius: 6px;
-
-    &:hover {
-        color: #495057;
-        background: rgba(0, 0, 0, 0.06);
-    }
-`;
-
-const ErrorText = styled.span`
-    font-size: 0.75rem;
-    color: #FFD8D8;
-`;
-
-const SubmitButton = styled.button`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: 10px;
-    border: none;
-    background: white;
-    color: #b02a1f;
-    font-weight: 700;
-    font-size: 0.9375rem;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-
-    &:disabled {
-        opacity: 0.65;
-        cursor: not-allowed;
-    }
-
-    &:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
-    }
-
-    &:active:not(:disabled) {
-        transform: translateY(0);
-    }
-`;
 
 export default function Login() {
     const { signIn, verifyTwoFactor, finishSignIn } = useAuth();
@@ -229,6 +126,9 @@ export default function Login() {
                     </InputWrapper>
                     {errors.password && <ErrorText>{errors.password.message}</ErrorText>}
                 </Field>
+                <LinkRow>
+                    <AuthLink to="/forgot-password">Esqueci minha senha</AuthLink>
+                </LinkRow>
                 <SubmitButton type="submit" disabled={isSubmitting}>
                     {isSubmitting ? 'Entrando...' : 'Entrar'} <ArrowRight size={16} />
                 </SubmitButton>

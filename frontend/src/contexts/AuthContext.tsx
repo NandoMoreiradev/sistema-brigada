@@ -8,7 +8,7 @@
 //     não foi portado — fica para quando o produto precisar de fato de troca de
 //     organização ativa; hoje `User.organizationId` já resolve o caso comum)
 
-import { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import type { ReactNode, Dispatch, SetStateAction } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
@@ -70,6 +70,12 @@ interface LoginStep1Response {
     temp_token?: string;
 }
 
+interface StartImpersonationParams {
+    accessToken: string;
+    organizationId: string;
+    organizationName: string;
+}
+
 interface AuthContextData {
     user: User | null;
     organization: Organization | null;
@@ -83,6 +89,10 @@ interface AuthContextData {
     setOrganization: Dispatch<SetStateAction<Organization | null>>;
     fetchUserProfile: () => Promise<void>;
     updateUser: (data: Partial<User>) => void;
+    isImpersonating: boolean;
+    impersonatedOrganizationName: string | null;
+    startImpersonation: (params: StartImpersonationParams) => Promise<void>;
+    stopImpersonation: () => Promise<void>;
 }
 
 export const AuthContext = createContext({} as AuthContextData);
@@ -91,6 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [organization, setOrganization] = useState<Organization | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isImpersonating, setIsImpersonating] = useState(false);
+    const [impersonatedOrganizationName, setImpersonatedOrganizationName] = useState<string | null>(null);
+    // Guarda o activeOrganizationId de antes de impersonar (normalmente nenhum, já
+    // que SUPER_ADMIN não tem organização própria) para restaurar ao voltar.
+    const preImpersonationActiveOrgId = useRef<string | null>(null);
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -251,7 +266,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(null);
         setOrganization(null);
+        setIsImpersonating(false);
+        setImpersonatedOrganizationName(null);
         navigate('/login');
+    }
+
+    /**
+     * "Entrar como": troca o token do SUPER_ADMIN pelo token (só access_token,
+     * sem refresh — ver AuthService.impersonateOrganizationAdmin) do ORG_ADMIN da
+     * academia, guardando o token original em memória (tokenManager) pra
+     * restaurar depois.
+     */
+    async function startImpersonation({ accessToken, organizationId, organizationName }: StartImpersonationParams) {
+        preImpersonationActiveOrgId.current = localStorage.getItem('@BrigadaApp:activeOrganizationId');
+        tokenManager.saveAdminToken();
+        tokenManager.set(accessToken);
+        localStorage.setItem('@BrigadaApp:activeOrganizationId', organizationId);
+        setIsImpersonating(true);
+        setImpersonatedOrganizationName(organizationName);
+
+        await fetchUserProfile();
+        navigate('/dashboard');
+    }
+
+    async function stopImpersonation() {
+        tokenManager.restoreAdminToken();
+        setIsImpersonating(false);
+        setImpersonatedOrganizationName(null);
+
+        if (preImpersonationActiveOrgId.current) {
+            localStorage.setItem('@BrigadaApp:activeOrganizationId', preImpersonationActiveOrgId.current);
+        } else {
+            localStorage.removeItem('@BrigadaApp:activeOrganizationId');
+        }
+        preImpersonationActiveOrgId.current = null;
+
+        await fetchUserProfile();
+        navigate('/admin/organizations');
     }
 
     return (
@@ -268,6 +319,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setOrganization,
             fetchUserProfile,
             updateUser,
+            isImpersonating,
+            impersonatedOrganizationName,
+            startImpersonation,
+            stopImpersonation,
         }}>
             {children}
         </AuthContext.Provider>
