@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, ClipboardList, PlayCircle, CheckCircle2, Circle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, ClipboardList, PlayCircle, CheckCircle2, Circle, Trash2, Pencil } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,12 +20,18 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { coursesApi, roomsApi, classSessionsApi, enrollmentsApi, courseModulesApi, courseLessonsApi } from '@/services/courses';
+import { coursesApi, roomsApi, classSessionsApi, enrollmentsApi, courseModulesApi, courseLessonsApi, type CourseLesson, type CourseLessonInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
+import { mediaApi } from '@/services/media';
 import { toast } from '@/utils/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { RichTextEditor } from '@/components/ui/RichTextEditor';
+import { RichTextViewer } from '@/components/ui/RichTextViewer';
 import type { AttendanceStatus, EnrollmentStatus } from '@/types';
+
+const VIDEO_ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska'];
+const VIDEO_MAX_SIZE = 500 * 1024 * 1024; // 500MB — mesmo teto do contexto 'course-lessons' em media.service.ts
 
 const TabsList = styled(Tabs.List)`
     display: flex;
@@ -306,7 +312,11 @@ export default function CourseDetail() {
                 </Tabs.Content>
 
                 <Tabs.Content value="lessons">
-                    <LessonsTab courseId={courseId} />
+                    <LessonsTab
+                        courseId={courseId}
+                        canManageCourse={canManageEnrollments}
+                        canEditLessons={canManageEnrollments || course.instructors.some((i) => i.userId === user?.id)}
+                    />
                 </Tabs.Content>
 
                 <Tabs.Content value="enrollments">
@@ -506,15 +516,18 @@ const ModuleHeader = styled.div`
     }
 `;
 
+const LessonItem = styled.div`
+    padding: 0.5rem 0;
+    border-top: 1px solid ${({ theme }) => theme.colors.borderLight};
+
+    &:first-of-type { border-top: none; }
+`;
+
 const LessonRow = styled.div`
     display: flex;
     align-items: center;
     gap: 0.65rem;
-    padding: 0.5rem 0;
-    border-top: 1px solid ${({ theme }) => theme.colors.borderLight};
     font-size: 0.8125rem;
-
-    &:first-of-type { border-top: none; }
 `;
 
 const LessonTitle = styled.div`
@@ -526,16 +539,48 @@ const LessonTitle = styled.div`
     span { font-size: 0.7rem; color: ${({ theme }) => theme.colors.textMuted}; }
 `;
 
+const LessonExtra = styled.div`
+    margin-top: 0.5rem;
+    margin-left: 1.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    video {
+        width: 100%;
+        max-width: 480px;
+        border-radius: ${({ theme }) => theme.radii.sm};
+        background: #000;
+    }
+`;
+
 /**
  * Módulos + aulas em vídeo de uma turma (decisão de reaproveitamento em
  * docs/decisoes.md: TrainingModule/Lesson/Progress do maskotCrmEdu, agora
- * escopado por Course). Vídeo em si é só um link (`videoUrl`) por enquanto —
- * upload direto via presigned URL fica para quando existir uma UI de upload
- * de arquivo grande; o instrutor cola o link do vídeo já hospedado.
+ * escopado por Course). Vídeo pode ser um link colado (videoUrl, sem
+ * videoKey) ou um arquivo enviado direto pro R2 via presigned URL
+ * (videoUrl = URL pública do upload, videoKey = chave no bucket) — o player
+ * embutido só é usado para vídeo próprio (videoKey presente); link externo
+ * abre em nova aba, já que não dá pra assumir que é embutível.
  */
-function LessonsTab({ courseId }: { courseId: string }) {
+function LessonsTab({
+    courseId,
+    canManageCourse,
+    canEditLessons,
+}: {
+    courseId: string;
+    /** Módulos (criar/editar/excluir) e excluir aula exigem courses:manage — mesmo gate do backend. */
+    canManageCourse: boolean;
+    /** Criar/editar aula é liberado também pra instrutor da turma (course-lessons.controller.ts). */
+    canEditLessons: boolean;
+}) {
     const [moduleModalOpen, setModuleModalOpen] = useState(false);
     const [lessonModalModuleId, setLessonModalModuleId] = useState<string | null>(null);
+    const [editingLesson, setEditingLesson] = useState<CourseLesson | null>(null);
+    const [lessonMode, setLessonMode] = useState<'link' | 'upload'>('link');
+    const [lessonFile, setLessonFile] = useState<File | null>(null);
+    const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+    const [lessonContent, setLessonContent] = useState('');
     const queryClient = useQueryClient();
 
     const { data: modules } = useQuery({ queryKey: ['courses', courseId, 'modules'], queryFn: () => courseModulesApi.list(courseId) });
@@ -557,10 +602,82 @@ function LessonsTab({ courseId }: { courseId: string }) {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover o módulo.'),
     });
 
-    const createLessonMutation = useMutation({
-        mutationFn: (input: { moduleId: string; title: string; videoUrl?: string; duration?: number }) => courseLessonsApi.create(courseId, input),
-        onSuccess: () => { toast.success('Aula adicionada.'); invalidateModules(); setLessonModalModuleId(null); },
-        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível adicionar a aula.'),
+    const closeLessonModal = () => {
+        setLessonModalModuleId(null);
+        setEditingLesson(null);
+        setLessonFile(null);
+    };
+
+    const openCreateLesson = (moduleId: string) => {
+        resetLesson({ title: '', videoUrl: '', duration: '' });
+        setLessonContent('');
+        setLessonMode('link');
+        setLessonFile(null);
+        setEditingLesson(null);
+        setLessonModalModuleId(moduleId);
+    };
+
+    const openEditLesson = (lesson: CourseLesson) => {
+        resetLesson({
+            title: lesson.title,
+            videoUrl: lesson.videoKey ? '' : lesson.videoUrl ?? '',
+            duration: lesson.duration ? String(Math.round(lesson.duration / 60)) : '',
+        });
+        setLessonContent(lesson.content ?? '');
+        setLessonMode(lesson.videoKey ? 'upload' : 'link');
+        setLessonFile(null);
+        setEditingLesson(lesson);
+        setLessonModalModuleId(lesson.moduleId);
+    };
+
+    const saveLessonMutation = useMutation({
+        mutationFn: async (data: { title: string; videoUrl: string; duration: string }) => {
+            const moduleId = editingLesson?.moduleId ?? lessonModalModuleId;
+            if (!moduleId) throw new Error('Módulo não selecionado.');
+
+            const payload: Partial<CourseLessonInput> = {
+                title: data.title,
+                content: lessonContent,
+                duration: data.duration ? Number(data.duration) * 60 : undefined,
+            };
+
+            if (lessonMode === 'upload') {
+                if (lessonFile) {
+                    if (!VIDEO_ALLOWED_TYPES.includes(lessonFile.type)) {
+                        throw new Error('Tipo de arquivo não permitido. Envie um vídeo MP4, MOV, WEBM ou MKV.');
+                    }
+                    if (lessonFile.size > VIDEO_MAX_SIZE) {
+                        throw new Error('O vídeo deve ter no máximo 500MB.');
+                    }
+                    setIsUploadingVideo(true);
+                    try {
+                        const { fileUrl, storageKey } = await mediaApi.upload(lessonFile, 'course-lessons');
+                        payload.videoUrl = fileUrl;
+                        payload.videoKey = storageKey;
+                    } finally {
+                        setIsUploadingVideo(false);
+                    }
+                }
+                // sem arquivo novo selecionado: mantém o vídeo atual (não mexe em videoUrl/videoKey)
+            } else {
+                payload.videoUrl = data.videoUrl || undefined;
+                if (editingLesson?.videoKey) {
+                    payload.videoKey = null; // trocou de "arquivo enviado" pra link — limpa a chave antiga
+                }
+            }
+
+            if (editingLesson) {
+                return courseLessonsApi.update(courseId, editingLesson.id, payload);
+            }
+            return courseLessonsApi.create(courseId, { moduleId, ...payload } as CourseLessonInput);
+        },
+        onSuccess: () => {
+            toast.success(editingLesson ? 'Aula atualizada.' : 'Aula adicionada.');
+            invalidateModules();
+            closeLessonModal();
+        },
+        onError: (error: any) =>
+            toast.error(error?.response?.data?.message || error?.message || `Não foi possível ${editingLesson ? 'atualizar' : 'adicionar'} a aula.`),
     });
 
     const removeLessonMutation = useMutation({
@@ -577,53 +694,77 @@ function LessonsTab({ courseId }: { courseId: string }) {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-                <Button onClick={() => { resetModule({ title: '' }); setModuleModalOpen(true); }}>
-                    <Plus size={16} /> Novo módulo
-                </Button>
-            </div>
+            {canManageCourse && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                    <Button onClick={() => { resetModule({ title: '' }); setModuleModalOpen(true); }}>
+                        <Plus size={16} /> Novo módulo
+                    </Button>
+                </div>
+            )}
 
             {(modules ?? []).map((courseModule) => (
                 <ModuleCard key={courseModule.id}>
                     <ModuleHeader>
                         <h3>{courseModule.title}</h3>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <Button $variant="ghost" onClick={() => { resetLesson({ title: '', videoUrl: '', duration: '' }); setLessonModalModuleId(courseModule.id); }}>
-                                <Plus size={14} /> Aula
-                            </Button>
-                            <Button $variant="ghost" onClick={() => removeModuleMutation.mutate(courseModule.id)}>
-                                <Trash2 size={14} />
-                            </Button>
-                        </div>
+                        {(canEditLessons || canManageCourse) && (
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                {canEditLessons && (
+                                    <Button $variant="ghost" onClick={() => openCreateLesson(courseModule.id)}>
+                                        <Plus size={14} /> Aula
+                                    </Button>
+                                )}
+                                {canManageCourse && (
+                                    <Button $variant="ghost" onClick={() => removeModuleMutation.mutate(courseModule.id)}>
+                                        <Trash2 size={14} />
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </ModuleHeader>
 
                     {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.</span>}
 
                     {courseModule.lessons.map((lesson) => {
                         const completed = lesson.progress?.[0]?.completed ?? false;
+                        const hasContent = Boolean(lesson.content && lesson.content !== '<p></p>');
                         return (
-                            <LessonRow key={lesson.id}>
-                                <button
-                                    type="button"
-                                    onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
-                                    title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
-                                >
-                                    {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                </button>
-                                <LessonTitle>
-                                    <strong>{lesson.title}</strong>
-                                    {lesson.duration && <span>{Math.round(lesson.duration / 60)} min</span>}
-                                </LessonTitle>
-                                {lesson.videoUrl && (
-                                    <Button as="a" href={lesson.videoUrl} target="_blank" rel="noreferrer" $variant="ghost">
-                                        <PlayCircle size={14} /> Assistir
-                                    </Button>
+                            <LessonItem key={lesson.id}>
+                                <LessonRow>
+                                    <button
+                                        type="button"
+                                        onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
+                                        title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
+                                    >
+                                        {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                    </button>
+                                    <LessonTitle>
+                                        <strong>{lesson.title}</strong>
+                                        {lesson.duration && <span>{Math.round(lesson.duration / 60)} min</span>}
+                                    </LessonTitle>
+                                    {lesson.videoUrl && !lesson.videoKey && (
+                                        <Button as="a" href={lesson.videoUrl} target="_blank" rel="noreferrer" $variant="ghost">
+                                            <PlayCircle size={14} /> Assistir
+                                        </Button>
+                                    )}
+                                    {canEditLessons && (
+                                        <Button $variant="ghost" onClick={() => openEditLesson(lesson)}>
+                                            <Pencil size={14} />
+                                        </Button>
+                                    )}
+                                    {canManageCourse && (
+                                        <Button $variant="ghost" onClick={() => removeLessonMutation.mutate(lesson.id)}>
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    )}
+                                </LessonRow>
+                                {(lesson.videoKey || hasContent) && (
+                                    <LessonExtra>
+                                        {lesson.videoKey && lesson.videoUrl && <video controls src={lesson.videoUrl} />}
+                                        {hasContent && <RichTextViewer html={lesson.content!} />}
+                                    </LessonExtra>
                                 )}
-                                <Button $variant="ghost" onClick={() => removeLessonMutation.mutate(lesson.id)}>
-                                    <Trash2 size={14} />
-                                </Button>
-                            </LessonRow>
+                            </LessonItem>
                         );
                     })}
                 </ModuleCard>
@@ -648,33 +789,62 @@ function LessonsTab({ courseId }: { courseId: string }) {
                 </Form>
             </Modal>
 
-            <Modal open={!!lessonModalModuleId} onOpenChange={(open) => !open && setLessonModalModuleId(null)} title="Nova aula">
-                <Form
-                    onSubmit={handleSubmitLesson((data) => {
-                        if (!lessonModalModuleId) return;
-                        createLessonMutation.mutate({
-                            moduleId: lessonModalModuleId,
-                            title: data.title,
-                            videoUrl: data.videoUrl || undefined,
-                            duration: data.duration ? Number(data.duration) * 60 : undefined,
-                        });
-                    })}
-                >
+            <Modal
+                open={!!lessonModalModuleId}
+                onOpenChange={(open) => !open && closeLessonModal()}
+                title={editingLesson ? 'Editar aula' : 'Nova aula'}
+                width="560px"
+            >
+                <Form onSubmit={handleSubmitLesson((data) => saveLessonMutation.mutate(data))}>
                     <Field>
                         <Label htmlFor="lessonTitle">Título da aula</Label>
                         <Input id="lessonTitle" {...registerLesson('title', { required: true })} />
                     </Field>
+
                     <Field>
-                        <Label htmlFor="videoUrl">Link do vídeo</Label>
-                        <Input id="videoUrl" placeholder="https://..." {...registerLesson('videoUrl')} />
+                        <Label htmlFor="lessonMode">Vídeo</Label>
+                        <Select id="lessonMode" value={lessonMode} onChange={(e) => setLessonMode(e.target.value as 'link' | 'upload')}>
+                            <option value="link">Link (URL já hospedada)</option>
+                            <option value="upload">Enviar arquivo de vídeo</option>
+                        </Select>
                     </Field>
+
+                    {lessonMode === 'link' ? (
+                        <Field>
+                            <Label htmlFor="videoUrl">Link do vídeo</Label>
+                            <Input id="videoUrl" placeholder="https://..." {...registerLesson('videoUrl')} />
+                        </Field>
+                    ) : (
+                        <Field>
+                            <Label htmlFor="videoFile">Arquivo de vídeo</Label>
+                            {editingLesson?.videoKey && !lessonFile && (
+                                <HelpText>Já existe um vídeo enviado para esta aula. Selecione um novo arquivo abaixo para substituí-lo.</HelpText>
+                            )}
+                            <input
+                                id="videoFile"
+                                type="file"
+                                accept={VIDEO_ALLOWED_TYPES.join(',')}
+                                onChange={(e) => setLessonFile(e.target.files?.[0] ?? null)}
+                            />
+                            <HelpText>MP4, MOV, WEBM ou MKV, até 500MB.</HelpText>
+                        </Field>
+                    )}
+
                     <Field>
                         <Label htmlFor="duration">Duração (minutos, opcional)</Label>
                         <Input id="duration" type="number" min={0} {...registerLesson('duration')} />
                     </Field>
+
+                    <Field>
+                        <Label>Conteúdo (opcional)</Label>
+                        <RichTextEditor value={lessonContent} onChange={setLessonContent} disabled={saveLessonMutation.isPending} />
+                    </Field>
+
                     <FormActions>
-                        <Button type="button" $variant="secondary" onClick={() => setLessonModalModuleId(null)}>Cancelar</Button>
-                        <Button type="submit" disabled={createLessonMutation.isPending}>{createLessonMutation.isPending ? 'Salvando...' : 'Adicionar'}</Button>
+                        <Button type="button" $variant="secondary" onClick={closeLessonModal}>Cancelar</Button>
+                        <Button type="submit" disabled={saveLessonMutation.isPending}>
+                            {isUploadingVideo ? 'Enviando vídeo...' : saveLessonMutation.isPending ? 'Salvando...' : editingLesson ? 'Salvar' : 'Adicionar'}
+                        </Button>
                     </FormActions>
                 </Form>
             </Modal>
