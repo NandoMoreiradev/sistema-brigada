@@ -1,22 +1,23 @@
-// frontend/src/pages/Students.tsx
+// frontend/src/pages/People.tsx
 //
-// Gestão de alunos da organização ativa. "Aluno" aqui é um `User` com
-// `StudentProfile` (decisão 8 do docs/decisoes.md) — por isso o formulário de
-// criação já pede e-mail (a pessoa passa a ter login no sistema, não é só um
-// cadastro passivo). A senha não é definida aqui: o backend gera uma senha
-// aleatória e manda um e-mail de boas-vindas com link de ativação (mesmo
-// padrão do admin de academia). E-mail não é editável depois (fora do escopo
-// de `UpdatePersonInput`), por isso o formulário de edição esconde esse campo
-// e mostra em troca o status ativo/inativo.
+// Gestão de pessoas da organização ativa — hub único pra todo mundo cadastrado
+// (aluno, instrutor, equipe, admin ou só um cadastro sem papel ainda), no
+// lugar da antiga tela "Alunos" (que só listava quem tinha `StudentProfile`).
+// "Pessoa" aqui é um `User` (decisão 8 do docs/decisoes.md) — por isso o
+// formulário de criação já pede e-mail (a pessoa passa a ter login no
+// sistema, não é só um cadastro passivo). A senha não é definida aqui: o
+// backend gera uma senha aleatória e manda um e-mail de boas-vindas com link
+// de ativação (mesmo padrão do admin de academia).
 //
-// Esta é também a ÚNICA tela de cadastro de pessoa nova no sistema — não
-// existe "Novo instrutor"/"Novo integrante da equipe" separado. Por isso o
+// Esta é a ÚNICA tela de cadastro de pessoa nova no sistema — não existe
+// "Novo instrutor"/"Novo integrante da equipe" separado. Por isso o
 // formulário de criação tem o campo "Tipo de cadastro": ao escolher "Só
 // cadastro (instrutor/equipe)", os campos de perfil de aluno somem e a
-// pessoa é criada sem `StudentProfile`. Ela não aparece nesta lista depois
-// (que só lista quem tem perfil de aluno) — quem cadastrou precisa ir em
-// "Cargos" ou "Equipe" pra promovê-la, exatamente como já acontece hoje com
-// qualquer pessoa que vira instrutor/staff depois de cadastrada.
+// pessoa é criada sem `StudentProfile`.
+//
+// A edição aqui é só de dados básicos (nome/telefone/status) — atribuir
+// cargo continua em "Cargos" e promover a staff continua em "Equipe", de
+// propósito, pra não duplicar lógica que já existe nessas telas.
 
 import { useState } from 'react';
 import { Users, Plus } from 'lucide-react';
@@ -33,11 +34,11 @@ import { peopleApi, type CreatePersonInput, type UpdatePersonInput } from '@/ser
 import { toast } from '@/utils/toast';
 import type { OrgPerson } from '@/types';
 
-// Dois schemas em vez de um só: e-mail/senha só existem na criação (não dá
-// pra editar depois via UpdatePersonInput), isActive só existe na edição —
-// mesmo padrão de admin/Organizations.tsx.
+// Dois schemas em vez de um só: e-mail/tipo de cadastro só existem na criação
+// (não dá pra editar depois via UpdatePersonInput), isActive só existe na
+// edição — mesmo padrão de admin/Organizations.tsx.
 const baseFields = {
-    name: z.string().min(1, 'Informe o nome do aluno'),
+    name: z.string().min(1, 'Informe o nome'),
     phone: z.string().optional(),
     birthDate: z.string().optional(),
     guardianName: z.string().optional(),
@@ -75,21 +76,35 @@ const blankForm = {
     profession: '',
 };
 
-export default function Students() {
+type TypeFilter = 'ALL' | 'STUDENT' | 'INSTRUCTOR' | 'STAFF' | 'NONE';
+
+function personRoleBadges(person: OrgPerson): string[] {
+    const roles: string[] = [];
+    if (person.role === 'ORG_ADMIN') roles.push('Admin');
+    if (person.studentProfile) roles.push('Aluno');
+    if (person.instructorAssignments?.length) roles.push('Instrutor');
+    if (person.staffMember) roles.push('Equipe');
+    if (person.roleAssignments?.[0]) roles.push(person.roleAssignments[0].name);
+    return roles;
+}
+
+export default function People() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<OrgPerson | null>(null);
+    const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
     const queryClient = useQueryClient();
 
     const { data, isLoading } = useQuery({
-        queryKey: ['people', { hasStudentProfile: true }],
-        queryFn: () => peopleApi.list({ hasStudentProfile: true }),
+        queryKey: ['people', { search }],
+        queryFn: () => peopleApi.list({ search: search || undefined }),
     });
 
     const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({
         resolver: (editing ? zodResolver(editSchema) : zodResolver(createSchema)) as Resolver<FormData>,
     });
     const registrationType = watch('registrationType') ?? 'STUDENT';
-    const isStudentRegistration = editing !== null || registrationType === 'STUDENT';
+    const isStudentRegistration = editing !== null ? Boolean(editing.studentProfile) : registrationType === 'STUDENT';
 
     const openCreate = () => {
         setEditing(null);
@@ -97,13 +112,13 @@ export default function Students() {
         setModalOpen(true);
     };
 
-    const openEdit = (student: OrgPerson) => {
-        setEditing(student);
-        const profile = student.studentProfile;
+    const openEdit = (person: OrgPerson) => {
+        setEditing(person);
+        const profile = person.studentProfile;
         reset({
             ...blankForm,
-            name: student.name,
-            phone: student.phone || '',
+            name: person.name,
+            phone: person.phone || '',
             birthDate: profile?.birthDate?.slice(0, 10) || '',
             guardianName: profile?.guardianName || '',
             guardianPhone: profile?.guardianPhone || '',
@@ -111,7 +126,7 @@ export default function Students() {
             pioneerStatus: profile?.pioneerStatus || '',
             signedPetitions: profile?.signedPetitions?.join(', ') || '',
             profession: profile?.profession || '',
-            isActive: student.isActive,
+            isActive: person.isActive,
         });
         setModalOpen(true);
     };
@@ -129,19 +144,26 @@ export default function Students() {
     });
 
     const onSubmit = (formData: FormData) => {
-        const studentProfile = {
-            birthDate: formData.birthDate || undefined,
-            guardianName: formData.guardianName || undefined,
-            guardianPhone: formData.guardianPhone || undefined,
-            baptismDate: formData.baptismDate || undefined,
-            pioneerStatus: formData.pioneerStatus || undefined,
-            profession: formData.profession || undefined,
-            signedPetitions: formData.signedPetitions
-                ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
-                : undefined,
-        };
-
         if (editing) {
+            // Só reenvia `studentProfile` se a pessoa já era aluna — do
+            // contrário, um objeto sempre-truthy (mesmo com campos vazios)
+            // faria o backend criar um StudentProfile do nada pra quem não
+            // tinha, transformando silenciosamente um instrutor/equipe em
+            // "aluno" só por editar nome/telefone.
+            const studentProfile = editing.studentProfile
+                ? {
+                      birthDate: formData.birthDate || undefined,
+                      guardianName: formData.guardianName || undefined,
+                      guardianPhone: formData.guardianPhone || undefined,
+                      baptismDate: formData.baptismDate || undefined,
+                      pioneerStatus: formData.pioneerStatus || undefined,
+                      profession: formData.profession || undefined,
+                      signedPetitions: formData.signedPetitions
+                          ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
+                          : undefined,
+                  }
+                : undefined;
+
             saveMutation.mutate(
                 {
                     name: formData.name,
@@ -149,7 +171,7 @@ export default function Students() {
                     isActive: formData.isActive,
                     studentProfile,
                 },
-                { onSuccess: () => toast.success('Aluno atualizado com sucesso.') },
+                { onSuccess: () => toast.success('Pessoa atualizada com sucesso.') },
             );
         } else if (formData.registrationType === 'PERSON') {
             saveMutation.mutate(
@@ -166,6 +188,17 @@ export default function Students() {
                 },
             );
         } else {
+            const studentProfile = {
+                birthDate: formData.birthDate || undefined,
+                guardianName: formData.guardianName || undefined,
+                guardianPhone: formData.guardianPhone || undefined,
+                baptismDate: formData.baptismDate || undefined,
+                pioneerStatus: formData.pioneerStatus || undefined,
+                profession: formData.profession || undefined,
+                signedPetitions: formData.signedPetitions
+                    ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
+                    : undefined,
+            };
             saveMutation.mutate(
                 {
                     name: formData.name,
@@ -178,12 +211,19 @@ export default function Students() {
         }
     };
 
-    const students = data?.data ?? [];
+    const people = data?.data ?? [];
+    const filteredPeople = people.filter((person) => {
+        if (typeFilter === 'ALL') return true;
+        if (typeFilter === 'STUDENT') return Boolean(person.studentProfile);
+        if (typeFilter === 'INSTRUCTOR') return Boolean(person.instructorAssignments?.length);
+        if (typeFilter === 'STAFF') return Boolean(person.staffMember);
+        return personRoleBadges(person).length === 0; // NONE
+    });
 
     return (
         <PageLayout
-            title="Alunos"
-            subtitle="Cadastro e histórico de matrículas"
+            title="Pessoas"
+            subtitle="Cadastro geral de alunos, instrutores e equipe"
             icon={<Users size={16} />}
             actions={
                 <Button onClick={openCreate}>
@@ -191,6 +231,25 @@ export default function Students() {
                 </Button>
             }
         >
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <Field style={{ flex: 1, marginBottom: 0 }}>
+                    <Input
+                        placeholder="Buscar por nome ou e-mail..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </Field>
+                <Field style={{ width: 220, marginBottom: 0 }}>
+                    <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}>
+                        <option value="ALL">Todos os tipos</option>
+                        <option value="STUDENT">Alunos</option>
+                        <option value="INSTRUCTOR">Instrutores</option>
+                        <option value="STAFF">Equipe</option>
+                        <option value="NONE">Sem papel ainda</option>
+                    </Select>
+                </Field>
+            </div>
+
             <TableWrapper>
                 <Table>
                     <Thead>
@@ -198,38 +257,53 @@ export default function Students() {
                             <Th>Nome</Th>
                             <Th>E-mail</Th>
                             <Th>Telefone</Th>
-                            <Th>Responsável</Th>
+                            <Th>Papéis</Th>
                             <Th>Status</Th>
                             <Th></Th>
                         </tr>
                     </Thead>
                     <tbody>
-                        {students.map((student: OrgPerson) => (
-                            <Tr key={student.id}>
-                                <Td>{student.name}</Td>
-                                <Td>{student.email}</Td>
-                                <Td>{student.phone || '—'}</Td>
-                                <Td>{student.studentProfile?.guardianName || '—'}</Td>
-                                <Td>
-                                    <Badge $tone={student.isActive ? 'success' : 'neutral'}>
-                                        {student.isActive ? 'Ativo' : 'Inativo'}
-                                    </Badge>
-                                </Td>
-                                <Td>
-                                    <Button $variant="ghost" onClick={() => openEdit(student)}>
-                                        Editar
-                                    </Button>
-                                </Td>
-                            </Tr>
-                        ))}
+                        {filteredPeople.map((person: OrgPerson) => {
+                            const roles = personRoleBadges(person);
+                            return (
+                                <Tr key={person.id}>
+                                    <Td>{person.name}</Td>
+                                    <Td>{person.email}</Td>
+                                    <Td>{person.phone || '—'}</Td>
+                                    <Td>
+                                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                                            {roles.length > 0 ? (
+                                                roles.map((role) => (
+                                                    <Badge key={role} $tone="info">{role}</Badge>
+                                                ))
+                                            ) : (
+                                                <Badge $tone="neutral">Sem papel</Badge>
+                                            )}
+                                        </div>
+                                    </Td>
+                                    <Td>
+                                        <Badge $tone={person.isActive ? 'success' : 'neutral'}>
+                                            {person.isActive ? 'Ativo' : 'Inativo'}
+                                        </Badge>
+                                    </Td>
+                                    <Td>
+                                        <Button $variant="ghost" onClick={() => openEdit(person)}>
+                                            Editar
+                                        </Button>
+                                    </Td>
+                                </Tr>
+                            );
+                        })}
                     </tbody>
                 </Table>
-                {!isLoading && students.length === 0 && (
-                    <EmptyState>Nenhum aluno cadastrado ainda.</EmptyState>
+                {!isLoading && filteredPeople.length === 0 && (
+                    <EmptyState>
+                        {people.length === 0 ? 'Nenhuma pessoa cadastrada ainda.' : 'Nenhuma pessoa encontrada com esse filtro.'}
+                    </EmptyState>
                 )}
             </TableWrapper>
 
-            <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar aluno' : 'Nova pessoa'} width="560px">
+            <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar pessoa' : 'Nova pessoa'} width="560px">
                 <Form onSubmit={handleSubmit(onSubmit)}>
                     {!editing && (
                         <Field>
@@ -272,7 +346,7 @@ export default function Students() {
                     {editing && (
                         <CheckboxField>
                             <input type="checkbox" {...register('isActive')} />
-                            Aluno ativo
+                            Pessoa ativa
                         </CheckboxField>
                     )}
 
@@ -320,6 +394,13 @@ export default function Students() {
                                 <HelpText>Separe múltiplas petições por vírgula. Deixe em branco se não houver petição assinada.</HelpText>
                             </Field>
                         </>
+                    )}
+
+                    {editing && !editing.studentProfile && (
+                        <HelpText>
+                            Esta pessoa não tem perfil de aluno. Pra matriculá-la numa turma, primeiro adicione um perfil de aluno — funcionalidade
+                            ainda não disponível nesta tela.
+                        </HelpText>
                     )}
 
                     <FormActions>
