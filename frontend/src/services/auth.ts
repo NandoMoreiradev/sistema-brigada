@@ -8,6 +8,7 @@ import { api } from './api';
 export interface UpdateProfileInput {
     name: string;
     phone?: string;
+    avatarUrl?: string;
 }
 
 export const authApi = {
