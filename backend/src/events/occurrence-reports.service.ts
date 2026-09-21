@@ -11,6 +11,8 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 /** Tipos de ocorrência que merecem alerta imediato a quem administra eventos, não só ficar registrado na aba. */
 const CRITICAL_OCCURRENCE_TYPES = ['MEDICAL', 'SAFETY'];
 
+const withCreatedBy = { createdBy: { select: { id: true, name: true } } } as const;
+
 @Injectable()
 export class OccurrenceReportsService {
     constructor(
@@ -34,6 +36,7 @@ export class OccurrenceReportsService {
                 audioUrl: dto.audioUrl,
                 createdByUserId,
             },
+            include: withCreatedBy,
         });
 
         if (CRITICAL_OCCURRENCE_TYPES.includes(dto.type)) {
@@ -79,6 +82,7 @@ export class OccurrenceReportsService {
         return this.prisma.occurrenceReport.findMany({
             where: { eventOperationId: operation.id },
             orderBy: { createdAt: 'desc' },
+            include: withCreatedBy,
         });
     }
 
@@ -103,6 +107,7 @@ export class OccurrenceReportsService {
                 description: dto.description,
                 audioUrl: dto.audioUrl,
             },
+            include: withCreatedBy,
         });
     }
 

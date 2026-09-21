@@ -158,6 +158,7 @@ export interface OccurrenceReport {
     description: string | null;
     audioUrl: string | null;
     createdByUserId: string;
+    createdBy: { id: string; name: string };
     createdAt: string;
 }
 

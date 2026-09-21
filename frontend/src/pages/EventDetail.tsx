@@ -668,7 +668,7 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
             <TableWrapper>
                 <Table>
                     <Thead>
-                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Áudio</Th><Th>Data</Th><Th></Th></tr>
+                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Áudio</Th><Th>Registrado por</Th><Th>Data</Th><Th></Th></tr>
                     </Thead>
                     <tbody>
                         {(reports ?? []).map((r) => (
@@ -677,6 +677,7 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                 <Td>{r.title}</Td>
                                 <Td>{r.description || '—'}</Td>
                                 <Td>{r.audioUrl ? <OccurrenceAudioPlayer url={r.audioUrl} /> : '—'}</Td>
+                                <Td>{r.createdBy.name}</Td>
                                 <Td>{formatAppDate(r.createdAt, 'dd/MM/yyyy HH:mm')}</Td>
                                 <Td style={{ display: 'flex', gap: 4 }}>
                                     {canEditReport(r) && (
