@@ -10,7 +10,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Popover from '@radix-ui/react-popover';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, MapPin, Upload, X, Eye } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, MapPin, Upload, X, Eye, Paperclip } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -25,12 +25,14 @@ import {
     occurrenceReportsApi,
     meetingsApi,
     eventFilesApi,
+    occurrenceReportFilesApi,
     eventPostsApi,
     type DesignationStatus,
     type AppEvent,
     type Designation,
     type EventPost,
     type OccurrenceReport,
+    type OccurrenceReportFile,
     type EventFile,
 } from '@/services/events';
 import { mediaApi } from '@/services/media';
@@ -379,10 +381,19 @@ interface DesignationFormData {
     teamName: string;
 }
 
+interface EditDesignationFormData {
+    staffMemberId: string;
+    role: string;
+    shiftStart: string;
+    shiftEnd: string;
+    postId: string;
+}
+
 function DesignationsTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
     const [asTeam, setAsTeam] = useState(false);
+    const [editingDesignation, setEditingDesignation] = useState<Designation | null>(null);
     const queryClient = useQueryClient();
     const { user } = useAuth();
     // Criar designação exige `events:manage` no backend — buscar a lista completa de
@@ -397,6 +408,7 @@ function DesignationsTab({ eventId }: { eventId: string }) {
     const activeStaff = (staff ?? []).filter((s) => s.status === 'ACTIVE');
 
     const { register, handleSubmit, reset } = useForm<DesignationFormData>();
+    const editForm = useForm<EditDesignationFormData>();
 
     const createMutation = useMutation({
         mutationFn: (input: DesignationFormData) =>
@@ -444,6 +456,34 @@ function DesignationsTab({ eventId }: { eventId: string }) {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover a designação.'),
     });
 
+    const updateMutation = useMutation({
+        mutationFn: (input: EditDesignationFormData) =>
+            designationsApi.update(eventId, editingDesignation!.id, {
+                staffMemberId: input.staffMemberId,
+                role: input.role,
+                shiftStart: input.shiftStart,
+                shiftEnd: input.shiftEnd,
+                postId: input.postId || undefined,
+            }),
+        onSuccess: () => {
+            toast.success('Designação atualizada.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'designations'] });
+            setEditingDesignation(null);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atualizar a designação.'),
+    });
+
+    const openEditModal = (d: Designation) => {
+        editForm.reset({
+            staffMemberId: d.staffMember.id,
+            role: d.role,
+            shiftStart: toDateTimeLocalValue(d.shiftStart),
+            shiftEnd: toDateTimeLocalValue(d.shiftEnd),
+            postId: d.post?.id ?? '',
+        });
+        setEditingDesignation(d);
+    };
+
     return (
         <>
             {canManageDesignations && (
@@ -490,6 +530,9 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                                 </Td>
                                 {canManageDesignations && (
                                     <Td>
+                                        <Button $variant="ghost" onClick={() => openEditModal(d)}>
+                                            <Pencil size={14} />
+                                        </Button>
                                         <Button
                                             $variant="ghost"
                                             onClick={() => {
@@ -579,6 +622,51 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                     </FormActions>
                 </Form>
             </Modal>
+
+            <Modal open={!!editingDesignation} onOpenChange={(open) => !open && setEditingDesignation(null)} title="Editar designação" width="560px">
+                <Form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate(data))}>
+                    <Field>
+                        <Label htmlFor="edit-staffMemberId">Brigadista</Label>
+                        <Select id="edit-staffMemberId" {...editForm.register('staffMemberId', { required: true })}>
+                            {editingDesignation && !activeStaff.some((s) => s.id === editingDesignation.staffMember.id) && (
+                                <option value={editingDesignation.staffMember.id}>{editingDesignation.staffMember.user.name}</option>
+                            )}
+                            {activeStaff.map((s) => <option key={s.id} value={s.id}>{s.user.name}</option>)}
+                        </Select>
+                    </Field>
+
+                    <Field>
+                        <Label htmlFor="edit-role">Função no evento</Label>
+                        <Input id="edit-role" placeholder="ex: Brigadista, Bombeiro Civil, Coordenador" {...editForm.register('role', { required: true })} />
+                    </Field>
+
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="edit-shiftStart">Início do turno</Label>
+                            <Input id="edit-shiftStart" type="datetime-local" {...editForm.register('shiftStart', { required: true })} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="edit-shiftEnd">Fim do turno</Label>
+                            <Input id="edit-shiftEnd" type="datetime-local" {...editForm.register('shiftEnd', { required: true })} />
+                        </Field>
+                    </FieldRow>
+
+                    <Field>
+                        <Label htmlFor="edit-postId">Posto de atuação (opcional)</Label>
+                        <Select id="edit-postId" {...editForm.register('postId')}>
+                            <option value="">Sem posto definido</option>
+                            {posts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </Select>
+                    </Field>
+
+                    <FormActions>
+                        <Button type="button" $variant="secondary" onClick={() => setEditingDesignation(null)}>Cancelar</Button>
+                        <Button type="submit" disabled={updateMutation.isPending}>
+                            {updateMutation.isPending ? 'Salvando...' : 'Salvar'}
+                        </Button>
+                    </FormActions>
+                </Form>
+            </Modal>
         </>
     );
 }
@@ -601,11 +689,26 @@ function OccurrenceAudioPlayer({ url }: { url: string }) {
     );
 }
 
+const OCCURRENCE_FILE_ALLOWED_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/svg+xml',
+];
+const OCCURRENCE_FILE_MAX_SIZE = 25 * 1024 * 1024; // 25MB — mesmo padrão de media.service.ts
+
 function OccurrencesTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<OccurrenceReport | null>(null);
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+    const [attachmentsFor, setAttachmentsFor] = useState<OccurrenceReport | null>(null);
+    const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
     const queryClient = useQueryClient();
     const { user } = useAuth();
     // Registrar é aberto a todo mundo (quem está em campo percebe o incidente), mas
@@ -651,6 +754,53 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover o relatório.'),
     });
 
+    const { data: attachments } = useQuery({
+        queryKey: ['events', eventId, 'occurrence-reports', attachmentsFor?.id, 'files'],
+        queryFn: () => occurrenceReportFilesApi.list(eventId, attachmentsFor!.id),
+        enabled: !!attachmentsFor,
+    });
+
+    const addAttachmentMutation = useMutation({
+        mutationFn: async () => {
+            if (!attachmentFile || !attachmentsFor) throw new Error('Selecione um arquivo.');
+            if (!OCCURRENCE_FILE_ALLOWED_TYPES.includes(attachmentFile.type)) {
+                throw new Error('Tipo de arquivo não permitido. Envie PDF, DOC, DOCX ou uma imagem.');
+            }
+            if (attachmentFile.size > OCCURRENCE_FILE_MAX_SIZE) {
+                throw new Error('O arquivo deve ter no máximo 25MB.');
+            }
+            setIsUploadingAttachment(true);
+            try {
+                const { fileUrl, storageKey } = await mediaApi.upload(attachmentFile, 'occurrence-files');
+                return occurrenceReportFilesApi.create(eventId, attachmentsFor.id, {
+                    name: attachmentFile.name,
+                    storageKey,
+                    externalUrl: fileUrl,
+                    mimeType: attachmentFile.type,
+                });
+            } finally {
+                setIsUploadingAttachment(false);
+            }
+        },
+        onSuccess: () => {
+            toast.success('Arquivo anexado.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'occurrence-reports', attachmentsFor?.id, 'files'] });
+            setAttachmentFile(null);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Não foi possível anexar o arquivo.'),
+    });
+
+    const removeAttachmentMutation = useMutation({
+        mutationFn: (fileId: string) => occurrenceReportFilesApi.remove(eventId, attachmentsFor!.id, fileId),
+        onSuccess: () => {
+            toast.success('Anexo removido.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'occurrence-reports', attachmentsFor?.id, 'files'] });
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover o anexo.'),
+    });
+
+    const canEditAttachments = attachmentsFor ? canEditReport(attachmentsFor) : false;
+
     return (
         <>
             <ToolbarRow>
@@ -680,6 +830,9 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                 <Td>{r.createdBy.name}</Td>
                                 <Td>{formatAppDate(r.createdAt, 'dd/MM/yyyy HH:mm')}</Td>
                                 <Td style={{ display: 'flex', gap: 4 }}>
+                                    <Button $variant="ghost" onClick={() => setAttachmentsFor(r)}>
+                                        <Paperclip size={14} />
+                                    </Button>
                                     {canEditReport(r) && (
                                         <Button
                                             $variant="ghost"
@@ -750,6 +903,67 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                         </Button>
                     </FormActions>
                 </Form>
+            </Modal>
+
+            <Modal
+                open={!!attachmentsFor}
+                onOpenChange={(open) => !open && setAttachmentsFor(null)}
+                title={`Anexos — ${attachmentsFor?.title ?? ''}`}
+            >
+                <TableWrapper>
+                    <Table>
+                        <Thead><tr><Th>Nome</Th><Th>Link</Th>{canEditAttachments && <Th></Th>}</tr></Thead>
+                        <tbody>
+                            {(attachments ?? []).map((f: OccurrenceReportFile) => (
+                                <Tr key={f.id}>
+                                    <Td>{f.name}</Td>
+                                    <Td>
+                                        {f.externalUrl ? (
+                                            <a href={f.externalUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                Abrir <ExternalLink size={12} />
+                                            </a>
+                                        ) : '—'}
+                                    </Td>
+                                    {canEditAttachments && (
+                                        <Td>
+                                            <Button
+                                                $variant="ghost"
+                                                onClick={() => {
+                                                    if (window.confirm(`Remover o anexo "${f.name}"?`)) {
+                                                        removeAttachmentMutation.mutate(f.id);
+                                                    }
+                                                }}
+                                            >
+                                                <Trash2 size={14} />
+                                            </Button>
+                                        </Td>
+                                    )}
+                                </Tr>
+                            ))}
+                        </tbody>
+                    </Table>
+                    {(attachments ?? []).length === 0 && <EmptyState>Nenhum arquivo anexado ainda.</EmptyState>}
+                </TableWrapper>
+
+                {canEditAttachments && (
+                    <Form onSubmit={(e) => { e.preventDefault(); addAttachmentMutation.mutate(); }} style={{ marginTop: '1rem' }}>
+                        <Field>
+                            <Label htmlFor="attachment-file">Anexar novo arquivo</Label>
+                            <input
+                                id="attachment-file"
+                                type="file"
+                                accept={OCCURRENCE_FILE_ALLOWED_TYPES.join(',')}
+                                onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                            />
+                            <HelpText>PDF, DOC, DOCX ou imagem, até 25MB.</HelpText>
+                        </Field>
+                        <FormActions>
+                            <Button type="submit" disabled={!attachmentFile || addAttachmentMutation.isPending}>
+                                {isUploadingAttachment ? 'Enviando...' : addAttachmentMutation.isPending ? 'Salvando...' : 'Anexar'}
+                            </Button>
+                        </FormActions>
+                    </Form>
+                )}
             </Modal>
         </>
     );
@@ -1353,10 +1567,14 @@ function FilesTab({ eventId }: { eventId: string }) {
     const [mode, setMode] = useState<'link' | 'upload' | 'record'>('link');
     const [file, setFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [renamingFile, setRenamingFile] = useState<EventFile | null>(null);
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    const canManageFiles = hasPermission(user, 'events:manage');
     const { data: files } = useQuery({ queryKey: ['events', eventId, 'files'], queryFn: () => eventFilesApi.list(eventId) });
     const { register, handleSubmit, reset, watch } = useForm<{ name: string; externalUrl: string }>();
     const name = watch('name');
+    const renameForm = useForm<{ name: string }>();
 
     const createMutation = useMutation({
         mutationFn: async (input: { name: string; externalUrl: string }) => {
@@ -1395,6 +1613,30 @@ function FilesTab({ eventId }: { eventId: string }) {
 
     const canSubmit = mode === 'link' ? true : Boolean(file);
 
+    const renameMutation = useMutation({
+        mutationFn: (input: { name: string }) => eventFilesApi.update(eventId, renamingFile!.id, { name: input.name }),
+        onSuccess: () => {
+            toast.success('Arquivo renomeado.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'files'] });
+            setRenamingFile(null);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível renomear o arquivo.'),
+    });
+
+    const removeMutation = useMutation({
+        mutationFn: (fileId: string) => eventFilesApi.remove(eventId, fileId),
+        onSuccess: () => {
+            toast.success('Arquivo removido.');
+            queryClient.invalidateQueries({ queryKey: ['events', eventId, 'files'] });
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível remover o arquivo.'),
+    });
+
+    const openRenameModal = (f: EventFile) => {
+        renameForm.reset({ name: f.name });
+        setRenamingFile(f);
+    };
+
     return (
         <>
             <ToolbarRow>
@@ -1404,13 +1646,30 @@ function FilesTab({ eventId }: { eventId: string }) {
             </ToolbarRow>
             <TableWrapper>
                 <Table>
-                    <Thead><tr><Th>Nome</Th><Th>Link</Th><Th>Adicionado em</Th></tr></Thead>
+                    <Thead><tr><Th>Nome</Th><Th>Link</Th><Th>Adicionado em</Th>{canManageFiles && <Th></Th>}</tr></Thead>
                     <tbody>
                         {(files ?? []).map((f) => (
                             <Tr key={f.id}>
                                 <Td>{f.name}</Td>
                                 <Td><FilePreview file={f} /></Td>
                                 <Td>{formatAppDate(f.createdAt, 'dd/MM/yyyy')}</Td>
+                                {canManageFiles && (
+                                    <Td>
+                                        <Button $variant="ghost" onClick={() => openRenameModal(f)}>
+                                            <Pencil size={14} />
+                                        </Button>
+                                        <Button
+                                            $variant="ghost"
+                                            onClick={() => {
+                                                if (window.confirm(`Remover o arquivo "${f.name}"?`)) {
+                                                    removeMutation.mutate(f.id);
+                                                }
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </Button>
+                                    </Td>
+                                )}
                             </Tr>
                         ))}
                     </tbody>
@@ -1463,6 +1722,21 @@ function FilesTab({ eventId }: { eventId: string }) {
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
                         <Button type="submit" disabled={!name || !canSubmit || createMutation.isPending}>
                             {isUploading ? 'Enviando...' : createMutation.isPending ? 'Salvando...' : 'Adicionar'}
+                        </Button>
+                    </FormActions>
+                </Form>
+            </Modal>
+
+            <Modal open={!!renamingFile} onOpenChange={(open) => !open && setRenamingFile(null)} title="Renomear arquivo">
+                <Form onSubmit={renameForm.handleSubmit((data) => renameMutation.mutate(data))}>
+                    <Field>
+                        <Label htmlFor="rename-name">Nome</Label>
+                        <Input id="rename-name" {...renameForm.register('name', { required: true })} />
+                    </Field>
+                    <FormActions>
+                        <Button type="button" $variant="secondary" onClick={() => setRenamingFile(null)}>Cancelar</Button>
+                        <Button type="submit" disabled={renameMutation.isPending}>
+                            {renameMutation.isPending ? 'Salvando...' : 'Salvar'}
                         </Button>
                     </FormActions>
                 </Form>

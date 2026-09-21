@@ -187,8 +187,14 @@ export class CertificatesService {
         }
     }
 
-    /** Emissão manual (admin) — explícita, então erra alto quando não elegível. */
-    async issueManually(enrollmentId: string, organizationId: string) {
+    /**
+     * Emissão manual (admin) — explícita, então erra alto quando não
+     * elegível. Com `force`, ignora os critérios de presença/aulas
+     * assistidas (sobreposição administrativa de verdade, pro aluno não
+     * precisar "percorrer o caminho das aulas") — a única coisa que `force`
+     * nunca contorna é matrícula que já tem certificado emitido.
+     */
+    async issueManually(enrollmentId: string, organizationId: string, force = false) {
         const result = await this.checkEligibility(enrollmentId);
         if (result.enrollment.organizationId !== organizationId) {
             throw new NotFoundException(`Matrícula com ID ${enrollmentId} não encontrada nesta organização.`);
@@ -197,7 +203,9 @@ export class CertificatesService {
             if (result.reason?.includes('já possui')) {
                 throw new ConflictException(result.reason);
             }
-            throw new BadRequestException(result.reason);
+            if (!force) {
+                throw new BadRequestException(result.reason);
+            }
         }
         return this.issue(enrollmentId, false);
     }

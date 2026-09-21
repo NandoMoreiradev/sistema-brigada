@@ -5,6 +5,8 @@ import { DesignationsService } from './designations.service';
 import { DesignationsController } from './designations.controller';
 import { OccurrenceReportsService } from './occurrence-reports.service';
 import { OccurrenceReportsController } from './occurrence-reports.controller';
+import { OccurrenceReportFilesService } from './occurrence-report-files.service';
+import { OccurrenceReportFilesController } from './occurrence-report-files.controller';
 import { MeetingsService } from './meetings.service';
 import { MeetingsController } from './meetings.controller';
 import { EventFilesService } from './event-files.service';
@@ -21,11 +23,20 @@ import { NotificationsModule } from '../notifications/notifications.module';
         EventsController,
         DesignationsController,
         OccurrenceReportsController,
+        OccurrenceReportFilesController,
         MeetingsController,
         EventFilesController,
         EventPostsController,
     ],
-    providers: [EventsService, DesignationsService, OccurrenceReportsService, MeetingsService, EventFilesService, EventPostsService],
+    providers: [
+        EventsService,
+        DesignationsService,
+        OccurrenceReportsService,
+        OccurrenceReportFilesService,
+        MeetingsService,
+        EventFilesService,
+        EventPostsService,
+    ],
     exports: [EventsService],
 })
 export class EventsModule {}

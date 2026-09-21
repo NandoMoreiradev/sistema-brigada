@@ -19,6 +19,7 @@ import { EventsService } from './events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
+import { UpdateDesignationDto } from './dto/update-designation.dto';
 import { DesignationStatus, CertificateStatus } from '@prisma/client';
 import { parseAppDateTime } from '../common/datetime';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
@@ -158,7 +159,13 @@ export class DesignationsService {
     }
 
     /** Confirma que o brigadista existe na organização e não tem outro turno que conflite com o horário informado. */
-    private async validateStaffAvailability(staffMemberId: string, organizationId: string, shiftStart: Date, shiftEnd: Date) {
+    private async validateStaffAvailability(
+        staffMemberId: string,
+        organizationId: string,
+        shiftStart: Date,
+        shiftEnd: Date,
+        excludeDesignationId?: string,
+    ) {
         const staffMember = await this.prisma.staffMember.findFirst({
             where: { id: staffMemberId, organizationId },
             include: {
@@ -171,13 +178,16 @@ export class DesignationsService {
 
         // Mesmo brigadista não pode estar escalado em dois turnos que se
         // sobrepõem — mesmo em eventos diferentes. Ignora designações já
-        // recusadas: uma recusa libera o horário.
+        // recusadas: uma recusa libera o horário. Ao editar uma designação
+        // existente, ela mesma é excluída da checagem de conflito (senão
+        // sempre "conflitaria" com o próprio horário antigo dela).
         const conflicting = await this.prisma.designation.findFirst({
             where: {
                 staffMemberId,
                 status: { not: DesignationStatus.DECLINED },
                 shiftStart: { lt: shiftEnd },
                 shiftEnd: { gt: shiftStart },
+                ...(excludeDesignationId ? { id: { not: excludeDesignationId } } : {}),
             },
             include: { eventOperation: { include: { event: { select: { title: true } } } } },
         });
@@ -248,6 +258,55 @@ export class DesignationsService {
             where: { eventOperationId: operation.id },
             include: designationInclude,
             orderBy: { shiftStart: 'asc' },
+        });
+    }
+
+    /**
+     * Edita uma designação já criada (pessoa, papel, turno ou posto) sem
+     * precisar excluir e recriar. Reaplica as mesmas validações do `create`
+     * (post pertence ao evento, sem conflito de horário, qualificação em
+     * dia) — a própria designação é excluída da checagem de conflito de
+     * horário consigo mesma.
+     */
+    async update(eventId: string, organizationId: string, designationId: string, dto: UpdateDesignationDto) {
+        const event = await this.eventsService.findOne(eventId, organizationId);
+        if (!event.operation) {
+            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+        }
+        const operationId = event.operation.id;
+
+        const designation = await this.prisma.designation.findFirst({
+            where: { id: designationId, eventOperationId: operationId },
+        });
+        if (!designation) {
+            throw new NotFoundException(`Designação com ID ${designationId} não encontrada neste evento.`);
+        }
+
+        const shiftStart = dto.shiftStart !== undefined ? parseAppDateTime(dto.shiftStart) : designation.shiftStart;
+        const shiftEnd = dto.shiftEnd !== undefined ? parseAppDateTime(dto.shiftEnd) : designation.shiftEnd;
+        if (shiftEnd <= shiftStart) {
+            throw new BadRequestException('O fim do turno deve ser depois do início do turno.');
+        }
+
+        const postId = dto.postId !== undefined ? dto.postId : designation.postId;
+        if (postId) {
+            await this.requirePost(postId, operationId);
+        }
+
+        const staffMemberId = dto.staffMemberId ?? designation.staffMemberId;
+        const staffMember = await this.validateStaffAvailability(staffMemberId, organizationId, shiftStart, shiftEnd, designationId);
+        await this.assertHasValidQualification(staffMember);
+
+        return this.prisma.designation.update({
+            where: { id: designationId },
+            data: {
+                staffMemberId,
+                role: dto.role ?? designation.role,
+                shiftStart,
+                shiftEnd,
+                postId: postId ?? null,
+            },
+            include: designationInclude,
         });
     }
 
