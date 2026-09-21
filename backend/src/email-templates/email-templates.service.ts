@@ -23,6 +23,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
     ORGANIZATION_ADMIN_WELCOME: 'Boas-vindas ao administrador da academia',
     PASSWORD_RESET: 'Redefinição de senha',
     CERTIFICATE_EXPIRING: 'Certificado vencendo',
+    USER_WELCOME: 'Boas-vindas de novo usuário',
 };
 
 @Injectable()

@@ -28,6 +28,7 @@ export class OccurrenceReportsService {
                 type: dto.type,
                 title: dto.title,
                 description: dto.description,
+                audioUrl: dto.audioUrl,
                 createdByUserId,
             },
         });

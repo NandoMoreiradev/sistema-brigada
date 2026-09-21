@@ -29,16 +29,26 @@ const DOCUMENT_TYPES = [
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
+// audio/webm é o formato padrão do MediaRecorder no Chrome/Firefox; audio/mp4
+// é o do Safari. mpeg/ogg/wav cobrem upload manual de um áudio já gravado.
+const AUDIO_TYPES = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg', 'audio/wav'];
 
 const allowedMimeTypes: Record<UploadContext, string[]> = {
     'organization-branding': IMAGE_TYPES,
     'course-lessons': [...VIDEO_TYPES, ...IMAGE_TYPES],
     certificates: ['application/pdf'],
     'external-certifications': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
-    'event-files': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
+    'event-files': [...DOCUMENT_TYPES, ...IMAGE_TYPES, ...AUDIO_TYPES],
     'event-floor-plan': IMAGE_TYPES,
     avatars: IMAGE_TYPES,
     'email-templates': IMAGE_TYPES,
+    'occurrence-audio': AUDIO_TYPES,
+};
+
+const DEFAULT_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
+// Vídeo-aula é o único contexto que plausivelmente excede o padrão de 25MB.
+const maxFileSizeBytesByContext: Partial<Record<UploadContext, number>> = {
+    'course-lessons': 500 * 1024 * 1024, // 500MB
 };
 
 @Injectable()
@@ -128,11 +138,17 @@ export class MediaService {
         dto: GeneratePresignedUrlDto,
         organizationId: string | null,
     ): Promise<{ signedUrl: string; fileUrl: string; storageKey: string }> {
-        const { fileName, contentType, context } = dto;
+        const { fileName, contentType, context, fileSize } = dto;
 
         const allowedTypesForContext = allowedMimeTypes[context];
         if (allowedTypesForContext && allowedTypesForContext.length > 0 && !allowedTypesForContext.includes(contentType)) {
             throw new BadRequestException(`Tipo de arquivo '${contentType}' não é permitido para o contexto '${context}'.`);
+        }
+
+        const maxFileSize = maxFileSizeBytesByContext[context] ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+        if (fileSize > maxFileSize) {
+            const maxMb = Math.round(maxFileSize / (1024 * 1024));
+            throw new BadRequestException(`Arquivo muito grande. O tamanho máximo permitido é ${maxMb}MB.`);
         }
 
         const fileExtension = fileName.split('.').pop() || 'bin';

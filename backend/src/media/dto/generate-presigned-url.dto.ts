@@ -19,6 +19,8 @@ const allowedContexts = [
     'event-files',
     // EventOperation.floorPlanKey (planta baixa do local, pra plotar EventPost)
     'event-floor-plan',
+    // OccurrenceReport.audioUrl (áudio gravado na hora pra registrar a ocorrência)
+    'occurrence-audio',
     // User.avatarUrl
     'avatars',
     // Imagens inseridas no construtor visual de templates de e-mail (bloco "Imagem")

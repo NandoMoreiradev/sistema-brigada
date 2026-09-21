@@ -20,4 +20,8 @@ export class CreateEventFileDto {
     @ValidateIf((o) => !o.storageKey)
     @IsUrl({}, { message: 'A URL informada é inválida.' })
     externalUrl?: string;
+
+    @IsString()
+    @IsOptional()
+    mimeType?: string;
 }

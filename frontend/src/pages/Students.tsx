@@ -2,10 +2,12 @@
 //
 // Gestão de alunos da organização ativa. "Aluno" aqui é um `User` com
 // `StudentProfile` (decisão 8 do docs/decisoes.md) — por isso o formulário de
-// criação já pede e-mail/senha (a pessoa passa a ter login no sistema, não é
-// só um cadastro passivo). E-mail/senha não são editáveis depois (fora do
-// escopo de `UpdatePersonInput`), por isso o formulário de edição esconde
-// esses dois campos e mostra em troca o status ativo/inativo.
+// criação já pede e-mail (a pessoa passa a ter login no sistema, não é só um
+// cadastro passivo). A senha não é definida aqui: o backend gera uma senha
+// aleatória e manda um e-mail de boas-vindas com link de ativação (mesmo
+// padrão do admin de academia). E-mail não é editável depois (fora do escopo
+// de `UpdatePersonInput`), por isso o formulário de edição esconde esse campo
+// e mostra em troca o status ativo/inativo.
 
 import { useState } from 'react';
 import { Users, Plus } from 'lucide-react';
@@ -40,11 +42,6 @@ const baseFields = {
 const createSchema = z.object({
     ...baseFields,
     email: z.string().email('Informe um e-mail válido'),
-    password: z
-        .string()
-        .min(8, 'A senha deve ter no mínimo 8 caracteres')
-        .regex(/[A-Za-z]/, 'A senha deve conter ao menos uma letra')
-        .regex(/[0-9]/, 'A senha deve conter ao menos um número'),
 });
 
 const editSchema = z.object({
@@ -57,7 +54,6 @@ type FormData = z.infer<typeof createSchema> & Partial<z.infer<typeof editSchema
 const blankForm = {
     name: '',
     email: '',
-    password: '',
     phone: '',
     birthDate: '',
     guardianName: '',
@@ -111,7 +107,11 @@ export default function Students() {
         mutationFn: (input: CreatePersonInput | UpdatePersonInput) =>
             editing ? peopleApi.update(editing.id, input as UpdatePersonInput) : peopleApi.create(input as CreatePersonInput),
         onSuccess: () => {
-            toast.success(editing ? 'Aluno atualizado com sucesso.' : 'Aluno cadastrado com sucesso.');
+            toast.success(
+                editing
+                    ? 'Aluno atualizado com sucesso.'
+                    : 'Aluno cadastrado com sucesso. Um e-mail de boas-vindas foi enviado para ele definir a senha.',
+            );
             queryClient.invalidateQueries({ queryKey: ['people'] });
             setModalOpen(false);
         },
@@ -144,7 +144,6 @@ export default function Students() {
             saveMutation.mutate({
                 name: formData.name,
                 email: formData.email!,
-                password: formData.password!,
                 phone: formData.phone || undefined,
                 studentProfile,
             });
@@ -218,19 +217,12 @@ export default function Students() {
 
                     {!editing && (
                         <>
-                            <FieldRow>
-                                <Field>
-                                    <Label htmlFor="email">E-mail</Label>
-                                    <Input id="email" type="email" {...register('email')} />
-                                    {errors.email && <ErrorText>{errors.email.message}</ErrorText>}
-                                </Field>
-                                <Field>
-                                    <Label htmlFor="password">Senha inicial</Label>
-                                    <Input id="password" type="password" {...register('password')} />
-                                    {errors.password && <ErrorText>{errors.password.message}</ErrorText>}
-                                </Field>
-                            </FieldRow>
-                            <HelpText>O aluno poderá trocar a senha depois de fazer o primeiro login.</HelpText>
+                            <Field>
+                                <Label htmlFor="email">E-mail</Label>
+                                <Input id="email" type="email" {...register('email')} />
+                                {errors.email && <ErrorText>{errors.email.message}</ErrorText>}
+                            </Field>
+                            <HelpText>O aluno recebe um e-mail de boas-vindas com um link para definir a própria senha.</HelpText>
                         </>
                     )}
 
