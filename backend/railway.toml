@@ -3,7 +3,11 @@ builder = "NIXPACKS"
 buildCommand = "npx prisma generate && npx nest build -b swc"
 
 [deploy]
-preDeployCommand = "npm run prisma:seed"
+# Migrations precisam rodar ANTES do seed — o seed pode referenciar coisa
+# criada numa migration recente (ex: um novo valor de enum), e falha se o
+# schema ainda não tiver sido atualizado. `migrate deploy` é idempotente,
+# então rodar de novo dentro de `start:prod` (npm run start:prod) não tem custo.
+preDeployCommand = "npx prisma migrate deploy && npm run prisma:seed"
 startCommand = "npm run start:prod"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
