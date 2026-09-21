@@ -156,6 +156,7 @@ export interface OccurrenceReport {
     type: string;
     title: string;
     description: string | null;
+    audioUrl: string | null;
     createdAt: string;
 }
 
@@ -164,7 +165,7 @@ export const occurrenceReportsApi = {
         const { data } = await api.get<OccurrenceReport[]>(`/events/${eventId}/occurrence-reports`);
         return data;
     },
-    create: async (eventId: string, input: { type: string; title: string; description?: string }) => {
+    create: async (eventId: string, input: { type: string; title: string; description?: string; audioUrl?: string }) => {
         const { data } = await api.post<OccurrenceReport>(`/events/${eventId}/occurrence-reports`, input);
         return data;
     },
@@ -195,6 +196,7 @@ export interface EventFile {
     name: string;
     storageKey: string | null;
     externalUrl: string | null;
+    mimeType: string | null;
     createdAt: string;
 }
 
@@ -203,7 +205,7 @@ export const eventFilesApi = {
         const { data } = await api.get<EventFile[]>(`/events/${eventId}/files`);
         return data;
     },
-    create: async (eventId: string, input: { name: string; externalUrl?: string; storageKey?: string }) => {
+    create: async (eventId: string, input: { name: string; externalUrl?: string; storageKey?: string; mimeType?: string }) => {
         const { data } = await api.post<EventFile>(`/events/${eventId}/files`, input);
         return data;
     },

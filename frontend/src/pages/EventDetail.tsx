@@ -10,14 +10,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Popover from '@radix-ui/react-popover';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, MapPin, Upload, X } from 'lucide-react';
+import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, MapPin, Upload, X, Eye } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Select, Textarea, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, Form, FormActions, FieldRow, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
+import { AudioRecorder } from '@/components/media/AudioRecorder';
 import {
     eventsApi,
     designationsApi,
@@ -29,6 +30,7 @@ import {
     type AppEvent,
     type Designation,
     type EventPost,
+    type EventFile,
 } from '@/services/events';
 import { mediaApi } from '@/services/media';
 import { staffApi } from '@/services/staff';
@@ -580,8 +582,28 @@ function DesignationsTab({ eventId }: { eventId: string }) {
     );
 }
 
+function OccurrenceAudioPlayer({ url }: { url: string }) {
+    const [open, setOpen] = useState(false);
+    return (
+        <>
+            <button
+                type="button"
+                onClick={() => setOpen(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, font: 'inherit' }}
+            >
+                <Eye size={12} /> Ouvir áudio
+            </button>
+            <Modal open={open} onOpenChange={setOpen} title="Áudio da ocorrência">
+                <audio src={url} controls style={{ width: '100%' }} />
+            </Modal>
+        </>
+    );
+}
+
 function OccurrencesTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
+    const [audioFile, setAudioFile] = useState<File | null>(null);
+    const [isUploadingAudio, setIsUploadingAudio] = useState(false);
     const queryClient = useQueryClient();
     const { user } = useAuth();
     // Registrar é aberto a todo mundo (quem está em campo percebe o incidente), mas
@@ -591,11 +613,24 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
     const { register, handleSubmit, reset } = useForm<{ type: string; title: string; description: string }>();
 
     const createMutation = useMutation({
-        mutationFn: (input: { type: string; title: string; description?: string }) => occurrenceReportsApi.create(eventId, input),
+        mutationFn: async (input: { type: string; title: string; description?: string }) => {
+            let audioUrl: string | undefined;
+            if (audioFile) {
+                setIsUploadingAudio(true);
+                try {
+                    const { fileUrl } = await mediaApi.upload(audioFile, 'occurrence-audio');
+                    audioUrl = fileUrl;
+                } finally {
+                    setIsUploadingAudio(false);
+                }
+            }
+            return occurrenceReportsApi.create(eventId, { ...input, audioUrl });
+        },
         onSuccess: () => {
             toast.success('Relatório registrado.');
             queryClient.invalidateQueries({ queryKey: ['events', eventId, 'occurrence-reports'] });
             setModalOpen(false);
+            setAudioFile(null);
         },
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível registrar o relatório.'),
     });
@@ -612,14 +647,14 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
     return (
         <>
             <ToolbarRow>
-                <Button onClick={() => { reset({ type: 'GENERAL', title: '', description: '' }); setModalOpen(true); }}>
+                <Button onClick={() => { reset({ type: 'GENERAL', title: '', description: '' }); setAudioFile(null); setModalOpen(true); }}>
                     <Plus size={16} /> Novo relatório
                 </Button>
             </ToolbarRow>
             <TableWrapper>
                 <Table>
                     <Thead>
-                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Data</Th>{canRemove && <Th></Th>}</tr>
+                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Áudio</Th><Th>Data</Th>{canRemove && <Th></Th>}</tr>
                     </Thead>
                     <tbody>
                         {(reports ?? []).map((r) => (
@@ -627,6 +662,7 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                 <Td><Badge>{OCCURRENCE_TYPES.find((t) => t.value === r.type)?.label ?? r.type}</Badge></Td>
                                 <Td>{r.title}</Td>
                                 <Td>{r.description || '—'}</Td>
+                                <Td>{r.audioUrl ? <OccurrenceAudioPlayer url={r.audioUrl} /> : '—'}</Td>
                                 <Td>{formatAppDate(r.createdAt, 'dd/MM/yyyy HH:mm')}</Td>
                                 {canRemove && (
                                     <Td>
@@ -665,9 +701,15 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                         <Label htmlFor="description">Descrição</Label>
                         <Textarea id="description" {...register('description')} />
                     </Field>
+                    <Field>
+                        <Label>Áudio (opcional)</Label>
+                        <AudioRecorder onRecorded={setAudioFile} disabled={createMutation.isPending} />
+                    </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? 'Salvando...' : 'Registrar'}</Button>
+                        <Button type="submit" disabled={createMutation.isPending}>
+                            {isUploadingAudio ? 'Enviando áudio...' : createMutation.isPending ? 'Salvando...' : 'Registrar'}
+                        </Button>
                     </FormActions>
                 </Form>
             </Modal>
@@ -1212,9 +1254,65 @@ function AttendanceTab({ eventId }: { eventId: string }) {
     );
 }
 
+// Mesma allowlist do contexto 'event-files' em backend/src/media/media.service.ts —
+// mantém a validação do lado do cliente consistente com o que o backend aceita.
+const EVENT_FILE_ALLOWED_TYPES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/svg+xml',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg',
+    'audio/mpeg',
+    'audio/wav',
+];
+const EVENT_FILE_MAX_SIZE = 25 * 1024 * 1024; // 25MB — mesmo padrão de media.service.ts
+
+function FilePreview({ file }: { file: EventFile }) {
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const url = file.externalUrl;
+    const mime = file.mimeType ?? '';
+    const canPreview = Boolean(url) && (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('audio/'));
+
+    if (!url) return <>—</>;
+
+    return (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+            {canPreview && (
+                <button
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                >
+                    <Eye size={12} /> Visualizar
+                </button>
+            )}
+            <a href={url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                Abrir <ExternalLink size={12} />
+            </a>
+            {canPreview && (
+                <Modal open={previewOpen} onOpenChange={setPreviewOpen} title={file.name}>
+                    {mime.startsWith('image/') ? (
+                        <img src={url} alt={file.name} style={{ maxWidth: '100%', maxHeight: '70vh', display: 'block', margin: '0 auto' }} />
+                    ) : mime.startsWith('audio/') ? (
+                        <audio src={url} controls style={{ width: '100%' }} />
+                    ) : (
+                        <iframe src={url} title={file.name} style={{ width: '100%', height: '70vh', border: 'none' }} />
+                    )}
+                </Modal>
+            )}
+        </div>
+    );
+}
+
 function FilesTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
-    const [mode, setMode] = useState<'link' | 'upload'>('link');
+    const [mode, setMode] = useState<'link' | 'upload' | 'record'>('link');
     const [file, setFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const queryClient = useQueryClient();
@@ -1224,12 +1322,18 @@ function FilesTab({ eventId }: { eventId: string }) {
 
     const createMutation = useMutation({
         mutationFn: async (input: { name: string; externalUrl: string }) => {
-            if (mode === 'upload') {
-                if (!file) throw new Error('Selecione um arquivo para enviar.');
+            if (mode === 'upload' || mode === 'record') {
+                if (!file) throw new Error(mode === 'record' ? 'Grave um áudio antes de salvar.' : 'Selecione um arquivo para enviar.');
+                if (!EVENT_FILE_ALLOWED_TYPES.includes(file.type)) {
+                    throw new Error('Tipo de arquivo não permitido. Envie PDF, DOC, DOCX, uma imagem ou um áudio.');
+                }
+                if (file.size > EVENT_FILE_MAX_SIZE) {
+                    throw new Error('O arquivo deve ter no máximo 25MB.');
+                }
                 setIsUploading(true);
                 try {
-                    const { storageKey } = await mediaApi.upload(file, 'event-files');
-                    return eventFilesApi.create(eventId, { name: input.name, storageKey });
+                    const { fileUrl, storageKey } = await mediaApi.upload(file, 'event-files');
+                    return eventFilesApi.create(eventId, { name: input.name, storageKey, externalUrl: fileUrl, mimeType: file.type });
                 } finally {
                     setIsUploading(false);
                 }
@@ -1267,13 +1371,7 @@ function FilesTab({ eventId }: { eventId: string }) {
                         {(files ?? []).map((f) => (
                             <Tr key={f.id}>
                                 <Td>{f.name}</Td>
-                                <Td>
-                                    {f.externalUrl ? (
-                                        <a href={f.externalUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                            Abrir <ExternalLink size={12} />
-                                        </a>
-                                    ) : '—'}
-                                </Td>
+                                <Td><FilePreview file={f} /></Td>
                                 <Td>{formatAppDate(f.createdAt, 'dd/MM/yyyy')}</Td>
                             </Tr>
                         ))}
@@ -1291,25 +1389,35 @@ function FilesTab({ eventId }: { eventId: string }) {
 
                     <Field>
                         <Label htmlFor="mode">Tipo de anexo</Label>
-                        <Select id="mode" value={mode} onChange={(e) => { setMode(e.target.value as 'link' | 'upload'); setFile(null); }}>
+                        <Select id="mode" value={mode} onChange={(e) => { setMode(e.target.value as 'link' | 'upload' | 'record'); setFile(null); }}>
                             <option value="link">Link (URL já hospedada)</option>
                             <option value="upload">Enviar arquivo</option>
+                            <option value="record">Gravar áudio</option>
                         </Select>
                     </Field>
 
-                    {mode === 'link' ? (
+                    {mode === 'link' && (
                         <Field>
                             <Label htmlFor="externalUrl">Link</Label>
                             <Input id="externalUrl" placeholder="https://..." {...register('externalUrl', { required: mode === 'link' })} />
                         </Field>
-                    ) : (
+                    )}
+                    {mode === 'upload' && (
                         <Field>
                             <Label htmlFor="file">Arquivo</Label>
                             <input
                                 id="file"
                                 type="file"
+                                accept={EVENT_FILE_ALLOWED_TYPES.join(',')}
                                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                             />
+                            <HelpText>PDF, DOC, DOCX ou imagem, até 25MB.</HelpText>
+                        </Field>
+                    )}
+                    {mode === 'record' && (
+                        <Field>
+                            <Label>Áudio</Label>
+                            <AudioRecorder onRecorded={setFile} disabled={createMutation.isPending} />
                         </Field>
                     )}
 

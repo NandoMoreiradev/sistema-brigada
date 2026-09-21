@@ -13,7 +13,14 @@ export class EventFilesService {
     async create(eventId: string, organizationId: string, uploadedByUserId: string, dto: CreateEventFileDto) {
         await this.eventsService.findOne(eventId, organizationId);
         return this.prisma.eventFile.create({
-            data: { eventId, name: dto.name, storageKey: dto.storageKey, externalUrl: dto.externalUrl, uploadedByUserId },
+            data: {
+                eventId,
+                name: dto.name,
+                storageKey: dto.storageKey,
+                externalUrl: dto.externalUrl,
+                mimeType: dto.mimeType,
+                uploadedByUserId,
+            },
         });
     }
 

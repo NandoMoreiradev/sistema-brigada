@@ -15,7 +15,8 @@ export type UploadContext =
     | 'event-files'
     | 'event-floor-plan'
     | 'avatars'
-    | 'email-templates';
+    | 'email-templates'
+    | 'occurrence-audio';
 
 export const mediaApi = {
     upload: async (file: File, context: UploadContext) => {
