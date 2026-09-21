@@ -73,7 +73,10 @@ export class MediaService {
         }
 
         this.bucketName = bucketName;
-        this.publicUrl = publicUrl;
+        // Remove barra(s) final(is) da env var — evita URL com "//" antes da
+        // chave do objeto (`${this.publicUrl}/${key}`), que o R2 trata como
+        // chave diferente da real e retorna 404.
+        this.publicUrl = publicUrl.replace(/\/+$/, '');
         const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
 
         const httpsAgent = new https.Agent({ minVersion: 'TLSv1.2', keepAlive: true });
