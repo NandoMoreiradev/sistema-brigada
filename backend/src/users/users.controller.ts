@@ -81,6 +81,19 @@ export class UsersController {
         return this.usersService.update(id, this.requireOrganizationId(organizationId), dto);
     }
 
+    /**
+     * Pro admin gerar uma nova senha temporária/link de ativação pra quem
+     * perdeu a senha, sem essa pessoa precisar usar o "Esqueci minha senha"
+     * da tela de login (ex: ela nem lembra mais qual e-mail usou, ou não
+     * está com acesso ao e-mail na hora). Não muda a senha direto — só
+     * reenvia o e-mail de redefinição, a pessoa define a senha nova ela mesma.
+     */
+    @Post(':id/send-password-reset')
+    @RequirePermission('people:manage')
+    sendPasswordReset(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.usersService.sendPasswordReset(id, this.requireOrganizationId(organizationId));
+    }
+
     @Put(':id/role-assignment')
     @RequirePermission('people:manage')
     setRoleAssignment(

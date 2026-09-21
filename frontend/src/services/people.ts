@@ -79,6 +79,10 @@ export const peopleApi = {
         const { data } = await api.put<OrgPerson>(`/users/${id}/direct-permissions`, { permissionIds });
         return data;
     },
+    sendPasswordReset: async (id: string) => {
+        const { data } = await api.post<{ message: string }>(`/users/${id}/send-password-reset`);
+        return data;
+    },
     addExternalCertification: async (userId: string, input: CreateExternalCertificationInput) => {
         const { data } = await api.post<ExternalCertification>(`/users/${userId}/external-certifications`, input);
         return data;
