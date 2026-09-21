@@ -44,7 +44,7 @@ export class CertificatesController {
     @Post('issue')
     @RequirePermission('certificates:manage')
     issue(@Body() dto: IssueCertificateDto, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.certificatesService.issueManually(dto.enrollmentId, this.requireOrganizationId(organizationId));
+        return this.certificatesService.issueManually(dto.enrollmentId, this.requireOrganizationId(organizationId), dto.force);
     }
 
     @Post(':id/regenerate-pdf')

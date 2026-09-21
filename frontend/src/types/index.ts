@@ -139,6 +139,7 @@ export interface Enrollment {
     status: EnrollmentStatus;
     enrolledAt: string;
     studentProfile: { id: string; user: { id: string; name: string; email: string } };
+    certificate: { id: string; status: 'VALID' | 'EXPIRED' | 'REVOKED' } | null;
 }
 
 export interface AttendanceRosterEntry {

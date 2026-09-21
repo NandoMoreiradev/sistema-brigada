@@ -125,7 +125,10 @@ export class EnrollmentsService {
     findAll(courseId: string, organizationId: string) {
         return this.prisma.enrollment.findMany({
             where: { courseId, organizationId },
-            include: { studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } } },
+            include: {
+                studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
+                certificate: { select: { id: true, status: true } },
+            },
             orderBy: { enrolledAt: 'desc' },
         });
     }
