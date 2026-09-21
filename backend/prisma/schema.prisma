@@ -703,6 +703,7 @@ enum EmailTriggerType {
   ORGANIZATION_ADMIN_WELCOME
   PASSWORD_RESET
   CERTIFICATE_EXPIRING
+  USER_WELCOME
 }
 
 /// organizationId = null -> template padrão global (usado quando a academia não tem override).

@@ -7,7 +7,7 @@
 
 import { api } from './api';
 
-export type EmailTriggerType = 'ORGANIZATION_ADMIN_WELCOME' | 'PASSWORD_RESET' | 'CERTIFICATE_EXPIRING';
+export type EmailTriggerType = 'ORGANIZATION_ADMIN_WELCOME' | 'PASSWORD_RESET' | 'CERTIFICATE_EXPIRING' | 'USER_WELCOME';
 
 export interface EmailTemplate {
     id: string;

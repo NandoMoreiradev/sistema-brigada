@@ -44,6 +44,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultEmailTemplate[] = [
         `.trim(),
     },
     {
+        name: 'Padrão — Boas-vindas de novo usuário',
+        trigger: EmailTriggerType.USER_WELCOME,
+        subject: 'Bem-vindo(a) à {{organization_name}}!',
+        body: `
+            <h2>Bem-vindo(a)!</h2>
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Sua conta em <strong>{{organization_name}}</strong> foi criada. Clique no botão abaixo para definir sua senha e acessar o sistema.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{login_link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Definir minha senha e acessar</a>
+            </p>
+            <p>Se você não esperava este e-mail, pode ignorá-lo com segurança.</p>
+        `.trim(),
+    },
+    {
         name: 'Padrão — Certificado vencendo',
         trigger: EmailTriggerType.CERTIFICATE_EXPIRING,
         subject: 'Seu certificado está vencendo',

@@ -18,7 +18,6 @@ export interface StudentProfileInput {
 export interface CreatePersonInput {
     name: string;
     email: string;
-    password: string;
     phone?: string;
     role?: 'ORG_ADMIN' | 'ORG_USER';
     studentProfile?: StudentProfileInput;

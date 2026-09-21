@@ -124,4 +124,28 @@ export class TransactionalEmailService {
 
         await this.sendEmailByTrigger(student.email, EmailTriggerType.CERTIFICATE_EXPIRING, context, organizationId);
     }
+
+    /**
+     * Boas-vindas para uma pessoa recém-cadastrada dentro de uma academia já
+     * existente (aluno, instrutor, equipe...) — diferente de
+     * ORGANIZATION_ADMIN_WELCOME (que é a própria academia sendo criada).
+     * Não entra em PLATFORM_TRIGGERS: sai pelo Resend da própria academia,
+     * igual a CERTIFICATE_EXPIRING.
+     */
+    async sendUserWelcomeEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        activationLink: string,
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            login_link: activationLink,
+        };
+
+        await this.sendEmailByTrigger(user.email, EmailTriggerType.USER_WELCOME, context, organizationId);
+    }
 }

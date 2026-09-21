@@ -12,10 +12,13 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException }
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
+import { AuthService } from '../auth/auth.service';
+import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 
 const userListSelect = {
     id: true,
@@ -35,7 +38,11 @@ const userListSelect = {
 
 @Injectable()
 export class UsersService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly authService: AuthService,
+        private readonly transactionalEmailService: TransactionalEmailService,
+    ) {}
 
     async create(dto: CreateUserDto, organizationId: string) {
         const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
@@ -43,9 +50,14 @@ export class UsersService {
             throw new ConflictException('Já existe um usuário cadastrado com este e-mail.');
         }
 
-        const hashedPassword = await bcrypt.hash(dto.password, 10);
+        const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
 
-        return this.prisma.$transaction(async (tx) => {
+        // Senha aleatória, nunca exposta em lugar nenhum — a pessoa define a própria
+        // senha pelo link de ativação do e-mail de boas-vindas (mesmo padrão do
+        // admin de academia em organizations.service.ts).
+        const hashedPassword = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+
+        const user = await this.prisma.$transaction(async (tx) => {
             const user = await tx.user.create({
                 data: {
                     name: dto.name,
@@ -77,6 +89,20 @@ export class UsersService {
 
             return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userListSelect });
         });
+
+        // Fora da transação e sem `await` — o e-mail não pode impedir nem atrasar a
+        // resposta de criação da pessoa (ex: Resend fora do ar/lento).
+        // TransactionalEmailService já captura e loga qualquer falha internamente.
+        const activationToken = this.authService.createPasswordResetToken(user.id);
+        const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
+        void this.transactionalEmailService.sendUserWelcomeEmail(
+            { name: user.name, email: user.email },
+            organizationId,
+            organization.name,
+            activationLink,
+        );
+
+        return user;
     }
 
     async findAll(organizationId: string, query: ListUsersDto) {
