@@ -37,8 +37,12 @@ export class EventFilesController {
 
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Param('eventId') eventId: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.eventFilesService.findAll(eventId, this.requireOrganizationId(organizationId));
+    findAll(
+        @Param('eventId') eventId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.eventFilesService.findAll(eventId, this.requireOrganizationId(organizationId), user);
     }
 
     @Delete(':fileId')

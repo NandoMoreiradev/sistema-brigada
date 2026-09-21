@@ -17,6 +17,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Form, FormActions } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { certificatesApi, certificateTemplateApi, type CertificateStatus } from '@/services/certificates';
+import { ImageUploadButton } from '@/components/media/ImageUploadButton';
 import { toast } from '@/utils/toast';
 
 const STATUS_LABEL: Record<CertificateStatus, string> = {
@@ -53,7 +54,9 @@ export default function Certificates() {
         enabled: templateModalOpen,
     });
 
-    const { register, handleSubmit, reset } = useForm<TemplateFormData>();
+    const { register, handleSubmit, reset, watch, setValue } = useForm<TemplateFormData>();
+    const logoUrl = watch('logoUrl');
+    const signatureImageUrl = watch('signatureImageUrl');
 
     const openTemplateModal = () => {
         reset({
@@ -156,16 +159,36 @@ export default function Certificates() {
             <Modal open={templateModalOpen} onOpenChange={setTemplateModalOpen} title="Personalização do certificado">
                 <Form onSubmit={handleSubmit((data) => saveTemplateMutation.mutate(data))}>
                     <Field>
-                        <Label htmlFor="logoUrl">URL do logo da academia</Label>
-                        <Input id="logoUrl" placeholder="https://..." {...register('logoUrl')} />
+                        <Label htmlFor="logoUrl">Logo da academia</Label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <Input id="logoUrl" placeholder="https://... (ou envie um arquivo)" {...register('logoUrl')} style={{ flex: 1 }} />
+                            <ImageUploadButton
+                                context="organization-branding"
+                                onUploaded={(url) => setValue('logoUrl', url)}
+                                disabled={saveTemplateMutation.isPending}
+                            />
+                        </div>
+                        {logoUrl && (
+                            <img src={logoUrl} alt="Pré-visualização do logo" style={{ maxHeight: 60, marginTop: '0.5rem', border: '1px solid #dee2e6', borderRadius: 6, padding: 4 }} />
+                        )}
                     </Field>
                     <Field>
                         <Label htmlFor="signatureName">Nome de quem assina (diretor/instrutor)</Label>
                         <Input id="signatureName" {...register('signatureName')} />
                     </Field>
                     <Field>
-                        <Label htmlFor="signatureImageUrl">URL da imagem da assinatura (opcional)</Label>
-                        <Input id="signatureImageUrl" placeholder="https://..." {...register('signatureImageUrl')} />
+                        <Label htmlFor="signatureImageUrl">Imagem da assinatura (opcional)</Label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <Input id="signatureImageUrl" placeholder="https://... (ou envie um arquivo)" {...register('signatureImageUrl')} style={{ flex: 1 }} />
+                            <ImageUploadButton
+                                context="organization-branding"
+                                onUploaded={(url) => setValue('signatureImageUrl', url)}
+                                disabled={saveTemplateMutation.isPending}
+                            />
+                        </div>
+                        {signatureImageUrl && (
+                            <img src={signatureImageUrl} alt="Pré-visualização da assinatura" style={{ maxHeight: 60, marginTop: '0.5rem', border: '1px solid #dee2e6', borderRadius: 6, padding: 4 }} />
+                        )}
                     </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setTemplateModalOpen(false)}>Cancelar</Button>

@@ -49,8 +49,12 @@ export class DesignationsController {
 
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Param('eventId') eventId: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.designationsService.findAll(eventId, this.requireOrganizationId(organizationId));
+    findAll(
+        @Param('eventId') eventId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.designationsService.findAll(eventId, this.requireOrganizationId(organizationId), user);
     }
 
     /**

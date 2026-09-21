@@ -241,7 +241,8 @@ export class DesignationsService {
         }
     }
 
-    async findAll(eventId: string, organizationId: string) {
+    async findAll(eventId: string, organizationId: string, user: AuthenticatedUser) {
+        await this.eventsService.assertCanViewEvent(eventId, organizationId, user);
         const operation = await this.eventsService.requireEventOperation(eventId, organizationId);
         return this.prisma.designation.findMany({
             where: { eventOperationId: operation.id },

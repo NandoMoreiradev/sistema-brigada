@@ -38,14 +38,22 @@ export class EventsController {
 
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Query() query: ListEventsDto, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.eventsService.findAll(this.requireOrganizationId(organizationId), query);
+    findAll(
+        @Query() query: ListEventsDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.eventsService.findAll(this.requireOrganizationId(organizationId), query, user);
     }
 
     @Get(':id')
     @Roles(...ALL_ORG_ROLES)
-    findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.eventsService.findOne(id, this.requireOrganizationId(organizationId));
+    findOne(
+        @Param('id') id: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.eventsService.findOneVisibleTo(id, this.requireOrganizationId(organizationId), user);
     }
 
     @Patch(':id')
