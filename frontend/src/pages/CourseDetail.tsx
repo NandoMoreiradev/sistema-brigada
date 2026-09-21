@@ -547,8 +547,11 @@ const LessonExtra = styled.div`
     gap: 0.5rem;
 
     video {
-        width: 100%;
-        max-width: 480px;
+        display: block;
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 360px;
         border-radius: ${({ theme }) => theme.radii.sm};
         background: #000;
     }

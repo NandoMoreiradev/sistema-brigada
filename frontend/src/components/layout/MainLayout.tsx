@@ -284,7 +284,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
     // SUPER_ADMIN é usuário de plataforma, sem organização própria e sem
     // organização ativa selecionável na UI (ver docs/decisoes.md) — os itens
-    // abaixo (Turmas/Eventos/Equipe/Alunos/Certificados/Cargos/Modelos de
+    // abaixo (Turmas/Eventos/Equipe/Pessoas/Certificados/Cargos/Modelos de
     // e-mail) dependem de ActiveOrganizationId no backend e retornam 400 pra
     // ele. Por isso o menu do SUPER_ADMIN mostra só a seção Plataforma.
     //
@@ -305,7 +305,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
               hasPermission(user, 'staff:manage')
                   ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
                   : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
-              ...(hasPermission(user, 'people:manage') ? [{ to: '/students', label: 'Alunos', icon: Users }] : []),
+              ...(hasPermission(user, 'people:manage') ? [{ to: '/people', label: 'Pessoas', icon: Users }] : []),
               hasPermission(user, 'certificates:manage')
                   ? { to: '/certificates', label: 'Certificados', icon: Award }
                   : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },

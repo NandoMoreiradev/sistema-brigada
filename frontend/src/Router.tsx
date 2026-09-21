@@ -8,7 +8,7 @@
 //   - Privada (qualquer autenticado): /dashboard, /courses/:id, /events,
 //     /events/:id, /roles, /my-courses, /my-certificates, /my-designations
 //   - Privada + permissão de módulo (Fase 3, docs/decisoes.md): /courses,
-//     /staff, /students, /certificates — listagem completa da organização,
+//     /staff, /people, /certificates — listagem completa da organização,
 //     só para quem administra aquele módulo (ou é admin). Quem não tem a
 //     permissão usa o recorte pessoal em /my-*.
 //   - Privada + SUPER_ADMIN: /admin/organizations (painel de plataforma)
@@ -25,7 +25,7 @@ import CourseDetail from '@/pages/CourseDetail';
 import Events from '@/pages/Events';
 import EventDetail from '@/pages/EventDetail';
 import Staff from '@/pages/Staff';
-import Students from '@/pages/Students';
+import People from '@/pages/People';
 import Certificates from '@/pages/Certificates';
 import Roles from '@/pages/Roles';
 import Organizations from '@/pages/admin/Organizations';
@@ -68,7 +68,7 @@ export function Router() {
                 <Route path="/staff" element={<Staff />} />
             </Route>
             <Route element={<PermissionRoute permission="people:manage" />}>
-                <Route path="/students" element={<Students />} />
+                <Route path="/people" element={<People />} />
             </Route>
             <Route element={<PermissionRoute permission="certificates:manage" />}>
                 <Route path="/certificates" element={<Certificates />} />
