@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { EnrollmentsService } from './enrollments.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+import { CreateBulkEnrollmentDto } from './dto/create-bulk-enrollment.dto';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -31,6 +32,16 @@ export class EnrollmentsController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.enrollmentsService.enroll(courseId, this.requireOrganizationId(organizationId), dto.userId);
+    }
+
+    @Post('bulk')
+    @RequirePermission('courses:manage')
+    enrollBulk(
+        @Param('courseId') courseId: string,
+        @Body() dto: CreateBulkEnrollmentDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.enrollmentsService.enrollBulk(courseId, this.requireOrganizationId(organizationId), dto);
     }
 
     @Get()

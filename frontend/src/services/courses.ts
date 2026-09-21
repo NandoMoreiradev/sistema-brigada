@@ -166,6 +166,10 @@ export const enrollmentsApi = {
         const { data } = await api.post<Enrollment>(`/courses/${courseId}/enrollments`, { userId });
         return data;
     },
+    enrollBulk: async (courseId: string, userIds: string[]) => {
+        const { data } = await api.post<Enrollment[]>(`/courses/${courseId}/enrollments/bulk`, { userIds });
+        return data;
+    },
     updateStatus: async (courseId: string, enrollmentId: string, status: string) => {
         const { data } = await api.patch<Enrollment>(`/courses/${courseId}/enrollments/${enrollmentId}`, { status });
         return data;

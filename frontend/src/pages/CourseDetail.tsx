@@ -18,7 +18,7 @@ import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, roomsApi, classSessionsApi, enrollmentsApi, courseModulesApi, courseLessonsApi } from '@/services/courses';
 import { peopleApi } from '@/services/people';
@@ -199,17 +199,21 @@ export default function CourseDetail() {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível agendar a aula.'),
     });
 
-    const [enrollUserId, setEnrollUserId] = useState('');
+    const [enrollUserIds, setEnrollUserIds] = useState<string[]>([]);
+    const toggleEnrollUserId = (id: string) => {
+        setEnrollUserIds((current) => (current.includes(id) ? current.filter((u) => u !== id) : [...current, id]));
+    };
     const enrollMutation = useMutation({
-        mutationFn: (userId: string) => enrollmentsApi.enroll(courseId, userId),
-        onSuccess: () => {
-            toast.success('Aluno matriculado com sucesso.');
+        mutationFn: async (userIds: string[]) =>
+            userIds.length === 1 ? [await enrollmentsApi.enroll(courseId, userIds[0])] : enrollmentsApi.enrollBulk(courseId, userIds),
+        onSuccess: (_, userIds) => {
+            toast.success(userIds.length > 1 ? `${userIds.length} alunos matriculados com sucesso.` : 'Aluno matriculado com sucesso.');
             queryClient.invalidateQueries({ queryKey: ['courses', courseId, 'enrollments'] });
             invalidateCourse();
             setEnrollModalOpen(false);
-            setEnrollUserId('');
+            setEnrollUserIds([]);
         },
-        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível matricular o aluno.'),
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível matricular os alunos selecionados.'),
     });
 
     const updateEnrollmentStatusMutation = useMutation({
@@ -308,7 +312,7 @@ export default function CourseDetail() {
                 <Tabs.Content value="enrollments">
                     {canManageEnrollments && (
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-                            <Button onClick={() => setEnrollModalOpen(true)}>
+                            <Button onClick={() => { setEnrollUserIds([]); setEnrollModalOpen(true); }}>
                                 <Plus size={16} /> Matricular aluno
                             </Button>
                         </div>
@@ -386,25 +390,36 @@ export default function CourseDetail() {
                 </Form>
             </Modal>
 
-            {/* Matricular aluno */}
-            <Modal open={enrollModalOpen} onOpenChange={setEnrollModalOpen} title="Matricular aluno">
-                <Form onSubmit={(e) => { e.preventDefault(); if (enrollUserId) enrollMutation.mutate(enrollUserId); }}>
+            {/* Matricular aluno(s) */}
+            <Modal open={enrollModalOpen} onOpenChange={setEnrollModalOpen} title="Matricular alunos">
+                <Form onSubmit={(e) => { e.preventDefault(); if (enrollUserIds.length > 0) enrollMutation.mutate(enrollUserIds); }}>
                     <Field>
-                        <Label htmlFor="student">Aluno</Label>
-                        <Select id="student" value={enrollUserId} onChange={(e) => setEnrollUserId(e.target.value)}>
-                            <option value="">Selecione um aluno</option>
+                        <Label>Alunos</Label>
+                        <HelpText>Selecione um ou mais alunos para matricular de uma vez.</HelpText>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: 280, overflowY: 'auto' }}>
                             {availableStudents.map((student) => (
-                                <option key={student.id} value={student.id}>{student.name} — {student.email}</option>
+                                <label key={student.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem', padding: '0.2rem 0' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={enrollUserIds.includes(student.id)}
+                                        onChange={() => toggleEnrollUserId(student.id)}
+                                    />
+                                    {student.name} — {student.email}
+                                </label>
                             ))}
-                        </Select>
+                        </div>
                         {availableStudents.length === 0 && (
                             <ErrorText>Todos os alunos cadastrados já estão matriculados, ou nenhum aluno foi cadastrado ainda.</ErrorText>
                         )}
                     </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setEnrollModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={!enrollUserId || enrollMutation.isPending}>
-                            {enrollMutation.isPending ? 'Matriculando...' : 'Matricular'}
+                        <Button type="submit" disabled={enrollUserIds.length === 0 || enrollMutation.isPending}>
+                            {enrollMutation.isPending
+                                ? 'Matriculando...'
+                                : enrollUserIds.length > 1
+                                  ? `Matricular ${enrollUserIds.length} alunos`
+                                  : 'Matricular'}
                         </Button>
                     </FormActions>
                 </Form>
