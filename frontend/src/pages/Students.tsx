@@ -8,6 +8,15 @@
 // padrão do admin de academia). E-mail não é editável depois (fora do escopo
 // de `UpdatePersonInput`), por isso o formulário de edição esconde esse campo
 // e mostra em troca o status ativo/inativo.
+//
+// Esta é também a ÚNICA tela de cadastro de pessoa nova no sistema — não
+// existe "Novo instrutor"/"Novo integrante da equipe" separado. Por isso o
+// formulário de criação tem o campo "Tipo de cadastro": ao escolher "Só
+// cadastro (instrutor/equipe)", os campos de perfil de aluno somem e a
+// pessoa é criada sem `StudentProfile`. Ela não aparece nesta lista depois
+// (que só lista quem tem perfil de aluno) — quem cadastrou precisa ir em
+// "Cargos" ou "Equipe" pra promovê-la, exatamente como já acontece hoje com
+// qualquer pessoa que vira instrutor/staff depois de cadastrada.
 
 import { useState } from 'react';
 import { Users, Plus } from 'lucide-react';
@@ -42,6 +51,7 @@ const baseFields = {
 const createSchema = z.object({
     ...baseFields,
     email: z.string().email('Informe um e-mail válido'),
+    registrationType: z.enum(['STUDENT', 'PERSON']),
 });
 
 const editSchema = z.object({
@@ -54,6 +64,7 @@ type FormData = z.infer<typeof createSchema> & Partial<z.infer<typeof editSchema
 const blankForm = {
     name: '',
     email: '',
+    registrationType: 'STUDENT' as const,
     phone: '',
     birthDate: '',
     guardianName: '',
@@ -74,9 +85,11 @@ export default function Students() {
         queryFn: () => peopleApi.list({ hasStudentProfile: true }),
     });
 
-    const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+    const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({
         resolver: (editing ? zodResolver(editSchema) : zodResolver(createSchema)) as Resolver<FormData>,
     });
+    const registrationType = watch('registrationType') ?? 'STUDENT';
+    const isStudentRegistration = editing !== null || registrationType === 'STUDENT';
 
     const openCreate = () => {
         setEditing(null);
@@ -107,16 +120,11 @@ export default function Students() {
         mutationFn: (input: CreatePersonInput | UpdatePersonInput) =>
             editing ? peopleApi.update(editing.id, input as UpdatePersonInput) : peopleApi.create(input as CreatePersonInput),
         onSuccess: () => {
-            toast.success(
-                editing
-                    ? 'Aluno atualizado com sucesso.'
-                    : 'Aluno cadastrado com sucesso. Um e-mail de boas-vindas foi enviado para ele definir a senha.',
-            );
             queryClient.invalidateQueries({ queryKey: ['people'] });
             setModalOpen(false);
         },
         onError: (error: any) => {
-            toast.error(error?.response?.data?.message || 'Não foi possível salvar o aluno.');
+            toast.error(error?.response?.data?.message || 'Não foi possível salvar o cadastro.');
         },
     });
 
@@ -134,19 +142,39 @@ export default function Students() {
         };
 
         if (editing) {
-            saveMutation.mutate({
-                name: formData.name,
-                phone: formData.phone || undefined,
-                isActive: formData.isActive,
-                studentProfile,
-            });
+            saveMutation.mutate(
+                {
+                    name: formData.name,
+                    phone: formData.phone || undefined,
+                    isActive: formData.isActive,
+                    studentProfile,
+                },
+                { onSuccess: () => toast.success('Aluno atualizado com sucesso.') },
+            );
+        } else if (formData.registrationType === 'PERSON') {
+            saveMutation.mutate(
+                {
+                    name: formData.name,
+                    email: formData.email!,
+                    phone: formData.phone || undefined,
+                },
+                {
+                    onSuccess: () =>
+                        toast.success(
+                            'Pessoa cadastrada com sucesso. Um e-mail de boas-vindas foi enviado. Pra ela virar instrutor ou integrante da equipe, atribua um cargo em "Cargos" ou promova em "Equipe".',
+                        ),
+                },
+            );
         } else {
-            saveMutation.mutate({
-                name: formData.name,
-                email: formData.email!,
-                phone: formData.phone || undefined,
-                studentProfile,
-            });
+            saveMutation.mutate(
+                {
+                    name: formData.name,
+                    email: formData.email!,
+                    phone: formData.phone || undefined,
+                    studentProfile,
+                },
+                { onSuccess: () => toast.success('Aluno cadastrado com sucesso. Um e-mail de boas-vindas foi enviado para ele definir a senha.') },
+            );
         }
     };
 
@@ -159,7 +187,7 @@ export default function Students() {
             icon={<Users size={16} />}
             actions={
                 <Button onClick={openCreate}>
-                    <Plus size={16} /> Novo aluno
+                    <Plus size={16} /> Nova pessoa
                 </Button>
             }
         >
@@ -201,8 +229,23 @@ export default function Students() {
                 )}
             </TableWrapper>
 
-            <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar aluno' : 'Novo aluno'} width="560px">
+            <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar aluno' : 'Nova pessoa'} width="560px">
                 <Form onSubmit={handleSubmit(onSubmit)}>
+                    {!editing && (
+                        <Field>
+                            <Label htmlFor="registrationType">Tipo de cadastro</Label>
+                            <Select id="registrationType" {...register('registrationType')}>
+                                <option value="STUDENT">Aluno</option>
+                                <option value="PERSON">Só cadastro (instrutor/equipe)</option>
+                            </Select>
+                            {registrationType === 'PERSON' && (
+                                <HelpText>
+                                    Cria a pessoa sem perfil de aluno. Depois, atribua um cargo em "Cargos" ou promova em "Equipe" pra ela virar instrutor ou integrante da equipe.
+                                </HelpText>
+                            )}
+                        </Field>
+                    )}
+
                     <FieldRow>
                         <Field>
                             <Label htmlFor="name">Nome</Label>
@@ -222,7 +265,7 @@ export default function Students() {
                                 <Input id="email" type="email" {...register('email')} />
                                 {errors.email && <ErrorText>{errors.email.message}</ErrorText>}
                             </Field>
-                            <HelpText>O aluno recebe um e-mail de boas-vindas com um link para definir a própria senha.</HelpText>
+                            <HelpText>A pessoa recebe um e-mail de boas-vindas com um link para definir a própria senha.</HelpText>
                         </>
                     )}
 
@@ -233,54 +276,64 @@ export default function Students() {
                         </CheckboxField>
                     )}
 
-                    <FieldRow>
-                        <Field>
-                            <Label htmlFor="birthDate">Data de nascimento</Label>
-                            <Input id="birthDate" type="date" {...register('birthDate')} />
-                        </Field>
-                        <Field>
-                            <Label htmlFor="guardianName">Nome do responsável</Label>
-                            <Input id="guardianName" {...register('guardianName')} />
-                        </Field>
-                    </FieldRow>
+                    {isStudentRegistration && (
+                        <>
+                            <FieldRow>
+                                <Field>
+                                    <Label htmlFor="birthDate">Data de nascimento</Label>
+                                    <Input id="birthDate" type="date" {...register('birthDate')} />
+                                </Field>
+                                <Field>
+                                    <Label htmlFor="guardianName">Nome do responsável</Label>
+                                    <Input id="guardianName" {...register('guardianName')} />
+                                </Field>
+                            </FieldRow>
 
-                    <Field>
-                        <Label htmlFor="guardianPhone">Telefone do responsável</Label>
-                        <Input id="guardianPhone" {...register('guardianPhone')} />
-                    </Field>
+                            <Field>
+                                <Label htmlFor="guardianPhone">Telefone do responsável</Label>
+                                <Input id="guardianPhone" {...register('guardianPhone')} />
+                            </Field>
 
-                    <FieldRow>
-                        <Field>
-                            <Label htmlFor="baptismDate">Data de batismo</Label>
-                            <Input id="baptismDate" type="date" {...register('baptismDate')} />
-                        </Field>
-                        <Field>
-                            <Label htmlFor="pioneerStatus">Pioneiro</Label>
-                            <Select id="pioneerStatus" {...register('pioneerStatus')}>
-                                <option value="">Não é pioneiro</option>
-                                <option value="AUXILIARY">Pioneiro auxiliar</option>
-                                <option value="REGULAR">Pioneiro regular</option>
-                            </Select>
-                        </Field>
-                    </FieldRow>
+                            <FieldRow>
+                                <Field>
+                                    <Label htmlFor="baptismDate">Data de batismo</Label>
+                                    <Input id="baptismDate" type="date" {...register('baptismDate')} />
+                                </Field>
+                                <Field>
+                                    <Label htmlFor="pioneerStatus">Pioneiro</Label>
+                                    <Select id="pioneerStatus" {...register('pioneerStatus')}>
+                                        <option value="">Não é pioneiro</option>
+                                        <option value="AUXILIARY">Pioneiro auxiliar</option>
+                                        <option value="REGULAR">Pioneiro regular</option>
+                                    </Select>
+                                </Field>
+                            </FieldRow>
 
-                    <Field>
-                        <Label htmlFor="profession">Profissão ou área de estudo</Label>
-                        <Input id="profession" {...register('profession')} />
-                    </Field>
+                            <Field>
+                                <Label htmlFor="profession">Profissão ou área de estudo</Label>
+                                <Input id="profession" {...register('profession')} />
+                            </Field>
 
-                    <Field>
-                        <Label htmlFor="signedPetitions">Petições assinadas</Label>
-                        <Input id="signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
-                        <HelpText>Separe múltiplas petições por vírgula. Deixe em branco se não houver petição assinada.</HelpText>
-                    </Field>
+                            <Field>
+                                <Label htmlFor="signedPetitions">Petições assinadas</Label>
+                                <Input id="signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
+                                <HelpText>Separe múltiplas petições por vírgula. Deixe em branco se não houver petição assinada.</HelpText>
+                            </Field>
+                        </>
+                    )}
 
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>
                             Cancelar
                         </Button>
                         <Button type="submit" disabled={saveMutation.isPending}>
-                            {saveMutation.isPending ? 'Salvando...' : editing ? 'Salvar alterações' : 'Cadastrar aluno'}
+                            {saveMutation.isPending
+                                ? 'Salvando...'
+                                : editing
+                                  ? 'Salvar alterações'
+                                  : registrationType === 'PERSON'
+                                    ? 'Cadastrar pessoa'
+                                    : 'Cadastrar aluno'}
                         </Button>
                     </FormActions>
                 </Form>
