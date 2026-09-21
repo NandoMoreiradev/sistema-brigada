@@ -5,21 +5,38 @@
 // mas nenhuma UI em lugar nenhum do frontend — esta tela é só o consumidor que
 // faltava, sem nada novo no backend.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import styled from 'styled-components';
 import { useMutation } from '@tanstack/react-query';
-import { ShieldCheck, KeyRound, UserRound, Copy } from 'lucide-react';
+import { ShieldCheck, KeyRound, UserRound, Copy, Camera } from 'lucide-react';
 import { Field, Label, Input, ErrorText, Form, FormActions, HelpText } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Table';
+import { Avatar } from '@/components/ui/Avatar';
 import { authApi } from '@/services/auth';
+import { mediaApi } from '@/services/media';
 import { useAuth } from '@/contexts/AuthContext';
 import { tokenManager } from '@/services/tokenManager';
 import { toast } from '@/utils/toast';
+
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5MB
+
+const AvatarRow = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+`;
+
+const AvatarActions = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+`;
 
 const Card = styled.div`
     background: ${({ theme }) => theme.colors.white};
@@ -121,6 +138,46 @@ export function ProfileTab() {
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível salvar seus dados.'),
     });
 
+    // ─── Foto de perfil ────────────────────────────────────────────────────
+    const avatarInputRef = useRef<HTMLInputElement>(null);
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+    const avatarMutation = useMutation({
+        mutationFn: (avatarUrl: string) =>
+            authApi.updateProfile({ name: user?.name ?? '', phone: user?.phone ?? undefined, avatarUrl }),
+        onSuccess: async ({ access_token }) => {
+            tokenManager.set(access_token);
+            await fetchUserProfile();
+            toast.success('Foto de perfil atualizada.');
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atualizar a foto.'),
+    });
+
+    const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // permite selecionar o mesmo arquivo de novo depois
+        if (!file) return;
+
+        if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+            toast.error('Formato inválido. Envie uma imagem JPG, PNG, WEBP ou GIF.');
+            return;
+        }
+        if (file.size > MAX_AVATAR_SIZE) {
+            toast.error('A imagem deve ter no máximo 5MB.');
+            return;
+        }
+
+        setIsUploadingAvatar(true);
+        try {
+            const { fileUrl } = await mediaApi.upload(file, 'avatars');
+            avatarMutation.mutate(fileUrl);
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || 'Não foi possível enviar a imagem.');
+        } finally {
+            setIsUploadingAvatar(false);
+        }
+    };
+
     // ─── Senha ─────────────────────────────────────────────────────────────
     const passwordForm = useForm<PasswordFormData>({
         resolver: zodResolver(passwordSchema),
@@ -185,6 +242,28 @@ export function ProfileTab() {
         <Stack>
             <Card>
                 <CardTitle><UserRound size={18} /> Dados pessoais</CardTitle>
+                <AvatarRow>
+                    <Avatar name={user?.name} avatarUrl={user?.avatarUrl} size={64} />
+                    <AvatarActions>
+                        <Button
+                            type="button"
+                            $variant="secondary"
+                            onClick={() => avatarInputRef.current?.click()}
+                            disabled={isUploadingAvatar || avatarMutation.isPending}
+                        >
+                            <Camera size={16} />
+                            {isUploadingAvatar || avatarMutation.isPending ? 'Enviando...' : 'Alterar foto'}
+                        </Button>
+                        <HelpText>JPG, PNG, WEBP ou GIF, até 5MB.</HelpText>
+                        <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            style={{ display: 'none' }}
+                            onChange={handleAvatarChange}
+                        />
+                    </AvatarActions>
+                </AvatarRow>
                 <Form onSubmit={profileForm.handleSubmit((data) => profileMutation.mutate(data))}>
                     <Field>
                         <Label htmlFor="name">Nome</Label>

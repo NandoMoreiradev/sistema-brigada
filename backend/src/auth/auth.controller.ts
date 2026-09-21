@@ -48,14 +48,22 @@ interface AuthenticatedRequest extends Request {
 
 // Em produção, frontend e backend costumam estar em domínios diferentes:
 // SameSite=None + Secure=true é obrigatório para cookies cross-site.
-const isProduction = process.env.NODE_ENV === 'production';
-const REFRESH_COOKIE_OPTIONS = {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias
-    path: '/',
-};
+//
+// Não confiamos só em NODE_ENV=production (fácil de esquecer de configurar
+// no host) — detectamos HTTPS pela própria requisição (req.secure, que exige
+// `app.set('trust proxy', 1)` em main.ts pra enxergar X-Forwarded-Proto atrás
+// do proxy do Railway) e usamos isso como sinal primário, com NODE_ENV como
+// fallback caso req.secure não esteja disponível por algum motivo.
+function getRefreshCookieOptions(req: Request) {
+    const isHttps = req.secure || process.env.NODE_ENV === 'production';
+    return {
+        httpOnly: true,
+        secure: isHttps,
+        sameSite: (isHttps ? 'none' : 'lax') as 'none' | 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias
+        path: '/',
+    };
+}
 
 @Controller('auth')
 export class AuthController {
@@ -84,6 +92,7 @@ export class AuthController {
     @Throttle({ default: { limit: 10, ttl: 60000 } })
     @HttpCode(HttpStatus.OK)
     async login(
+        @Req() req: Request,
         @Body(new ValidationPipe()) loginDto: LoginDto,
         @Res({ passthrough: true }) res: Response,
     ) {
@@ -115,7 +124,7 @@ export class AuthController {
         // 2FA: ainda não emite refresh token (aguarda validação do código)
         if ('twoFactorEnabled' in result) return result;
 
-        res.cookie('refresh_token', result.rawRefreshToken, REFRESH_COOKIE_OPTIONS);
+        res.cookie('refresh_token', result.rawRefreshToken, getRefreshCookieOptions(req));
         // refresh_token omitido do body intencionalmente: fica apenas no cookie httpOnly
         return { access_token: result.access_token };
     }
@@ -125,13 +134,14 @@ export class AuthController {
     @Throttle({ default: { limit: 10, ttl: 60000 } })
     @HttpCode(HttpStatus.OK)
     async authenticate(
+        @Req() req: Request,
         @CurrentUser() user: AuthenticatedUser,
         @Body(new ValidationPipe()) { code }: VerifyTwoFactorLoginDto,
         @Res({ passthrough: true }) res: Response,
     ) {
         const result = await this.authService.loginWith2fa(user.id, code);
 
-        res.cookie('refresh_token', result.rawRefreshToken, REFRESH_COOKIE_OPTIONS);
+        res.cookie('refresh_token', result.rawRefreshToken, getRefreshCookieOptions(req));
         return { access_token: result.access_token };
     }
 
@@ -161,7 +171,7 @@ export class AuthController {
 
         const { access_token, rawRefreshToken } = await this.authService.rotateRefreshToken(rawToken);
 
-        res.cookie('refresh_token', rawRefreshToken, REFRESH_COOKIE_OPTIONS);
+        res.cookie('refresh_token', rawRefreshToken, getRefreshCookieOptions(req));
         return { access_token, refresh_token: rawRefreshToken };
     }
 
@@ -174,11 +184,8 @@ export class AuthController {
         if (rawToken) {
             await this.authService.revokeRefreshToken(rawToken);
         }
-        res.clearCookie('refresh_token', {
-            path: '/',
-            secure: isProduction,
-            sameSite: isProduction ? 'none' : 'lax',
-        });
+        const { httpOnly, secure, sameSite, path } = getRefreshCookieOptions(req);
+        res.clearCookie('refresh_token', { httpOnly, secure, sameSite, path });
         return { message: 'Logout realizado com sucesso.' };
     }
 

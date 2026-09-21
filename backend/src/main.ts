@@ -1,6 +1,7 @@
 // backend/src/main.ts
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -9,7 +10,13 @@ import cookieParser from 'cookie-parser';
 async function bootstrap() {
     const logger = new Logger('Bootstrap');
 
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+    // Necessário atrás do proxy do Railway: sem isso, req.secure/req.protocol
+    // sempre voltam "http" (a conexão real proxy->app é HTTP interno), mesmo
+    // quando o cliente acessa via HTTPS. Os cookies de refresh token dependem
+    // de detectar HTTPS corretamente (ver auth.controller.ts).
+    app.set('trust proxy', 1);
 
     // Prefixo global da API
     app.setGlobalPrefix('api/v1');
