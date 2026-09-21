@@ -16,6 +16,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { SetRoleAssignmentDto } from './dto/set-role-assignment.dto';
+import { SetDirectPermissionsDto } from './dto/set-direct-permissions.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -88,6 +89,16 @@ export class UsersController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.usersService.setRoleAssignment(id, this.requireOrganizationId(organizationId), dto.roleAssignmentId ?? null);
+    }
+
+    @Put(':id/direct-permissions')
+    @RequirePermission('people:manage')
+    setDirectPermissions(
+        @Param('id') id: string,
+        @Body() dto: SetDirectPermissionsDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.usersService.setDirectPermissions(id, this.requireOrganizationId(organizationId), dto.permissionIds);
     }
 
     /**

@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentStatus } from '@prisma/client';
 import { UsersService } from '../users/users.service';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
+import { CreateBulkEnrollmentDto } from './dto/create-bulk-enrollment.dto';
 import { CertificatesService } from '../certificates/certificates.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -68,6 +69,57 @@ export class EnrollmentsService {
         });
 
         return enrollment;
+    }
+
+    /** Matricula vários alunos de uma vez. Valida tudo (vagas + perfil de aluno + duplicidade) antes de criar qualquer matrícula. */
+    async enrollBulk(courseId: string, organizationId: string, dto: CreateBulkEnrollmentDto) {
+        const course = await this.requireCourse(courseId, organizationId);
+        const userIds = [...new Set(dto.userIds)];
+
+        if (course.vacancies !== null && course._count.enrollments + userIds.length > course.vacancies) {
+            const remaining = course.vacancies - course._count.enrollments;
+            throw new BadRequestException(
+                `Turma tem apenas ${remaining} vaga(s) disponível(is) para ${userIds.length} aluno(s) selecionado(s).`,
+            );
+        }
+
+        const studentProfiles = await Promise.all(
+            userIds.map((userId) => this.usersService.requireStudentProfile(userId, organizationId)),
+        );
+
+        const existing = await this.prisma.enrollment.findMany({
+            where: { courseId, studentProfileId: { in: studentProfiles.map((p) => p.id) } },
+            select: { studentProfileId: true },
+        });
+        if (existing.length > 0) {
+            throw new ConflictException('Um ou mais alunos selecionados já estão matriculados nesta turma.');
+        }
+
+        const enrollments = await this.prisma.$transaction((tx) =>
+            Promise.all(
+                studentProfiles.map((studentProfile) =>
+                    tx.enrollment.create({
+                        data: { studentProfileId: studentProfile.id, courseId, organizationId },
+                        include: { studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } } },
+                    }),
+                ),
+            ),
+        );
+
+        await Promise.all(
+            enrollments.map((enrollment) =>
+                this.notificationsService.create({
+                    userId: enrollment.studentProfile.user.id,
+                    organizationId,
+                    type: 'ENROLLMENT_CONFIRMED',
+                    title: 'Matrícula confirmada',
+                    message: `Sua matrícula na turma "${course.event.title}" foi confirmada.`,
+                    link: `/courses/${courseId}`,
+                }),
+            ),
+        );
+
+        return enrollments;
     }
 
     findAll(courseId: string, organizationId: string) {

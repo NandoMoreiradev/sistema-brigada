@@ -77,6 +77,7 @@ export interface OrgPerson {
     staffMember?: { id: string; status: string } | null;
     instructorAssignments?: { courseId: string }[];
     roleAssignments?: { id: string; name: string }[];
+    directPermissions?: string[];
 }
 
 export type EventStatus = 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';

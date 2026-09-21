@@ -86,6 +86,7 @@ model User {
   notifications         Notification[]
   createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
   externalCertifications ExternalCertification[]
+  createdOccurrenceReports OccurrenceReport[]
 
   @@index([organizationId])
 }
@@ -533,6 +534,7 @@ model OccurrenceReport {
   createdAt        DateTime @default(now())
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation(fields: [createdByUserId], references: [id])
 
   @@index([eventOperationId])
 }

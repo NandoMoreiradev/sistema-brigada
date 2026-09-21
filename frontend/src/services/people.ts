@@ -75,6 +75,10 @@ export const peopleApi = {
         const { data } = await api.put<OrgPerson>(`/users/${id}/role-assignment`, { roleAssignmentId });
         return data;
     },
+    setDirectPermissions: async (id: string, permissionIds: string[]) => {
+        const { data } = await api.put<OrgPerson>(`/users/${id}/direct-permissions`, { permissionIds });
+        return data;
+    },
     addExternalCertification: async (userId: string, input: CreateExternalCertificationInput) => {
         const { data } = await api.post<ExternalCertification>(`/users/${userId}/external-certifications`, input);
         return data;

@@ -1,12 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateOccurrenceReportDto } from './dto/create-occurrence-report.dto';
+import { UpdateOccurrenceReportDto } from './dto/update-occurrence-report.dto';
 import { Role } from '@prisma/client';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 /** Tipos de ocorrência que merecem alerta imediato a quem administra eventos, não só ficar registrado na aba. */
 const CRITICAL_OCCURRENCE_TYPES = ['MEDICAL', 'SAFETY'];
+
+const withCreatedBy = { createdBy: { select: { id: true, name: true } } } as const;
 
 @Injectable()
 export class OccurrenceReportsService {
@@ -31,6 +36,7 @@ export class OccurrenceReportsService {
                 audioUrl: dto.audioUrl,
                 createdByUserId,
             },
+            include: withCreatedBy,
         });
 
         if (CRITICAL_OCCURRENCE_TYPES.includes(dto.type)) {
@@ -76,6 +82,32 @@ export class OccurrenceReportsService {
         return this.prisma.occurrenceReport.findMany({
             where: { eventOperationId: operation.id },
             orderBy: { createdAt: 'desc' },
+            include: withCreatedBy,
+        });
+    }
+
+    /** Quem registrou pode corrigir o próprio relatório; senão, exige 'events:manage'. */
+    async update(eventId: string, organizationId: string, reportId: string, user: AuthenticatedUser, dto: UpdateOccurrenceReportDto) {
+        const operation = await this.eventsService.requireEventOperation(eventId, organizationId);
+        const report = await this.prisma.occurrenceReport.findFirst({ where: { id: reportId, eventOperationId: operation.id } });
+        if (!report) {
+            throw new NotFoundException(`Relatório com ID ${reportId} não encontrado neste evento.`);
+        }
+
+        const isOwnReport = report.createdByUserId === user.id;
+        if (!isOwnReport && !userHasPermission(user, 'events:manage')) {
+            throw new ForbiddenException('Você só pode editar o próprio relatório de ocorrência.');
+        }
+
+        return this.prisma.occurrenceReport.update({
+            where: { id: reportId },
+            data: {
+                type: dto.type,
+                title: dto.title,
+                description: dto.description,
+                audioUrl: dto.audioUrl,
+            },
+            include: withCreatedBy,
         });
     }
 

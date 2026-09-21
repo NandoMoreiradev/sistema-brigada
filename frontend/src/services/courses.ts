@@ -116,9 +116,19 @@ export interface CourseLesson {
     title: string;
     content: string | null;
     videoUrl: string | null;
+    videoKey: string | null;
     duration: number | null;
     order: number;
     progress: Array<{ completed: boolean }>;
+}
+
+export interface CourseLessonInput {
+    moduleId: string;
+    title: string;
+    content?: string;
+    videoUrl?: string;
+    videoKey?: string | null;
+    duration?: number;
 }
 
 export interface CourseModuleWithLessons {
@@ -144,8 +154,12 @@ export const courseModulesApi = {
 };
 
 export const courseLessonsApi = {
-    create: async (courseId: string, input: { moduleId: string; title: string; content?: string; videoUrl?: string; duration?: number }) => {
+    create: async (courseId: string, input: CourseLessonInput) => {
         const { data } = await api.post<CourseLesson>(`/courses/${courseId}/lessons`, input);
+        return data;
+    },
+    update: async (courseId: string, lessonId: string, input: Partial<Omit<CourseLessonInput, 'moduleId'>>) => {
+        const { data } = await api.patch<CourseLesson>(`/courses/${courseId}/lessons/${lessonId}`, input);
         return data;
     },
     remove: async (courseId: string, lessonId: string) => {
@@ -164,6 +178,10 @@ export const enrollmentsApi = {
     },
     enroll: async (courseId: string, userId: string) => {
         const { data } = await api.post<Enrollment>(`/courses/${courseId}/enrollments`, { userId });
+        return data;
+    },
+    enrollBulk: async (courseId: string, userIds: string[]) => {
+        const { data } = await api.post<Enrollment[]>(`/courses/${courseId}/enrollments/bulk`, { userIds });
         return data;
     },
     updateStatus: async (courseId: string, enrollmentId: string, status: string) => {
