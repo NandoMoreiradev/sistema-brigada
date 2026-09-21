@@ -10,6 +10,7 @@ import { EventsService } from './events.service';
 import { CreateEventPostDto } from './dto/create-event-post.dto';
 import { UpdateEventPostDto } from './dto/update-event-post.dto';
 import { SetFloorPlanDto } from './dto/set-floor-plan.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 @Injectable()
 export class EventPostsService {
@@ -32,7 +33,8 @@ export class EventPostsService {
         });
     }
 
-    async findAll(eventId: string, organizationId: string) {
+    async findAll(eventId: string, organizationId: string, user: AuthenticatedUser) {
+        await this.eventsService.assertCanViewEvent(eventId, organizationId, user);
         const operation = await this.eventsService.requireEventOperation(eventId, organizationId);
         return this.prisma.eventPost.findMany({
             where: { eventOperationId: operation.id },

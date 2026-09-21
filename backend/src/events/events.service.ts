@@ -181,6 +181,17 @@ export class EventsService {
         return event;
     }
 
+    /**
+     * Mesma regra de `findOneVisibleTo`, pra usar em sub-recursos de evento
+     * (escala, ocorrências, arquivos, postos) — bloqueia a leitura direta
+     * desses sub-recursos por quem não pode ver o evento em si, mesmo que
+     * essa pessoa já saiba o `eventId` (ex.: guardou o link antes de perder
+     * a designação, ou tentou adivinhar/enumerar IDs).
+     */
+    async assertCanViewEvent(eventId: string, organizationId: string, user: AuthenticatedUser): Promise<void> {
+        await this.findOneVisibleTo(eventId, organizationId, user);
+    }
+
     async update(id: string, organizationId: string, dto: UpdateEventDto) {
         const existing = await this.findOne(id, organizationId);
 

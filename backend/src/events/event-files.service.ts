@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { CreateEventFileDto } from './dto/create-event-file.dto';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 @Injectable()
 export class EventFilesService {
@@ -24,8 +25,8 @@ export class EventFilesService {
         });
     }
 
-    async findAll(eventId: string, organizationId: string) {
-        await this.eventsService.findOne(eventId, organizationId);
+    async findAll(eventId: string, organizationId: string, user: AuthenticatedUser) {
+        await this.eventsService.assertCanViewEvent(eventId, organizationId, user);
         return this.prisma.eventFile.findMany({ where: { eventId }, orderBy: { createdAt: 'desc' } });
     }
 

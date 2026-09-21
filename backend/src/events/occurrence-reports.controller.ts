@@ -39,8 +39,12 @@ export class OccurrenceReportsController {
 
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Param('eventId') eventId: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.occurrenceReportsService.findAll(eventId, this.requireOrganizationId(organizationId));
+    findAll(
+        @Param('eventId') eventId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.occurrenceReportsService.findAll(eventId, this.requireOrganizationId(organizationId), user);
     }
 
     /** Quem registrou pode corrigir o próprio relatório; senão, exige 'events:manage' (checado no service). */

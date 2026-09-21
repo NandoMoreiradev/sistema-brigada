@@ -9,6 +9,8 @@ import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.g
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
@@ -36,8 +38,12 @@ export class EventPostsController {
 
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Param('eventId') eventId: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.eventPostsService.findAll(eventId, this.requireOrganizationId(organizationId));
+    findAll(
+        @Param('eventId') eventId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.eventPostsService.findAll(eventId, this.requireOrganizationId(organizationId), user);
     }
 
     @Patch('floor-plan')
