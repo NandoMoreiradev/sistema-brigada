@@ -14,20 +14,54 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Select, Form, FormActions, ErrorText } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Form, FormActions, ErrorText, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState } from '@/components/ui/Table';
-import { permissionsApi, roleAssignmentsApi, type RoleAssignment } from '@/services/permissions';
+import { permissionsApi, roleAssignmentsApi, type GroupedPermissions, type RoleAssignment } from '@/services/permissions';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
+import type { OrgPerson } from '@/types';
 
 interface RoleFormData {
     name: string;
     permissionIds: string[];
 }
 
+/** Checklist de permissões agrupada por módulo — reaproveitada pelo formulário
+ * de cargo e pela modal de permissões diretas por pessoa. */
+function PermissionChecklist({
+    groupedPermissions,
+    selectedIds,
+    onToggle,
+}: {
+    groupedPermissions: GroupedPermissions | undefined;
+    selectedIds: string[];
+    onToggle: (id: string) => void;
+}) {
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: 280, overflowY: 'auto' }}>
+            {Object.entries(groupedPermissions ?? {}).map(([module, permissions]) => (
+                <div key={module}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: '#6c757d', marginBottom: '0.25rem' }}>
+                        {module}
+                    </div>
+                    {permissions.map((permission) => (
+                        <label key={permission.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem', padding: '0.2rem 0' }}>
+                            <input type="checkbox" checked={selectedIds.includes(permission.id)} onChange={() => onToggle(permission.id)} />
+                            {permission.name}
+                        </label>
+                    ))}
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export default function Roles() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<RoleAssignment | null>(null);
+    const [directPermModalOpen, setDirectPermModalOpen] = useState(false);
+    const [editingPerson, setEditingPerson] = useState<OrgPerson | null>(null);
+    const [directPermissionIds, setDirectPermissionIds] = useState<string[]>([]);
     const queryClient = useQueryClient();
 
     const { data: roleAssignments, isLoading } = useQuery({
@@ -85,6 +119,26 @@ export default function Roles() {
             queryClient.invalidateQueries({ queryKey: ['people'] });
         },
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atribuir o cargo.'),
+    });
+
+    const openDirectPermissions = (person: OrgPerson) => {
+        setEditingPerson(person);
+        setDirectPermissionIds(person.directPermissions ?? []);
+        setDirectPermModalOpen(true);
+    };
+
+    const toggleDirectPermission = (id: string) => {
+        setDirectPermissionIds((current) => (current.includes(id) ? current.filter((p) => p !== id) : [...current, id]));
+    };
+
+    const directPermissionsMutation = useMutation({
+        mutationFn: () => peopleApi.setDirectPermissions(editingPerson!.id, directPermissionIds),
+        onSuccess: () => {
+            toast.success('Permissões diretas atualizadas.');
+            queryClient.invalidateQueries({ queryKey: ['people'] });
+            setDirectPermModalOpen(false);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atualizar as permissões.'),
     });
 
     const togglePermission = (id: string) => {
@@ -147,6 +201,8 @@ export default function Roles() {
                             <Th>Nome</Th>
                             <Th>E-mail</Th>
                             <Th>Cargo atual</Th>
+                            <Th>Permissões diretas</Th>
+                            <Th></Th>
                         </tr>
                     </Thead>
                     <tbody>
@@ -167,12 +223,37 @@ export default function Roles() {
                                         ))}
                                     </Select>
                                 </Td>
+                                <Td>{person.directPermissions?.length ? `${person.directPermissions.length} permissão(ões)` : '—'}</Td>
+                                <Td>
+                                    <Button $variant="ghost" onClick={() => openDirectPermissions(person)}>
+                                        <Pencil size={14} /> Editar
+                                    </Button>
+                                </Td>
                             </Tr>
                         ))}
                     </tbody>
                 </Table>
                 {people.length === 0 && <EmptyState>Nenhuma pessoa cadastrada ainda.</EmptyState>}
             </TableWrapper>
+
+            <Modal
+                open={directPermModalOpen}
+                onOpenChange={setDirectPermModalOpen}
+                title={`Permissões diretas — ${editingPerson?.name ?? ''}`}
+                width="560px"
+            >
+                <HelpText>
+                    Permissões concedidas direto à pessoa, além (ou no lugar) do cargo dela. Use pra um caso pontual, sem
+                    precisar criar um cargo novo.
+                </HelpText>
+                <PermissionChecklist groupedPermissions={groupedPermissions} selectedIds={directPermissionIds} onToggle={toggleDirectPermission} />
+                <FormActions>
+                    <Button type="button" $variant="secondary" onClick={() => setDirectPermModalOpen(false)}>Cancelar</Button>
+                    <Button type="button" onClick={() => directPermissionsMutation.mutate()} disabled={directPermissionsMutation.isPending}>
+                        {directPermissionsMutation.isPending ? 'Salvando...' : 'Salvar'}
+                    </Button>
+                </FormActions>
+            </Modal>
 
             <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar cargo' : 'Novo cargo'} width="560px">
                 <Form onSubmit={handleSubmit((data) => saveMutation.mutate(data))}>
@@ -184,25 +265,7 @@ export default function Roles() {
 
                     <Field>
                         <Label>Permissões</Label>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: 280, overflowY: 'auto' }}>
-                            {Object.entries(groupedPermissions ?? {}).map(([module, permissions]) => (
-                                <div key={module}>
-                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: '#6c757d', marginBottom: '0.25rem' }}>
-                                        {module}
-                                    </div>
-                                    {permissions.map((permission) => (
-                                        <label key={permission.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem', padding: '0.2rem 0' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedPermissionIds.includes(permission.id)}
-                                                onChange={() => togglePermission(permission.id)}
-                                            />
-                                            {permission.name}
-                                        </label>
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
+                        <PermissionChecklist groupedPermissions={groupedPermissions} selectedIds={selectedPermissionIds} onToggle={togglePermission} />
                         {selectedPermissionIds.length === 0 && <ErrorText>Selecione ao menos uma permissão.</ErrorText>}
                     </Field>
 

@@ -29,6 +29,7 @@ const userListSelect = {
     avatarUrl: true,
     isActive: true,
     createdAt: true,
+    directPermissions: true,
     studentProfile: true,
     staffMember: { select: { id: true, status: true } },
     instructorAssignments: { select: { courseId: true } },
@@ -222,6 +223,29 @@ export class UsersService {
             data: { roleAssignments: { set: roleAssignmentId ? [{ id: roleAssignmentId }] : [] } },
         });
 
+        return this.findOne(id, organizationId);
+    }
+
+    /**
+     * Permissões avulsas, direto na pessoa, sem passar por um cargo — combinadas
+     * com as do cargo (se tiver um) na resolução de permissões efetivas
+     * (ver AuthService.buildOrganizationPermissionsMap). Substitui a lista
+     * inteira (igual a `setRoleAssignment` substitui o cargo, não soma).
+     */
+    async setDirectPermissions(id: string, organizationId: string, permissionIds: string[]) {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+
+        if (permissionIds.length > 0) {
+            const validCount = await this.prisma.permission.count({ where: { id: { in: permissionIds } } });
+            if (validCount !== permissionIds.length) {
+                throw new BadRequestException('Uma ou mais permissões informadas não existem.');
+            }
+        }
+
+        await this.prisma.user.update({ where: { id }, data: { directPermissions: permissionIds } });
         return this.findOne(id, organizationId);
     }
 

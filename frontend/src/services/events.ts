@@ -157,6 +157,7 @@ export interface OccurrenceReport {
     title: string;
     description: string | null;
     audioUrl: string | null;
+    createdByUserId: string;
     createdAt: string;
 }
 
@@ -167,6 +168,10 @@ export const occurrenceReportsApi = {
     },
     create: async (eventId: string, input: { type: string; title: string; description?: string; audioUrl?: string }) => {
         const { data } = await api.post<OccurrenceReport>(`/events/${eventId}/occurrence-reports`, input);
+        return data;
+    },
+    update: async (eventId: string, reportId: string, input: { type: string; title: string; description?: string; audioUrl?: string }) => {
+        const { data } = await api.patch<OccurrenceReport>(`/events/${eventId}/occurrence-reports/${reportId}`, input);
         return data;
     },
     remove: async (eventId: string, reportId: string) => {

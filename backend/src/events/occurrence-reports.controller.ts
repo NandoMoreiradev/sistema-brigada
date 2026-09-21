@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Delete, Param, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Delete, Patch, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { OccurrenceReportsService } from './occurrence-reports.service';
 import { CreateOccurrenceReportDto } from './dto/create-occurrence-report.dto';
+import { UpdateOccurrenceReportDto } from './dto/update-occurrence-report.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -40,6 +41,19 @@ export class OccurrenceReportsController {
     @Roles(...ALL_ORG_ROLES)
     findAll(@Param('eventId') eventId: string, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.occurrenceReportsService.findAll(eventId, this.requireOrganizationId(organizationId));
+    }
+
+    /** Quem registrou pode corrigir o próprio relatório; senão, exige 'events:manage' (checado no service). */
+    @Patch(':reportId')
+    @Roles(...ALL_ORG_ROLES)
+    update(
+        @Param('eventId') eventId: string,
+        @Param('reportId') reportId: string,
+        @Body() dto: UpdateOccurrenceReportDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.occurrenceReportsService.update(eventId, this.requireOrganizationId(organizationId), reportId, user, dto);
     }
 
     @Delete(':reportId')

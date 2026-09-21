@@ -30,6 +30,7 @@ import {
     type AppEvent,
     type Designation,
     type EventPost,
+    type OccurrenceReport,
     type EventFile,
 } from '@/services/events';
 import { mediaApi } from '@/services/media';
@@ -602,6 +603,7 @@ function OccurrenceAudioPlayer({ url }: { url: string }) {
 
 function OccurrencesTab({ eventId }: { eventId: string }) {
     const [modalOpen, setModalOpen] = useState(false);
+    const [editing, setEditing] = useState<OccurrenceReport | null>(null);
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isUploadingAudio, setIsUploadingAudio] = useState(false);
     const queryClient = useQueryClient();
@@ -609,12 +611,13 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
     // Registrar é aberto a todo mundo (quem está em campo percebe o incidente), mas
     // remover um relatório já registrado exige events:manage no backend.
     const canRemove = hasPermission(user, 'events:manage');
+    const canEditReport = (r: OccurrenceReport) => r.createdByUserId === user?.id || canRemove;
     const { data: reports } = useQuery({ queryKey: ['events', eventId, 'occurrence-reports'], queryFn: () => occurrenceReportsApi.list(eventId) });
     const { register, handleSubmit, reset } = useForm<{ type: string; title: string; description: string }>();
 
-    const createMutation = useMutation({
+    const saveMutation = useMutation({
         mutationFn: async (input: { type: string; title: string; description?: string }) => {
-            let audioUrl: string | undefined;
+            let audioUrl = editing?.audioUrl ?? undefined;
             if (audioFile) {
                 setIsUploadingAudio(true);
                 try {
@@ -624,15 +627,19 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                     setIsUploadingAudio(false);
                 }
             }
-            return occurrenceReportsApi.create(eventId, { ...input, audioUrl });
+            return editing
+                ? occurrenceReportsApi.update(eventId, editing.id, { ...input, audioUrl })
+                : occurrenceReportsApi.create(eventId, { ...input, audioUrl });
         },
         onSuccess: () => {
-            toast.success('Relatório registrado.');
+            toast.success(editing ? 'Relatório atualizado.' : 'Relatório registrado.');
             queryClient.invalidateQueries({ queryKey: ['events', eventId, 'occurrence-reports'] });
             setModalOpen(false);
             setAudioFile(null);
+            setEditing(null);
         },
-        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível registrar o relatório.'),
+        onError: (error: any) =>
+            toast.error(error?.response?.data?.message || (editing ? 'Não foi possível atualizar o relatório.' : 'Não foi possível registrar o relatório.')),
     });
 
     const removeMutation = useMutation({
@@ -647,14 +654,21 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
     return (
         <>
             <ToolbarRow>
-                <Button onClick={() => { reset({ type: 'GENERAL', title: '', description: '' }); setAudioFile(null); setModalOpen(true); }}>
+                <Button
+                    onClick={() => {
+                        reset({ type: 'GENERAL', title: '', description: '' });
+                        setAudioFile(null);
+                        setEditing(null);
+                        setModalOpen(true);
+                    }}
+                >
                     <Plus size={16} /> Novo relatório
                 </Button>
             </ToolbarRow>
             <TableWrapper>
                 <Table>
                     <Thead>
-                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Áudio</Th><Th>Data</Th>{canRemove && <Th></Th>}</tr>
+                        <tr><Th>Tipo</Th><Th>Título</Th><Th>Descrição</Th><Th>Áudio</Th><Th>Data</Th><Th></Th></tr>
                     </Thead>
                     <tbody>
                         {(reports ?? []).map((r) => (
@@ -664,8 +678,21 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                 <Td>{r.description || '—'}</Td>
                                 <Td>{r.audioUrl ? <OccurrenceAudioPlayer url={r.audioUrl} /> : '—'}</Td>
                                 <Td>{formatAppDate(r.createdAt, 'dd/MM/yyyy HH:mm')}</Td>
-                                {canRemove && (
-                                    <Td>
+                                <Td style={{ display: 'flex', gap: 4 }}>
+                                    {canEditReport(r) && (
+                                        <Button
+                                            $variant="ghost"
+                                            onClick={() => {
+                                                reset({ type: r.type, title: r.title, description: r.description ?? '' });
+                                                setAudioFile(null);
+                                                setEditing(r);
+                                                setModalOpen(true);
+                                            }}
+                                        >
+                                            <Pencil size={14} />
+                                        </Button>
+                                    )}
+                                    {canRemove && (
                                         <Button
                                             $variant="ghost"
                                             onClick={() => {
@@ -676,8 +703,8 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                                         >
                                             <Trash2 size={14} />
                                         </Button>
-                                    </Td>
-                                )}
+                                    )}
+                                </Td>
                             </Tr>
                         ))}
                     </tbody>
@@ -685,8 +712,12 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                 {(reports ?? []).length === 0 && <EmptyState>Nenhum relatório de ocorrência registrado.</EmptyState>}
             </TableWrapper>
 
-            <Modal open={modalOpen} onOpenChange={setModalOpen} title="Novo relatório de ocorrência">
-                <Form onSubmit={handleSubmit((data) => createMutation.mutate(data))}>
+            <Modal
+                open={modalOpen}
+                onOpenChange={setModalOpen}
+                title={editing ? 'Editar relatório de ocorrência' : 'Novo relatório de ocorrência'}
+            >
+                <Form onSubmit={handleSubmit((data) => saveMutation.mutate(data))}>
                     <Field>
                         <Label htmlFor="type">Tipo</Label>
                         <Select id="type" {...register('type', { required: true })}>
@@ -703,12 +734,18 @@ function OccurrencesTab({ eventId }: { eventId: string }) {
                     </Field>
                     <Field>
                         <Label>Áudio (opcional)</Label>
-                        <AudioRecorder onRecorded={setAudioFile} disabled={createMutation.isPending} />
+                        {editing?.audioUrl && !audioFile && (
+                            <div style={{ marginBottom: 8 }}>
+                                <OccurrenceAudioPlayer url={editing.audioUrl} />
+                                <HelpText>Grave um novo áudio abaixo para substituir o atual.</HelpText>
+                            </div>
+                        )}
+                        <AudioRecorder onRecorded={setAudioFile} disabled={saveMutation.isPending} />
                     </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={createMutation.isPending}>
-                            {isUploadingAudio ? 'Enviando áudio...' : createMutation.isPending ? 'Salvando...' : 'Registrar'}
+                        <Button type="submit" disabled={saveMutation.isPending}>
+                            {isUploadingAudio ? 'Enviando áudio...' : saveMutation.isPending ? 'Salvando...' : editing ? 'Salvar' : 'Registrar'}
                         </Button>
                     </FormActions>
                 </Form>
