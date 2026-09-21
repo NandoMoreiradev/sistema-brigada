@@ -22,6 +22,8 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { ListEventsDto } from './dto/list-events.dto';
 import { parseAppDateTime } from '../common/datetime';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA];
 
@@ -91,7 +93,39 @@ export class EventsService {
         });
     }
 
-    async findAll(organizationId: string, query: ListEventsDto) {
+    /**
+     * Visibilidade de evento pra quem não administra eventos (`events:manage`):
+     * reunião é aberta a todo mundo da organização (presença não depende de
+     * escala prévia); assembleia/congresso/atuação de brigada só aparecem pra
+     * quem tem designação nela — quem só é aluno normalmente não é StaffMember
+     * e não vê nenhum desses três.
+     */
+    private visibilityFilter(user: AuthenticatedUser): Prisma.EventWhereInput | undefined {
+        if (userHasPermission(user, 'events:manage')) return undefined;
+        return {
+            OR: [
+                { kind: EventKind.REUNIAO },
+                { operation: { designations: { some: { staffMember: { userId: user.id } } } } },
+            ],
+        };
+    }
+
+    private async canViewEvent(
+        event: { kind: EventKind; operation: { id: string } | null },
+        user: AuthenticatedUser,
+    ): Promise<boolean> {
+        if (userHasPermission(user, 'events:manage')) return true;
+        if (event.kind === EventKind.REUNIAO) return true;
+        if (!event.operation) return false;
+
+        const designation = await this.prisma.designation.findFirst({
+            where: { eventOperationId: event.operation.id, staffMember: { userId: user.id } },
+            select: { id: true },
+        });
+        return Boolean(designation);
+    }
+
+    async findAll(organizationId: string, query: ListEventsDto, user: AuthenticatedUser) {
         const { kind, search, page = 1, limit = 20 } = query;
 
         const where: Prisma.EventWhereInput = {
@@ -100,6 +134,11 @@ export class EventsService {
         };
         if (search) {
             where.title = { contains: search, mode: 'insensitive' };
+        }
+
+        const visibility = this.visibilityFilter(user);
+        if (visibility) {
+            where.AND = [visibility];
         }
 
         const [events, total] = await Promise.all([
@@ -122,6 +161,21 @@ export class EventsService {
             include: eventInclude,
         });
         if (!event) {
+            throw new NotFoundException(`Evento com ID ${id} não encontrado nesta organização.`);
+        }
+        return event;
+    }
+
+    /**
+     * Igual a `findOne`, mas aplicando a regra de visibilidade (ver
+     * `canViewEvent`) — usado só pela rota de leitura direta (`GET
+     * /events/:id`), nunca pelos métodos internos (`update`/`remove`/
+     * `requireEventOperation`/`requireMeeting`), que continuam confiando só no
+     * guard de permissão do próprio endpoint que os chama.
+     */
+    async findOneVisibleTo(id: string, organizationId: string, user: AuthenticatedUser) {
+        const event = await this.findOne(id, organizationId);
+        if (!(await this.canViewEvent(event, user))) {
             throw new NotFoundException(`Evento com ID ${id} não encontrado nesta organização.`);
         }
         return event;
