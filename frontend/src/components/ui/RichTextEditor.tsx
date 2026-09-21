@@ -62,6 +62,13 @@ const EditorArea = styled.div`
     .ProseMirror a {
         color: ${({ theme }) => theme.colors.primary};
     }
+    .ProseMirror img,
+    .ProseMirror video,
+    .ProseMirror iframe {
+        max-width: 100%;
+        max-height: 360px;
+        height: auto;
+    }
 `;
 
 interface RichTextEditorProps {

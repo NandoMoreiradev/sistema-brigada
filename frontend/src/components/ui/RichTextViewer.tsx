@@ -21,6 +21,15 @@ const Content = styled.div`
     a {
         color: ${({ theme }) => theme.colors.primary};
     }
+    img,
+    video,
+    iframe {
+        max-width: 100%;
+        max-height: 360px;
+        height: auto;
+        display: block;
+        margin: 0.5em 0;
+    }
 `;
 
 export function RichTextViewer({ html }: { html: string }) {
