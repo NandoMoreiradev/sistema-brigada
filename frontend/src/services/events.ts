@@ -120,6 +120,14 @@ export const designationsApi = {
         const { data } = await api.post<Designation[]>(`/events/${eventId}/designations/bulk`, input);
         return data;
     },
+    update: async (
+        eventId: string,
+        designationId: string,
+        input: Partial<{ staffMemberId: string; role: string; shiftStart: string; shiftEnd: string; postId: string }>,
+    ) => {
+        const { data } = await api.patch<Designation>(`/events/${eventId}/designations/${designationId}`, input);
+        return data;
+    },
     updateStatus: async (eventId: string, designationId: string, status: DesignationStatus) => {
         const { data } = await api.patch<Designation>(`/events/${eventId}/designations/${designationId}/status`, { status });
         return data;
@@ -215,7 +223,34 @@ export const eventFilesApi = {
         const { data } = await api.post<EventFile>(`/events/${eventId}/files`, input);
         return data;
     },
+    update: async (eventId: string, fileId: string, input: Partial<{ name: string; externalUrl: string; storageKey: string; mimeType: string }>) => {
+        const { data } = await api.patch<EventFile>(`/events/${eventId}/files/${fileId}`, input);
+        return data;
+    },
     remove: async (eventId: string, fileId: string) => {
         await api.delete(`/events/${eventId}/files/${fileId}`);
+    },
+};
+
+export interface OccurrenceReportFile {
+    id: string;
+    name: string;
+    storageKey: string | null;
+    externalUrl: string | null;
+    mimeType: string | null;
+    createdAt: string;
+}
+
+export const occurrenceReportFilesApi = {
+    list: async (eventId: string, reportId: string) => {
+        const { data } = await api.get<OccurrenceReportFile[]>(`/events/${eventId}/occurrence-reports/${reportId}/files`);
+        return data;
+    },
+    create: async (eventId: string, reportId: string, input: { name: string; externalUrl?: string; storageKey?: string; mimeType?: string }) => {
+        const { data } = await api.post<OccurrenceReportFile>(`/events/${eventId}/occurrence-reports/${reportId}/files`, input);
+        return data;
+    },
+    remove: async (eventId: string, reportId: string, fileId: string) => {
+        await api.delete(`/events/${eventId}/occurrence-reports/${reportId}/files/${fileId}`);
     },
 };

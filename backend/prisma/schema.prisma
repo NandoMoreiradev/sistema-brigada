@@ -535,8 +535,25 @@ model OccurrenceReport {
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
   createdBy      User           @relation(fields: [createdByUserId], references: [id])
+  files          OccurrenceReportFile[]
 
   @@index([eventOperationId])
+}
+
+/// Anexo (foto, documento) de um relatório de ocorrência — além do áudio único já suportado em `OccurrenceReport.audioUrl`.
+model OccurrenceReportFile {
+  id                 String   @id @default(cuid())
+  occurrenceReportId String
+  name               String
+  storageKey         String?
+  externalUrl        String?
+  mimeType           String?
+  uploadedByUserId   String
+  createdAt          DateTime @default(now())
+
+  occurrenceReport OccurrenceReport @relation(fields: [occurrenceReportId], references: [id], onDelete: Cascade)
+
+  @@index([occurrenceReportId])
 }
 
 // ---- Reunião periódica + Google Meet ----

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Delete, Param, UseGuards, BadReques
 import { DesignationsService } from './designations.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
+import { UpdateDesignationDto } from './dto/update-designation.dto';
 import { UpdateDesignationStatusDto } from './dto/update-designation-status.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -55,6 +56,17 @@ export class DesignationsController {
         @CurrentUser() user: AuthenticatedUser,
     ) {
         return this.designationsService.findAll(eventId, this.requireOrganizationId(organizationId), user);
+    }
+
+    @Patch(':designationId')
+    @RequirePermission('events:manage')
+    update(
+        @Param('eventId') eventId: string,
+        @Param('designationId') designationId: string,
+        @Body() dto: UpdateDesignationDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.designationsService.update(eventId, this.requireOrganizationId(organizationId), designationId, dto);
     }
 
     /**

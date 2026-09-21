@@ -21,6 +21,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, roomsApi, classSessionsApi, enrollmentsApi, courseModulesApi, courseLessonsApi, type CourseLesson, type CourseLessonInput } from '@/services/courses';
+import { certificatesApi } from '@/services/certificates';
 import { peopleApi } from '@/services/people';
 import { mediaApi } from '@/services/media';
 import { toast } from '@/utils/toast';
@@ -138,6 +139,8 @@ export default function CourseDetail() {
     const canManageEnrollments = hasPermission(user, 'courses:manage');
     // Editar critérios de certificado também exige courses:manage (PATCH /courses/:id).
     const canEditCourse = canManageEnrollments;
+    // Emissão manual de certificado é um módulo à parte (certificates:manage), não courses:manage.
+    const canIssueCertificates = hasPermission(user, 'certificates:manage');
 
     const { data: course } = useQuery({ queryKey: ['courses', courseId], queryFn: () => coursesApi.get(courseId) });
     const { data: sessions } = useQuery({ queryKey: ['courses', courseId, 'sessions'], queryFn: () => classSessionsApi.list(courseId) });
@@ -230,6 +233,31 @@ export default function CourseDetail() {
             toast.success('Status da matrícula atualizado.');
         },
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível atualizar a matrícula.'),
+    });
+
+    /**
+     * Emissão manual de certificado (admin), fora do caminho automático por
+     * presença/aulas. Primeiro tenta sem forçar — se a matrícula ainda não
+     * atingiu os critérios da turma, pergunta se quer emitir mesmo assim
+     * (`force`), pra não precisar que o aluno "percorra o caminho das aulas".
+     */
+    const issueCertificateMutation = useMutation({
+        mutationFn: ({ enrollmentId, force }: { enrollmentId: string; force?: boolean }) => certificatesApi.issue(enrollmentId, force),
+        onSuccess: () => {
+            toast.success('Certificado emitido.');
+            queryClient.invalidateQueries({ queryKey: ['courses', courseId, 'enrollments'] });
+        },
+        onError: (error: any, variables) => {
+            const message = error?.response?.data?.message;
+            const status = error?.response?.status;
+            if (!variables.force && status === 400 && message) {
+                if (window.confirm(`${message}\n\nEmitir o certificado mesmo assim, ignorando esse critério?`)) {
+                    issueCertificateMutation.mutate({ enrollmentId: variables.enrollmentId, force: true });
+                }
+                return;
+            }
+            toast.error(message || 'Não foi possível emitir o certificado.');
+        },
     });
 
     if (!course) {
@@ -335,6 +363,7 @@ export default function CourseDetail() {
                                     <Th>E-mail</Th>
                                     <Th>Status</Th>
                                     <Th>Alterar status</Th>
+                                    {canIssueCertificates && <Th>Certificado</Th>}
                                 </tr>
                             </Thead>
                             <tbody>
@@ -353,6 +382,21 @@ export default function CourseDetail() {
                                                 <option value="DROPPED">Cancelada</option>
                                             </Select>
                                         </Td>
+                                        {canIssueCertificates && (
+                                            <Td>
+                                                {enrollment.certificate ? (
+                                                    <Badge $tone="success">Emitido</Badge>
+                                                ) : (
+                                                    <Button
+                                                        $variant="ghost"
+                                                        disabled={issueCertificateMutation.isPending}
+                                                        onClick={() => issueCertificateMutation.mutate({ enrollmentId: enrollment.id })}
+                                                    >
+                                                        Emitir certificado
+                                                    </Button>
+                                                )}
+                                            </Td>
+                                        )}
                                     </Tr>
                                 ))}
                             </tbody>

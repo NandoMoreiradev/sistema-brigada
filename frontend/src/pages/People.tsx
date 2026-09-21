@@ -143,6 +143,21 @@ export default function People() {
         },
     });
 
+    const resetPasswordMutation = useMutation({
+        mutationFn: (id: string) => peopleApi.sendPasswordReset(id),
+        onSuccess: () => toast.success('E-mail de redefinição de senha enviado.'),
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Não foi possível enviar o e-mail de redefinição de senha.');
+        },
+    });
+
+    const handleResetPassword = () => {
+        if (!editing) return;
+        if (window.confirm(`Enviar um novo e-mail de redefinição de senha para ${editing.name}?`)) {
+            resetPasswordMutation.mutate(editing.id);
+        }
+    };
+
     const onSubmit = (formData: FormData) => {
         if (editing) {
             // Só reenvia `studentProfile` se a pessoa já era aluna — do
@@ -403,7 +418,18 @@ export default function People() {
                         </HelpText>
                     )}
 
-                    <FormActions>
+                    <FormActions style={editing ? { justifyContent: 'space-between' } : undefined}>
+                        {editing && (
+                            <Button
+                                type="button"
+                                $variant="ghost"
+                                onClick={handleResetPassword}
+                                disabled={resetPasswordMutation.isPending}
+                            >
+                                {resetPasswordMutation.isPending ? 'Enviando...' : 'Redefinir senha'}
+                            </Button>
+                        )}
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <Button type="button" $variant="secondary" onClick={() => setModalOpen(false)}>
                             Cancelar
                         </Button>
@@ -416,6 +442,7 @@ export default function People() {
                                     ? 'Cadastrar pessoa'
                                     : 'Cadastrar aluno'}
                         </Button>
+                        </div>
                     </FormActions>
                 </Form>
             </Modal>

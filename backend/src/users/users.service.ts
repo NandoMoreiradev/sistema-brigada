@@ -158,6 +158,29 @@ export class UsersService {
         return user;
     }
 
+    /**
+     * Gera um novo token de redefinição de senha e reenvia o e-mail — pro
+     * admin usar quando alguém perde a senha e não quer (ou não consegue)
+     * usar o "Esqueci minha senha" da tela de login. Mesmo mecanismo do
+     * self-service (AuthService.requestPasswordReset): não muda a senha
+     * direto, só manda um novo link; a pessoa define a senha nova ela mesma.
+     */
+    async sendPasswordReset(id: string, organizationId: string) {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+
+        const token = this.authService.createPasswordResetToken(user.id);
+        const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+        await this.transactionalEmailService.sendPasswordResetEmail(
+            { name: user.name, email: user.email, organizationId },
+            resetLink,
+        );
+
+        return { message: 'E-mail de redefinição de senha enviado.' };
+    }
+
     async update(id: string, organizationId: string, dto: UpdateUserDto) {
         const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { studentProfile: true } });
         if (!user) {

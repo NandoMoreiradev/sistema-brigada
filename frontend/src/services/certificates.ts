@@ -33,8 +33,8 @@ export const certificatesApi = {
         const { data } = await api.post<Certificate>(`/certificates/${id}/regenerate-pdf`);
         return data;
     },
-    issue: async (enrollmentId: string) => {
-        const { data } = await api.post<Certificate>('/certificates/issue', { enrollmentId });
+    issue: async (enrollmentId: string, force?: boolean) => {
+        const { data } = await api.post<Certificate>('/certificates/issue', { enrollmentId, force });
         return data;
     },
 };

@@ -43,6 +43,7 @@ const allowedMimeTypes: Record<UploadContext, string[]> = {
     avatars: IMAGE_TYPES,
     'email-templates': IMAGE_TYPES,
     'occurrence-audio': AUDIO_TYPES,
+    'occurrence-files': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
 };
 
 const DEFAULT_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
