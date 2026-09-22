@@ -1,6 +1,6 @@
 // backend/src/events/event-posts.service.ts
 // Postos de atuação + planta baixa de um evento de operação (assembleia/
-// congresso/atuação de brigada) — ver docs/decisoes.md. Um posto pode
+// congresso) — ver docs/decisoes.md. Um posto pode
 // existir sem posição (posX/posY), e ganha posição quando alguém o
 // posiciona na planta baixa; a planta baixa é uma imagem avulsa por evento.
 

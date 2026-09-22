@@ -42,7 +42,7 @@ export class DesignationsService {
     async create(eventId: string, organizationId: string, dto: CreateDesignationDto) {
         const event = await this.eventsService.findOne(eventId, organizationId);
         if (!event.operation) {
-            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+            throw new NotFoundException('Este evento não é uma assembleia ou congresso.');
         }
         const operationId = event.operation.id;
 
@@ -92,7 +92,7 @@ export class DesignationsService {
     async createBulk(eventId: string, organizationId: string, dto: CreateBulkDesignationDto) {
         const event = await this.eventsService.findOne(eventId, organizationId);
         if (!event.operation) {
-            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+            throw new NotFoundException('Este evento não é uma assembleia ou congresso.');
         }
         const operationId = event.operation.id;
 
@@ -271,7 +271,7 @@ export class DesignationsService {
     async update(eventId: string, organizationId: string, designationId: string, dto: UpdateDesignationDto) {
         const event = await this.eventsService.findOne(eventId, organizationId);
         if (!event.operation) {
-            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+            throw new NotFoundException('Este evento não é uma assembleia ou congresso.');
         }
         const operationId = event.operation.id;
 
@@ -319,7 +319,7 @@ export class DesignationsService {
     ) {
         const event = await this.eventsService.findOne(eventId, organizationId);
         if (!event.operation) {
-            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+            throw new NotFoundException('Este evento não é uma assembleia ou congresso.');
         }
         const designation = await this.prisma.designation.findFirst({
             where: { id: designationId, eventOperationId: event.operation.id },

@@ -18,7 +18,6 @@ import { toast } from '@/utils/toast';
 const KIND_LABEL: Record<EventKind, string> = {
     ASSEMBLEIA: 'Assembleia',
     CONGRESSO: 'Congresso',
-    ATUACAO_BRIGADA: 'Atuação de brigada',
     REUNIAO: 'Reunião',
 };
 

@@ -24,7 +24,7 @@ export class OccurrenceReportsService {
     async create(eventId: string, organizationId: string, createdByUserId: string, dto: CreateOccurrenceReportDto) {
         const event = await this.eventsService.findOne(eventId, organizationId);
         if (!event.operation) {
-            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+            throw new NotFoundException('Este evento não é uma assembleia ou congresso.');
         }
 
         const report = await this.prisma.occurrenceReport.create({

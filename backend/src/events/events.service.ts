@@ -25,7 +25,7 @@ import { parseAppDateTime } from '../common/datetime';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 
-const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA];
+const OPERATION_KINDS: EventKind[] = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO];
 
 const eventInclude = {
     operation: {
@@ -96,9 +96,9 @@ export class EventsService {
     /**
      * Visibilidade de evento pra quem não administra eventos (`events:manage`):
      * reunião é aberta a todo mundo da organização (presença não depende de
-     * escala prévia); assembleia/congresso/atuação de brigada só aparecem pra
-     * quem tem designação nela — quem só é aluno normalmente não é StaffMember
-     * e não vê nenhum desses três.
+     * escala prévia); assembleia/congresso só aparecem pra quem tem designação
+     * nela — quem só é aluno normalmente não é StaffMember e não vê nenhum
+     * dos dois.
      */
     private visibilityFilter(user: AuthenticatedUser): Prisma.EventWhereInput | undefined {
         if (userHasPermission(user, 'events:manage')) return undefined;
@@ -252,7 +252,7 @@ export class EventsService {
     async requireEventOperation(eventId: string, organizationId: string) {
         const event = await this.findOne(eventId, organizationId);
         if (!event.operation) {
-            throw new NotFoundException('Este evento não é uma assembleia, congresso ou atuação de brigada.');
+            throw new NotFoundException('Este evento não é uma assembleia ou congresso.');
         }
         return event.operation;
     }

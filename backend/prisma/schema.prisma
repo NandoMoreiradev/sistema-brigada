@@ -379,13 +379,12 @@ model LessonProgress {
 
 // ================================= EVENTO POLIMÓRFICO =================================
 // Event = tronco (tipo/local/data/unidade). Cada kind tem uma tabela-filha 1:1:
-// TURMA -> Course · ASSEMBLEIA/CONGRESSO/ATUACAO_BRIGADA -> EventOperation · REUNIAO -> Meeting
+// TURMA -> Course · ASSEMBLEIA/CONGRESSO -> EventOperation · REUNIAO -> Meeting
 
 enum EventKind {
   TURMA
   ASSEMBLEIA
   CONGRESSO
-  ATUACAO_BRIGADA
   REUNIAO
 }
 
@@ -438,7 +437,7 @@ model EventFile {
   @@index([eventId])
 }
 
-// ---- Assembleia / congresso / atuação de brigada ----
+// ---- Assembleia / congresso ----
 
 model EventOperation {
   id                     String  @id @default(cuid())
