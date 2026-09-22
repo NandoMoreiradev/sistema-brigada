@@ -3,6 +3,12 @@
 // Padrão idêntico ao de certificate-templates.controller.ts: SUPER_ADMIN sem organização
 // ativa edita os padrões globais; ORG_ADMIN (e SUPER_ADMIN com uma organização ativa
 // selecionada) só enxerga/edita o override da própria academia — ver ActiveOrganizationId.
+//
+// Gate trocado de @Roles fixo pra @RequirePermission('communications:manage') (mesma permissão
+// do novo recurso de comunicados avulsos, communications.controller.ts — as duas abas de
+// "E-mails e comunicados" moram sob o mesmo gate). userHasPermission sempre libera
+// GROUP_ADMIN/ORG_ADMIN e SUPER_ADMIN com isSuperAdminRoot, então o acesso desses papéis não
+// muda — só passa a também aceitar um cargo delegado com essa permissão.
 
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { EmailTemplatesService } from './email-templates.service';
@@ -12,15 +18,14 @@ import { SendTestEmailDto } from './dto/send-test-email.dto';
 import { FindEmailTemplatesQueryDto } from './dto/find-email-templates-query.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
-import { Roles } from '../auth/decorator/roles.decorator';
-import { Role } from '@prisma/client';
+import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
 import { CurrentUser } from '../auth/common/current-user.decorator';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 @Controller('email-templates')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@RequirePermission('communications:manage')
 export class EmailTemplatesController {
     constructor(private readonly emailTemplatesService: EmailTemplatesService) {}
 

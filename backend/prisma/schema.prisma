@@ -44,6 +44,7 @@ model Organization {
   rooms               Room[]
   certificateTemplate CertificateTemplate?
   emailTemplates      EmailTemplate[]
+  communications      Communication[]
 
   @@index([parentOrganizationId])
 }
@@ -87,6 +88,8 @@ model User {
   createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
   externalCertifications ExternalCertification[]
   createdOccurrenceReports OccurrenceReport[]
+  createdCommunications Communication[]          @relation("CommunicationCreator")
+  communicationRecipients CommunicationRecipient[]
 
   @@index([organizationId])
 }
@@ -745,6 +748,84 @@ model EmailTemplate {
   @@unique([organizationId, trigger])
   @@index([organizationId])
   @@index([trigger])
+}
+
+// ================================= COMUNICADOS (e-mail avulso) =================================
+// Diferente de EmailTemplate (templates dos 3 gatilhos automáticos acima): Communication é um
+// e-mail avulso que um admin/cargo delegado (communications:manage) escreve e manda pra um
+// público-alvo da própria academia (todos, alunos, equipe ou pessoas específicas). Reaproveita
+// a mesma infra de renderização/envio (EmailRendererService/MailService), mas não tem o
+// conceito de "padrão global" — é sempre de uma organização específica.
+
+enum CommunicationAudience {
+  ALL
+  STUDENTS
+  STAFF
+  CUSTOM
+}
+
+enum CommunicationStatus {
+  DRAFT
+  SENDING
+  SENT
+  FAILED
+}
+
+enum CommunicationRecipientStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Communication {
+  id                     String                @id @default(cuid())
+  organizationId         String
+  subject                String
+  body                   String                @db.Text
+  designJson             Json?
+  audience               CommunicationAudience @default(ALL)
+  /// Só relevante quando audience = CUSTOM — ids de User escolhidos manualmente.
+  customRecipientUserIds String[]              @default([])
+  status                 CommunicationStatus   @default(DRAFT)
+  recipientCount         Int                   @default(0)
+  failedCount            Int                   @default(0)
+  /// Nº de destinatários que abriram pelo menos uma vez (contagem única de pessoas, não de
+  /// aberturas — ver CommunicationRecipient.openCount pro total por pessoa).
+  openedCount            Int                   @default(0)
+  createdByUserId        String
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  sentAt                 DateTime?
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User                     @relation("CommunicationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  recipients   CommunicationRecipient[]
+
+  @@index([organizationId])
+}
+
+/// Um registro por pessoa por comunicado, criado no momento do ENVIO (não existe enquanto o
+/// comunicado é só rascunho) — é o log de "pra quem foi de fato mandado" + rastreio de abertura
+/// via pixel (PublicCommunicationTrackingController, sem autenticação).
+model CommunicationRecipient {
+  id              String                       @id @default(cuid())
+  communicationId String
+  userId          String
+  name            String
+  email           String
+  status          CommunicationRecipientStatus @default(PENDING)
+  errorMessage    String?
+  sentAt          DateTime?
+  /// Primeira abertura. Sujeito a falso-positivo de clientes que pré-carregam imagens
+  /// (Gmail/Apple Mail Privacy Protection) — limitação conhecida de tracking por pixel.
+  openedAt        DateTime?
+  openCount       Int                          @default(0)
+
+  communication Communication @relation(fields: [communicationId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communicationId, userId])
+  @@index([communicationId])
 }
 
 // ================================= DISPONIBILIDADE =================================

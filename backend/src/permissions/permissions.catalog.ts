@@ -36,7 +36,7 @@ export const PERMISSIONS_CATALOG: PermissionCatalogEntry[] = [
     {
         id: 'events:manage',
         name: 'Gerenciar Eventos',
-        description: 'Permite criar/editar assembleias, congressos, atuações de brigada e reuniões, além de escalas e anexos.',
+        description: 'Permite criar/editar assembleias, congressos e reuniões, além de escalas e anexos.',
         module: 'EVENTS',
         group: 'Eventos',
     },
@@ -53,5 +53,12 @@ export const PERMISSIONS_CATALOG: PermissionCatalogEntry[] = [
         description: 'Permite promover pessoas para a equipe de atuação (brigadista/bombeiro) e registrar certificações externas.',
         module: 'STAFF',
         group: 'Equipe',
+    },
+    {
+        id: 'communications:manage',
+        name: 'Gerenciar E-mails e Comunicados',
+        description: 'Permite editar modelos de e-mail transacional e enviar comunicados por e-mail para pessoas da academia.',
+        module: 'COMMUNICATIONS',
+        group: 'Comunicações',
     },
 ];

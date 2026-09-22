@@ -59,4 +59,21 @@ export const GlobalStyle = createGlobalStyle`
     .animate-pulse {
         animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
+
+    /* Usado por DesignationsTab (EventDetail.tsx) pra imprimir só a escala,
+       sem o resto do layout (nav, abas, botões) — o conteúdo real fica num
+       portal anexado direto ao body, ver #print-schedule-portal. */
+    #print-schedule-portal {
+        display: none;
+    }
+
+    @media print {
+        body.printing-schedule > #root {
+            display: none !important;
+        }
+
+        body.printing-schedule #print-schedule-portal {
+            display: block !important;
+        }
+    }
 `;

@@ -54,8 +54,8 @@ export interface CreateExternalCertificationInput {
 }
 
 export const peopleApi = {
-    list: async (params?: { search?: string; hasStudentProfile?: boolean }) => {
-        const { data } = await api.get<Paginated<OrgPerson>>('/users', { params: { ...params, limit: 100 } });
+    list: async (params?: { search?: string; hasStudentProfile?: boolean; limit?: number }) => {
+        const { data } = await api.get<Paginated<OrgPerson>>('/users', { params: { limit: 100, ...params } });
         return data;
     },
     /** Versão enxuta (só id+nome) aberta a qualquer autenticado — ver GET /users/roster no backend. */

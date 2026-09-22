@@ -6,11 +6,13 @@
 // Arquivos é comum aos dois.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Popover from '@radix-ui/react-popover';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, MapPin, Upload, X, Eye, Paperclip } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, MapPin, Upload, X, Eye, Paperclip, Download, Printer, Copy } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -98,6 +100,38 @@ const ToolbarRow = styled.div`
     display: flex;
     justify-content: flex-end;
     margin-bottom: 0.75rem;
+`;
+
+const PrintSheet = styled.div`
+    padding: 2rem;
+    color: #000;
+    background: #fff;
+
+    h1 {
+        font-size: 1.25rem;
+        margin-bottom: 0.25rem;
+    }
+
+    p {
+        margin-bottom: 1.5rem;
+        color: #444;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid #999;
+        padding: 0.4rem 0.6rem;
+        text-align: left;
+        font-size: 0.8125rem;
+    }
+
+    th {
+        background: #eee;
+    }
 `;
 
 const DESIGNATION_STATUS_LABEL: Record<DesignationStatus, string> = {
@@ -484,15 +518,58 @@ function DesignationsTab({ eventId }: { eventId: string }) {
         setEditingDesignation(d);
     };
 
+    const buildScheduleText = () => {
+        const lines = [`Escala — ${event?.title ?? ''}`];
+        if (event) lines.push(formatAppDate(event.startDate, 'dd/MM/yyyy HH:mm') + (event.location ? ` — ${event.location}` : ''));
+        lines.push('');
+        (designations ?? []).forEach((d) => {
+            lines.push(`• ${d.staffMember.user.name} — ${d.role}`);
+            lines.push(`  Turno: ${formatAppDate(d.shiftStart, 'dd/MM HH:mm')} — ${formatAppDate(d.shiftEnd, 'HH:mm')}`);
+            lines.push(`  Posto: ${d.post?.name ?? '—'}${d.team ? ` (Equipe: ${d.team.name})` : ''} — Status: ${DESIGNATION_STATUS_LABEL[d.status]}`);
+        });
+        return lines.join('\n');
+    };
+
+    const handleCopySchedule = async () => {
+        try {
+            await navigator.clipboard.writeText(buildScheduleText());
+            toast.success('Escala copiada — já pode colar e enviar.');
+        } catch {
+            toast.error('Não foi possível copiar a escala.');
+        }
+    };
+
+    const handlePrintSchedule = () => {
+        document.body.classList.add('printing-schedule');
+        const cleanup = () => {
+            document.body.classList.remove('printing-schedule');
+            window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup);
+        window.print();
+    };
+
+    const hasDesignations = (designations ?? []).length > 0;
+
     return (
         <>
-            {canManageDesignations && (
-                <ToolbarRow>
-                    <Button onClick={openModal}>
-                        <Plus size={16} /> Nova designação
+            <ToolbarRow style={{ justifyContent: 'space-between' }}>
+                <div>
+                    {canManageDesignations && (
+                        <Button onClick={openModal}>
+                            <Plus size={16} /> Nova designação
+                        </Button>
+                    )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <Button $variant="secondary" onClick={handleCopySchedule} disabled={!hasDesignations}>
+                        <Copy size={14} /> Copiar escala
                     </Button>
-                </ToolbarRow>
-            )}
+                    <Button $variant="secondary" onClick={handlePrintSchedule} disabled={!hasDesignations}>
+                        <Printer size={14} /> Imprimir
+                    </Button>
+                </div>
+            </ToolbarRow>
             <TableWrapper>
                 <Table>
                     <Thead>
@@ -667,7 +744,54 @@ function DesignationsTab({ eventId }: { eventId: string }) {
                     </FormActions>
                 </Form>
             </Modal>
+
+            {createPortal(
+                <div id="print-schedule-portal">
+                    <PrintScheduleSheet event={event} designations={designations ?? []} />
+                </div>,
+                document.body,
+            )}
         </>
+    );
+}
+
+/** Conteúdo mostrado só quando `body.printing-schedule` está ativo (ver GlobalStyle.ts
+ * e `handlePrintSchedule` acima) — fica fora do fluxo normal da página o tempo todo. */
+function PrintScheduleSheet({ event, designations }: { event?: AppEvent; designations: Designation[] }) {
+    return (
+        <PrintSheet>
+            <h1>Escala — {event?.title}</h1>
+            {event && (
+                <p>
+                    {formatAppDate(event.startDate, 'dd/MM/yyyy HH:mm')}
+                    {event.location ? ` — ${event.location}` : ''}
+                </p>
+            )}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Brigadista</th>
+                        <th>Função</th>
+                        <th>Turno</th>
+                        <th>Posto</th>
+                        <th>Equipe</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {designations.map((d) => (
+                        <tr key={d.id}>
+                            <td>{d.staffMember.user.name}</td>
+                            <td>{d.role}</td>
+                            <td>{formatAppDate(d.shiftStart, 'dd/MM HH:mm')} — {formatAppDate(d.shiftEnd, 'HH:mm')}</td>
+                            <td>{d.post?.name ?? '—'}</td>
+                            <td>{d.team?.name ?? '—'}</td>
+                            <td>{DESIGNATION_STATUS_LABEL[d.status]}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </PrintSheet>
     );
 }
 
@@ -1058,6 +1182,7 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
     const [pendingPos, setPendingPos] = useState<{ x: number; y: number } | null>(null);
     const [shiftFilter, setShiftFilter] = useState('all');
     const [dragging, setDragging] = useState<{ postId: string; x: number; y: number } | null>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
     const canvasRef = useRef<HTMLDivElement>(null);
     const draggedRef = useRef(false);
 
@@ -1179,6 +1304,29 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
         if (file) uploadFloorPlanMutation.mutate(file);
     };
 
+    /** Captura a planta baixa + pinos (renderizados como HTML sobre a imagem, não fazem
+     * parte do arquivo original) num único PNG. Exige que a imagem permita acesso de
+     * outra origem (CORS) — planta hospedada em bucket sem CORS liberado falha aqui. */
+    const handleDownloadImage = async () => {
+        if (!canvasRef.current) return;
+        setIsDownloading(true);
+        try {
+            const canvas = await html2canvas(canvasRef.current, { useCORS: true, backgroundColor: '#ffffff' });
+            const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) throw new Error('Falha ao gerar a imagem.');
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `mapa-${event?.title ?? 'evento'}.png`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            toast.error('Não foi possível gerar a imagem do mapa — verifique se a planta baixa permite acesso de outra origem (CORS).');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     if (!floorPlanUrl) {
         return (
             <FloorPlanUploadBox>
@@ -1201,6 +1349,9 @@ function FloorPlanTab({ eventId }: { eventId: string }) {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <Button $variant={isPlacing ? 'primary' : 'secondary'} onClick={() => { setIsPlacing((v) => !v); setPendingPos(null); }}>
                         <MapPin size={14} /> {isPlacing ? 'Clique na planta para posicionar' : 'Adicionar posto'}
+                    </Button>
+                    <Button $variant="secondary" onClick={handleDownloadImage} disabled={isDownloading}>
+                        <Download size={14} /> {isDownloading ? 'Gerando...' : 'Baixar imagem'}
                     </Button>
                     <FloorPlanUploadBox as="label" style={{ padding: '0.5rem 0.9rem', border: 'none' }}>
                         <Button as="span" $variant="ghost"><Upload size={14} /> Trocar planta</Button>
