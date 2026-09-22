@@ -331,16 +331,17 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     ))}
 
                     {isOrgAdmin && (
-                        <>
-                            <NavItem to="/roles">
-                                <ShieldCheck size={18} />
-                                Cargos
-                            </NavItem>
-                            <NavItem to="/admin/email-templates">
-                                <Mail size={18} />
-                                Modelos de e-mail
-                            </NavItem>
-                        </>
+                        <NavItem to="/roles">
+                            <ShieldCheck size={18} />
+                            Cargos
+                        </NavItem>
+                    )}
+
+                    {hasPermission(user, 'communications:manage') && (
+                        <NavItem to="/admin/emails">
+                            <Mail size={18} />
+                            E-mails e comunicados
+                        </NavItem>
                     )}
 
                     {isSuperAdmin && (

@@ -29,14 +29,15 @@ import People from '@/pages/People';
 import Certificates from '@/pages/Certificates';
 import Roles from '@/pages/Roles';
 import Organizations from '@/pages/admin/Organizations';
-import EmailTemplates from '@/pages/admin/EmailTemplates';
+import EmailsAndCommunications from '@/pages/admin/EmailsAndCommunications';
 import EmailTemplateEditor from '@/pages/admin/EmailTemplateEditor';
+import CommunicationEditor from '@/pages/admin/CommunicationEditor';
 import MyCourses from '@/pages/MyCourses';
 import MyCertificates from '@/pages/MyCertificates';
 import MyDesignations from '@/pages/MyDesignations';
 import Settings from '@/pages/Settings';
 
-import { ProtectedRoute, PermissionRoute, SuperAdminRoute, RoleRoute } from '@/components/common/ProtectedRoute';
+import { ProtectedRoute, PermissionRoute, SuperAdminRoute } from '@/components/common/ProtectedRoute';
 
 export function Router() {
     return (
@@ -79,11 +80,14 @@ export function Router() {
                 <Route path="/admin/organizations" element={<Organizations />} />
             </Route>
 
-            {/* Privadas — SUPER_ADMIN edita os padrões globais, ORG_ADMIN só o override da própria academia */}
-            <Route element={<RoleRoute roles={['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN']} />}>
-                <Route path="/admin/email-templates" element={<EmailTemplates />} />
+            {/* Privadas — communications:manage (ORG_ADMIN/GROUP_ADMIN/SUPER_ADMIN sempre têm
+                acesso pleno via bypass, ver userHasPermission; cargo delegado também entra) */}
+            <Route element={<PermissionRoute permission="communications:manage" />}>
+                <Route path="/admin/emails" element={<EmailsAndCommunications />} />
                 <Route path="/admin/email-templates/:id/edit" element={<EmailTemplateEditor />} />
+                <Route path="/admin/communications/:id/edit" element={<CommunicationEditor />} />
             </Route>
+            <Route path="/admin/email-templates" element={<Navigate to="/admin/emails" replace />} />
 
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

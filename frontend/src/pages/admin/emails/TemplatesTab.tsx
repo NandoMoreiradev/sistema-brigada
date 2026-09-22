@@ -1,24 +1,32 @@
-// frontend/src/pages/admin/EmailTemplates.tsx
+// frontend/src/pages/admin/emails/TemplatesTab.tsx
 //
-// Lista de templates de e-mail transacional — visível a SUPER_ADMIN (padrões globais e,
-// com uma academia ativa selecionada, os overrides dela) e ORG_ADMIN (só o override da
-// própria academia). Edição de conteúdo/design fica em EmailTemplateEditor.tsx (construtor
-// visual, portado de MaskotCrmEdu) — esta tela só lista, cria e remove.
+// Lista de templates de e-mail transacional — visível a SUPER_ADMIN (padrões globais e, com
+// uma academia ativa selecionada, os overrides dela) e quem tem `communications:manage` (ORG_
+// ADMIN/GROUP_ADMIN sempre, ou um cargo delegado). Edição de conteúdo/design fica em
+// EmailTemplateEditor.tsx (construtor visual, portado de MaskotCrmEdu) — esta aba só lista,
+// cria e remove. Antes vivia em EmailTemplates.tsx como página própria; virou aba de
+// "E-mails e comunicados" (EmailsAndCommunications.tsx) junto com CommunicationsTab.
 
 import { useState } from 'react';
-import { Mail, Plus } from 'lucide-react';
+import styled from 'styled-components';
+import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, ErrorText, Form, FormActions, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { emailTemplatesApi, type EmailTriggerType } from '@/services/emailTemplates';
 import { toast } from '@/utils/toast';
+
+const ToolbarRow = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+`;
 
 const schema = z.object({
     name: z.string().min(1, 'Informe um nome para o template'),
@@ -28,7 +36,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-export default function EmailTemplates() {
+export function TemplatesTab() {
     const [modalOpen, setModalOpen] = useState(false);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -87,16 +95,13 @@ export default function EmailTemplates() {
     const triggerLabels = Object.fromEntries((triggers ?? []).map((t) => [t.value, t.label]));
 
     return (
-        <PageLayout
-            title="Modelos de e-mail"
-            subtitle="Templates dos e-mails transacionais (boas-vindas, redefinição de senha, vencimento de certificado)"
-            icon={<Mail size={16} />}
-            actions={
+        <>
+            <ToolbarRow>
                 <Button onClick={openCreate}>
                     <Plus size={16} /> Novo template
                 </Button>
-            }
-        >
+            </ToolbarRow>
+
             <TableWrapper>
                 <Table>
                     <Thead>
@@ -179,6 +184,6 @@ export default function EmailTemplates() {
                     </FormActions>
                 </Form>
             </Modal>
-        </PageLayout>
+        </>
     );
 }
