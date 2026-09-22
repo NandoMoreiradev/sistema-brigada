@@ -4,8 +4,8 @@
 // Notifications) e os módulos de domínio construídos até agora: Organizations
 // (tenant), Users (pessoas/perfis), Courses (turmas/matrícula/presença),
 // Certificates (emissão automática de certificado, crachá digital, PDF),
-// Staff (brigadista/bombeiro), Events (assembleia/congresso/atuação de
-// brigada/reunião — o tronco polimórfico `Event`, ver docs/decisoes.md) e
+// Staff (brigadista/bombeiro), Events (assembleia/congresso/reunião — o
+// tronco polimórfico `Event`, ver docs/decisoes.md) e
 // Permissions (catálogo de permissões + CRUD de cargo/RoleAssignment por
 // organização, que ativa o `@RequirePermission` já usado nos controllers
 // acima) e Me (Fase 2 de posse de dado — endpoints /me/* com o recorte do

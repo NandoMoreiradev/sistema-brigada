@@ -2,7 +2,7 @@ import { IsOptional, IsString, IsIn, IsInt, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { EventKind } from '@prisma/client';
 
-const LISTABLE_EVENT_KINDS = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.ATUACAO_BRIGADA, EventKind.REUNIAO] as const;
+const LISTABLE_EVENT_KINDS = [EventKind.ASSEMBLEIA, EventKind.CONGRESSO, EventKind.REUNIAO] as const;
 
 export class ListEventsDto {
     @IsOptional()

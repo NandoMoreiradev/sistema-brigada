@@ -128,7 +128,7 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
 1. **Repositório novo e separado**, não fork do `maskotCrmEdu`. Copiar/colar módulos específicos como ponto de partida.
 2. **`Event`** = entidade única polimórfica (tronco: tipo, local, data, unidade) com tabelas-filhas por tipo:
    - tipo `TURMA` → relação com `Turma`/aulas/matrícula
-   - tipo `ASSEMBLEIA`/`CONGRESSO`/`ATUACAO_BRIGADA` → relação com `RelatorioOcorrencia` + `Designacao`
+   - tipo `ASSEMBLEIA`/`CONGRESSO` → relação com `RelatorioOcorrencia` + `Designacao`
 3. Produto é **SaaS multi-cliente** (multi-tenant, como o Maskot é hoje) → reaproveita a camada de plataforma (equivalente ao `AdminController`: gestão de academias-clientes, grupos matriz→filiais).
 4. **Sem módulo financeiro no MVP** (`Contract`/`Invoice`/`PaymentPlan` ficam para uma fase futura, se cursos passarem a ser cobrados).
 5. Onboarding de academia-cliente nova: **manual**, feito pelo `SUPER_ADMIN` da plataforma (sem autocadastro/self-service no MVP).
@@ -175,6 +175,9 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
 
 ### Certificação externa — mudança de dono (fechada em 2026-09-19)
 32. `ExternalCertification` deixa de pertencer a `StaffMember` (decisão 10 original) e passa a pertencer direto a `User` (`staffMemberId` → `userId`, com migração de dados preservando os registros existentes via join por `StaffMember.userId`). Motivo: certificação/qualificação prévia (ex: já era Bombeiro Civil ou Brigadista Intermediário antes de entrar na academia) é um **fato sobre a pessoa**, não sobre um papel específico — antes disso, só quem já tinha sido promovido a staff de atuação podia ter uma registrada, o que forçaria "promover" um professor/instrutor só para guardar essa informação, mesmo que ele nunca fosse escalado num evento. O endpoint migrou de `POST /staff/:id/external-certifications` para `POST /users/:id/external-certifications` (permissão `people:manage`, não mais `staff:manage`) e `assertHasValidQualification` (decisão 19) agora busca `ExternalCertification` por `userId` diretamente em vez de via relação do `StaffMember` — comportamento de bloqueio de designação não muda. A tela em `Staff.tsx` continua sendo o único lugar hoje que expõe essa certificação (lida via `member.user.externalCertifications`), porque ainda não existe uma tela de gestão de professor/instrutor à parte — só a ligação de dados foi corrigida.
+
+### Remoção do tipo de evento `ATUACAO_BRIGADA` (fechada em 2026-09-22)
+33. O `EventKind` tinha três valores para "evento de atuação" (`ASSEMBLEIA`/`CONGRESSO`/`ATUACAO_BRIGADA`), mas os três sempre apontaram para a mesma tabela-filha `EventOperation` e nunca tiveram nenhuma regra de negócio, campo de formulário ou permissão diferente entre si em nenhum lugar do código (backend: `OPERATION_KINDS` sempre os tratou como bloco único; frontend: `isOperation` idem) — a única diferença era o rótulo mostrado ("Assembleia"/"Congresso"/"Atuação de brigada"). Além disso `ATUACAO_BRIGADA` misturava categorias diferentes: `ASSEMBLEIA`/`CONGRESSO` descrevem o tipo de ocasião, enquanto "atuação de brigada" descreve a atividade que a equipe de segurança já exerce **dentro** de uma assembleia ou congresso (a decisão 13 já tratava "eventos de atuação" como sinônimo de assembleia/congresso). Removido o valor do enum; eventos existentes com esse `kind` são reclassificados como `ASSEMBLEIA` na migration (`20260922084022_remove_atuacao_brigada_event_kind`), preservando designações/escalas/ocorrências/postos já registrados. `EventKind` fica só com `TURMA`/`ASSEMBLEIA`/`CONGRESSO`/`REUNIAO`.
 
 ### Reaproveitar quase pronto
 | Maskot Edu | Novo projeto | Observação | Status |
