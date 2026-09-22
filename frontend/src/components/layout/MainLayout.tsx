@@ -33,6 +33,9 @@ const Shell = styled.div`
     height: 100vh;
     height: 100dvh;
     width: 100%;
+    padding: 1rem;
+    gap: 1rem;
+    box-sizing: border-box;
     background: ${({ theme }) => theme.colors.pageBackground};
     overflow: hidden;
 `;
@@ -41,6 +44,9 @@ const Sidebar = styled.aside`
     width: 248px;
     flex-shrink: 0;
     background: linear-gradient(180deg, #23272b 0%, #1a1d21 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: ${({ theme }) => theme.radii.lg};
+    box-shadow: ${({ theme }) => theme.shadows.e2};
     color: white;
     display: flex;
     flex-direction: column;
@@ -104,7 +110,7 @@ const NavItem = styled(NavLink)`
     text-decoration: none;
     font-size: 0.875rem;
     font-weight: 500;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 
     svg {
         flex-shrink: 0;
@@ -127,6 +133,7 @@ const NavItem = styled(NavLink)`
     &:hover {
         background: rgba(255, 255, 255, 0.06);
         color: white;
+        transform: translateX(2px);
     }
 
     &.active {
@@ -182,19 +189,38 @@ const Content = styled.div`
     min-width: 0;
     display: flex;
     flex-direction: column;
+    gap: 1rem;
     overflow: hidden;
 `;
 
 const Topbar = styled.header`
-    height: 60px;
+    height: 64px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 0.5rem;
     padding: 0 1.25rem;
+    border-radius: ${({ theme }) => theme.radii.lg};
     background: ${({ theme }) => theme.colors.white};
-    border-bottom: 1px solid ${({ theme }) => theme.colors.borderLight};
+    box-shadow: ${({ theme }) => theme.shadows.e1};
+`;
+
+const Greeting = styled.div`
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: ${({ theme }) => theme.colors.textDark};
+
+    span {
+        font-weight: 400;
+        color: ${({ theme }) => theme.colors.textMuted};
+    }
+`;
+
+const TopbarRight = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 `;
 
 const TopbarDivider = styled.div`
@@ -250,6 +276,8 @@ const ImpersonationBar = styled.div`
     justify-content: center;
     gap: 0.6rem;
     padding: 0.5rem 1.25rem;
+    border-radius: ${({ theme }) => theme.radii.lg};
+    box-shadow: ${({ theme }) => theme.shadows.e1};
     background: ${({ theme }) => theme.colors.warning};
     color: #4a3800;
     font-size: 0.8125rem;
@@ -275,6 +303,13 @@ const ImpersonationBar = styled.div`
 `;
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN'];
+
+function getGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+}
 
 export function MainLayout({ children }: { children: ReactNode }) {
     const { user, organization, signOut, isImpersonating, impersonatedOrganizationName, stopImpersonation } = useAuth();
@@ -376,16 +411,21 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     </ImpersonationBar>
                 )}
                 <Topbar>
-                    <NotificationBell />
-                    <TopbarDivider />
-                    <UserMenuButton onClick={() => navigate('/settings')} title="Minha Conta">
-                        <Avatar name={user?.name} avatarUrl={user?.avatarUrl} size={34} />
-                        <UserBadge>
-                            <strong>{user?.name}</strong>
-                            <span>{organization?.name || user?.role}</span>
-                        </UserBadge>
-                        <ChevronDown size={14} color="#adb5bd" />
-                    </UserMenuButton>
+                    <Greeting>
+                        <span>{getGreeting()},</span> {user?.name?.split(' ')[0]}
+                    </Greeting>
+                    <TopbarRight>
+                        <NotificationBell />
+                        <TopbarDivider />
+                        <UserMenuButton onClick={() => navigate('/settings')} title="Minha Conta">
+                            <Avatar name={user?.name} avatarUrl={user?.avatarUrl} size={34} />
+                            <UserBadge>
+                                <strong>{user?.name}</strong>
+                                <span>{organization?.name || user?.role}</span>
+                            </UserBadge>
+                            <ChevronDown size={14} color="#adb5bd" />
+                        </UserMenuButton>
+                    </TopbarRight>
                 </Topbar>
                 <Main>{children}</Main>
             </Content>
