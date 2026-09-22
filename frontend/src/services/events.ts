@@ -4,7 +4,7 @@
 import { api } from './api';
 import type { AttendanceStatus, EventStatus, Paginated } from '@/types';
 
-export type EventKind = 'ASSEMBLEIA' | 'CONGRESSO' | 'ATUACAO_BRIGADA' | 'REUNIAO';
+export type EventKind = 'ASSEMBLEIA' | 'CONGRESSO' | 'REUNIAO';
 export type DesignationStatus = 'PENDING' | 'CONFIRMED' | 'DECLINED';
 
 export interface EventPost {

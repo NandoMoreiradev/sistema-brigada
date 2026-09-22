@@ -7,7 +7,6 @@ import type { EventStatus } from '@/types';
 export const KIND_LABEL: Record<EventKind, string> = {
     ASSEMBLEIA: 'Assembleia',
     CONGRESSO: 'Congresso',
-    ATUACAO_BRIGADA: 'Atuação de brigada',
     REUNIAO: 'Reunião',
 };
 

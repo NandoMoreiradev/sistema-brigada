@@ -24,7 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 
 const schema = z.object({
-    kind: z.enum(['ASSEMBLEIA', 'CONGRESSO', 'ATUACAO_BRIGADA', 'REUNIAO']),
+    kind: z.enum(['ASSEMBLEIA', 'CONGRESSO', 'REUNIAO']),
     title: z.string().min(1, 'Informe o título'),
     location: z.string().optional(),
     startDate: z.string().min(1, 'Informe a data'),
@@ -53,7 +53,7 @@ export default function Events() {
         defaultValues: { kind: 'ASSEMBLEIA' },
     });
     const kind = watch('kind');
-    const isOperation = kind === 'ASSEMBLEIA' || kind === 'CONGRESSO' || kind === 'ATUACAO_BRIGADA';
+    const isOperation = kind === 'ASSEMBLEIA' || kind === 'CONGRESSO';
     const isMeeting = kind === 'REUNIAO';
 
     const openCreate = () => {
@@ -139,7 +139,6 @@ export default function Events() {
                         <Select id="kind" {...register('kind')}>
                             <option value="ASSEMBLEIA">Assembleia</option>
                             <option value="CONGRESSO">Congresso</option>
-                            <option value="ATUACAO_BRIGADA">Atuação de brigada</option>
                             <option value="REUNIAO">Reunião (gera link do Google Meet automaticamente)</option>
                         </Select>
                     </Field>
