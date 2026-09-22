@@ -14,7 +14,7 @@ const PageWrapper = styled.div`
     /* Sem padding inferior aqui: o Chrome descarta o padding-bottom de um
        container flex com overflow no fim da rolagem, fazendo o conteúdo
        encostar no rodapé. O respiro fica no MainContent (honrado ao rolar). */
-    padding: 1rem 1.5rem 0;
+    padding: 0 1.5rem 0;
     box-sizing: border-box;
     overflow-y: auto;
     animation: fadeIn 0.3s ease-in-out;
