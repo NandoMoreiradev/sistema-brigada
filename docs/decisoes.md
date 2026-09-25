@@ -22,6 +22,7 @@ Codificação iniciada e em andamento. Módulos completos (backend + frontend, v
 - ✅ Permissões granulares — **Fase 1**: catálogo de permissões + cargos (`RoleAssignment`) configuráveis por organização, tela `/roles` (ver decisões 22-24)
 - ✅ Permissões — **Fase 2** (backend, 2026-09-17): `userHasPermission` extraído de `PermissionsGuard` para reuso em services; `AuthService.getProfile` devolve `studentProfile`/`staffMember`/`instructorCourseIds`; endpoints `GET /me/courses`, `/me/enrollments`, `/me/designations`, `/me/certificates`; checagem de posse adicionada em `CourseLessonsService` (create/update de aula), `ClassSessionsService` (diário/presença) e `DesignationsService.updateStatus` — só quem tem a permissão administrativa do módulo (`courses:manage`/`events:manage`) OU é o dono do dado (instrutor da turma, staff da própria designação) passa
 - ✅ Permissões — **Fase 3** (2026-09-17): listagem completa de Turmas/Equipe/Alunos/Certificados agora exige a permissão do módulo (`courses:manage`/`staff:manage`/`people:manage`/`certificates:manage`) tanto no backend (`GET` das listas + posse no detalhe de turma/certificado) quanto no frontend (`PermissionRoute`, nav condicional em `MainLayout`); quem não tem a permissão usa o recorte pessoal em `/my-courses`, `/my-certificates`, `/my-designations`; `/dashboard` deixou de ser placeholder — agora é "role-aware" (cards condicionais por papel acumulado: aluno/instrutor/staff/admin). **Eventos ficou de fora dessa restrição de propósito** — reuniões/assembleias são abertas a toda a organização por design (`meetings.service.ts`: presença é lista aberta, sem roster fixo), então `/events` continua acessível a qualquer autenticado.
+- ✅ Autocadastro público de pessoas (2026-09-25) — link público por academia (opt-in, com token regenerável) onde qualquer um se cadastra sem login; fica `PENDING` até alguém com `registrations:manage` aprovar (cria `User`+`StudentProfile` de verdade e manda e-mail com credenciais, gatilho `REGISTRATION_APPROVED`) ou recusar. Campos opcionais do formulário são configuráveis por academia. Ver seção própria abaixo.
 
 Pendente:
 
@@ -122,6 +123,55 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
   Postgres real (criar academia → e-mail chega → link ativa conta → editor visual salva e
   reflete no próximo envio → chave Resend por-academia realmente isola o envio).
 
+## Autocadastro público de pessoas (2026-09-25)
+
+Pedido: permitir que uma academia receba cadastro de pessoas via link público (sem
+login) e, ao ter o cadastro aprovado, o sistema envia automaticamente um e-mail com os
+dados de acesso, usando um template criado pelo SUPER_ADMIN e reutilizável pela
+academia — reaproveitando 100% a arquitetura de `EmailTemplate` (padrão global +
+override por academia) já existente pros outros 4 gatilhos.
+
+- **Backend**: `Organization.publicRegistrationEnabled`/`publicRegistrationToken`/
+  `publicRegistrationFields` (opt-in por academia — token sobrevive a
+  desativar/reativar, só "gerar novo link" troca). Novo model `RegistrationRequest`
+  (status `PENDING`/`APPROVED`/`REJECTED`, campos opcionais de `StudentProfile`
+  soltos até a aprovação). Novo gatilho `EmailTriggerType.REGISTRATION_APPROVED`
+  (fora de `PLATFORM_TRIGGERS`: sai pelo Resend da própria academia, igual
+  `USER_WELCOME`/`CERTIFICATE_EXPIRING`). Nova permissão `registrations:manage`
+  (dedicada, não `people:manage` — permite delegar a revisão sem dar acesso total a
+  Alunos/Equipe). Novo módulo `registrations/`: controller público
+  (`GET`/`POST /public/registrations/:token`, sem `JwtAuthGuard` — mesmo padrão
+  "público por omissão" de `PublicBadgeController` —, com throttling local de 5/min)
+  e controller admin (`GET`/`PATCH /registrations`, gated por `registrations:manage`).
+  `UsersService.create()` foi refatorado: o miolo de criação de conta (senha
+  aleatória, `User`+`StudentProfile` em transação, link de ativação) virou
+  `createAccount()`, reutilizado tanto pelo cadastro manual (`create()`, dispara
+  `USER_WELCOME`) quanto pela aprovação de autocadastro (`RegistrationsService.approve()`,
+  dispara `REGISTRATION_APPROVED`) — zero duplicação de lógica de criação de conta.
+  Aprovação sempre cria `Role.ORG_USER`+`StudentProfile` (nunca ORG_ADMIN — autocadastro
+  não é caminho de escalação). Submissão pública nunca confia no payload do cliente pra
+  decidir quais campos opcionais gravar: sempre filtra pelo
+  `publicRegistrationFields` da academia no servidor; duplicata de `PENDING` pro
+  mesmo e-mail é ignorada silenciosamente (mesma mensagem de sucesso, não vaza quem
+  já se cadastrou).
+- **Frontend**: nova seção "Autocadastro público" em Configurações → Academia (toggle,
+  checkboxes sobre o catálogo fixo de 4 campos opcionais, link com copiar/regenerar);
+  nova página pública `/register/:token` (form dinâmico pelos campos habilitados,
+  reaproveita os mesmos widgets de `People.tsx` pra pioneiro/petições); nova tela
+  `/registrations` ("Cadastros pendentes", gated por `registrations:manage`, nav item
+  novo em `MainLayout`) com aprovar (modal pré-preenchido, editável antes de confirmar)
+  /recusar (confirmação simples, sem e-mail).
+- **Validado de ponta a ponta contra um Postgres real** (diferente da rodada anterior de
+  e-mail, que não teve banco disponível): migration aplicada e conferida com
+  `prisma migrate diff` (diff vazio = schema bate 100%), seed idempotente (permissão
+  nova + template padrão novo), fluxo HTTP completo via curl (ativar → submeter →
+  campo não habilitado é filtrado → duplicata ignorada → listar → aprovar com override
+  → dupla-aprovação bloqueada (400) → recusar → regenerar token invalida o link antigo)
+  e inspeção visual via Playwright/Chromium (formulário público, impersonação de
+  ORG_ADMIN, seção de configurações, tela de pendentes, modal de aprovação) — sem
+  regressão no `POST /users` original (cadastro manual) após a extração de
+  `createAccount()`.
+
 ## Decisões fechadas
 
 ### Arquitetura geral
@@ -182,6 +232,12 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
 ### E-mails e comunicados — envio avulso pra pessoas da academia (fechada em 2026-09-22)
 34. Novo model `Communication` (+ `CommunicationRecipient`, um registro por pessoa por envio) pra e-mail avulso ("comunicado") que um admin ou cargo delegado escreve e manda pra um público-alvo da própria academia (todos/alunos/equipe/pessoas específicas) — diferente de `EmailTemplate` (templates dos 3 gatilhos automáticos: boas-vindas, redefinição de senha, certificado vencendo), que nunca manda nada por conta própria. Reaproveita 100% a infra de renderização/envio já existente (`EmailRendererService`/`MailService`/`MergeTagService`, `communications/`) e o mesmo construtor visual drag-and-drop (`EmailBuilder`) usado na edição de template. Envio é fire-and-forget em background (mesmo padrão do e-mail de boas-vindas de academia nova) com um pequeno delay sequencial entre destinatários — sem fila/dependência nova, adequado ao porte modesto das organizações deste produto. Tem rastreio de abertura via pixel 1x1 num endpoint público sem autenticação (`GET /public/communications/recipients/:id/open.gif`, mesmo padrão de `PublicBadgeController`) e mostra quem criou o comunicado (nome + data/hora) em toda listagem/detalhe.
 35. Nova permissão granular `communications:manage` no catálogo, cobrindo tanto Modelos de e-mail (`EmailTemplatesController`, que migrou de `@Roles` fixo pra essa permissão) quanto Comunicados — as duas telas moram juntas em "E-mails e comunicados" (`/admin/emails`, abas verticais no mesmo padrão de `Settings.tsx`). `ORG_ADMIN`/`GROUP_ADMIN`/`SUPER_ADMIN` continuam com acesso pleno (bypass já existente em `userHasPermission`); a permissão só abre a porta pra um cargo delegado (ex.: secretaria) sem precisar ser admin.
+
+### Autocadastro público (fechadas em 2026-09-25)
+36. E-mail de credenciais usa gatilho **novo e dedicado** (`REGISTRATION_APPROVED`), não reaproveita `USER_WELCOME` — mensagem de "seu cadastro foi aprovado" é semanticamente diferente de "um admin te cadastrou", mesmo os dois criando conta do mesmo jeito.
+37. Revisão de cadastros pendentes usa permissão **nova e dedicada** (`registrations:manage`), não `people:manage` — permite delegar essa revisão (ex: recepção) sem dar acesso total à tela de Pessoas.
+38. Formulário público tem **campos opcionais configuráveis por academia**: nome/e-mail/telefone sempre obrigatórios; os 4 campos opcionais de `StudentProfile` (batismo/pioneiro/petições/profissão) a academia escolhe quais aparecem, via toggle sobre um catálogo fixo (não é form-builder livre).
+39. Autocadastro é **opt-in por academia**: precisa ativar em Configurações, o que gera um link/token único (regenerável, invalidando o anterior; sobrevive a desativar/reativar). Sem isso, nenhuma academia ganharia o link "de graça" sem decidir usar.
 
 ### Reaproveitar quase pronto
 | Maskot Edu | Novo projeto | Observação | Status |

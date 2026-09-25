@@ -17,34 +17,44 @@ enum Role {
 }
 
 model Organization {
-  id                   String    @id @default(cuid())
-  name                 String
-  subdomain            String?   @unique
-  logoUrl              String?
-  isMatrix             Boolean   @default(false)
-  parentOrganizationId String?
-  groupName            String?
-  enabledModules       String[]  @default([])
+  id                        String    @id @default(cuid())
+  name                      String
+  subdomain                 String?   @unique
+  logoUrl                   String?
+  isMatrix                  Boolean   @default(false)
+  parentOrganizationId      String?
+  groupName                 String?
+  enabledModules            String[]  @default([])
   /// Chave Resend própria da academia. Quando ausente, o envio cai para
   /// RESEND_API_KEY (conta global da plataforma) — ver EmailSenderFactory.
-  resendApiKey         String?
-  emailFromAddress     String?
-  emailFromName        String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  deletedAt            DateTime?
+  resendApiKey              String?
+  emailFromAddress          String?
+  emailFromName             String?
+  /// Autocadastro público (/register/:token) — desativado por padrão, cada academia liga
+  /// explicitamente (ver OrganizationsService). Token não é removido ao desativar, só ao
+  /// regenerar, pra reativar reaproveitar o mesmo link já compartilhado.
+  publicRegistrationEnabled Boolean   @default(false)
+  publicRegistrationToken   String?   @unique
+  /// Subconjunto de PUBLIC_REGISTRATION_FIELD_CATALOG (common/constants) exibido no
+  /// formulário público desta academia — não é form-builder livre, é toggle sobre um
+  /// catálogo fixo de campos de StudentProfile.
+  publicRegistrationFields  String[]  @default([])
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  deletedAt                 DateTime?
 
-  parentOrganization  Organization?            @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
-  childOrganizations  Organization[]           @relation("OrgHierarchy")
-  users               User[]
-  roleAssignments     RoleAssignment[]
-  userAccess          UserOrganizationAccess[]
-  courses             Course[]
-  events              Event[]
-  rooms               Room[]
-  certificateTemplate CertificateTemplate?
-  emailTemplates      EmailTemplate[]
-  communications      Communication[]
+  parentOrganization   Organization?            @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
+  childOrganizations   Organization[]           @relation("OrgHierarchy")
+  users                User[]
+  roleAssignments      RoleAssignment[]
+  userAccess           UserOrganizationAccess[]
+  courses              Course[]
+  events               Event[]
+  rooms                Room[]
+  certificateTemplate  CertificateTemplate?
+  emailTemplates       EmailTemplate[]
+  communications       Communication[]
+  registrationRequests RegistrationRequest[]
 
   @@index([parentOrganizationId])
 }
@@ -71,25 +81,27 @@ model User {
   updatedAt              DateTime  @updatedAt
   deletedAt              DateTime?
 
-  organization          Organization?            @relation(fields: [organizationId], references: [id])
-  systemRole            SystemRole?              @relation(fields: [systemRoleId], references: [id])
-  refreshTokens         RefreshToken[]
-  roleAssignments       RoleAssignment[]         @relation("RoleAssignmentToUser")
-  allowedOrganizations  UserOrganizationAccess[]
-  availabilities        UserAvailability[]
-  timeOffs              TimeOff[]
-  studentProfile        StudentProfile?
-  staffMember           StaffMember?
-  instructorAssignments CourseInstructor[]
-  lessonProgress        LessonProgress[]
-  meetingAttendances    MeetingAttendance[]
-  integrations          UserIntegration[]
-  notifications         Notification[]
-  createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
-  externalCertifications ExternalCertification[]
-  createdOccurrenceReports OccurrenceReport[]
-  createdCommunications Communication[]          @relation("CommunicationCreator")
-  communicationRecipients CommunicationRecipient[]
+  organization                   Organization?            @relation(fields: [organizationId], references: [id])
+  systemRole                     SystemRole?              @relation(fields: [systemRoleId], references: [id])
+  refreshTokens                  RefreshToken[]
+  roleAssignments                RoleAssignment[]         @relation("RoleAssignmentToUser")
+  allowedOrganizations           UserOrganizationAccess[]
+  availabilities                 UserAvailability[]
+  timeOffs                       TimeOff[]
+  studentProfile                 StudentProfile?
+  staffMember                    StaffMember?
+  instructorAssignments          CourseInstructor[]
+  lessonProgress                 LessonProgress[]
+  meetingAttendances             MeetingAttendance[]
+  integrations                   UserIntegration[]
+  notifications                  Notification[]
+  createdEmailTemplates          EmailTemplate[]          @relation("EmailTemplateCreator")
+  externalCertifications         ExternalCertification[]
+  createdOccurrenceReports       OccurrenceReport[]
+  createdCommunications          Communication[]          @relation("CommunicationCreator")
+  communicationRecipients        CommunicationRecipient[]
+  reviewedRegistrationRequests   RegistrationRequest[]    @relation("RegistrationRequestReviewedBy")
+  createdFromRegistrationRequest RegistrationRequest?     @relation("RegistrationRequestCreatedUser")
 
   @@index([organizationId])
 }
@@ -169,24 +181,24 @@ enum PioneerStatus {
 }
 
 model StudentProfile {
-  id             String    @id @default(cuid())
-  userId         String    @unique
-  organizationId String
-  birthDate      DateTime?
-  gender         String?
-  healthInfo     Json?
-  guardianName   String?
-  guardianPhone  String?
+  id              String         @id @default(cuid())
+  userId          String         @unique
+  organizationId  String
+  birthDate       DateTime?
+  gender          String?
+  healthInfo      Json?
+  guardianName    String?
+  guardianPhone   String?
   /// Data de batismo
-  baptismDate    DateTime?
+  baptismDate     DateTime?
   /// Ausente = não é pioneiro
-  pioneerStatus  PioneerStatus?
+  pioneerStatus   PioneerStatus?
   /// Nomes das petições assinadas (ex: "Pioneiro regular"); vazio = nenhuma
-  signedPetitions String[] @default([])
+  signedPetitions String[]       @default([])
   /// Profissão ou área de estudo
-  profession     String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  profession      String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
@@ -535,8 +547,8 @@ model OccurrenceReport {
   createdByUserId  String
   createdAt        DateTime @default(now())
 
-  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
-  createdBy      User           @relation(fields: [createdByUserId], references: [id])
+  eventOperation EventOperation         @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  createdBy      User                   @relation(fields: [createdByUserId], references: [id])
   files          OccurrenceReportFile[]
 
   @@index([eventOperationId])
@@ -725,6 +737,7 @@ enum EmailTriggerType {
   PASSWORD_RESET
   CERTIFICATE_EXPIRING
   USER_WELCOME
+  REGISTRATION_APPROVED
 }
 
 /// organizationId = null -> template padrão global (usado quando a academia não tem override).
@@ -748,6 +761,47 @@ model EmailTemplate {
   @@unique([organizationId, trigger])
   @@index([organizationId])
   @@index([trigger])
+}
+
+// ================================= AUTOCADASTRO PÚBLICO =================================
+// Formulário sem login que uma academia compartilha via link (Organization.publicRegistrationToken).
+// A submissão fica pendente até alguém com registrations:manage aprovar (cria User+StudentProfile
+// de verdade, via UsersService.createAccount, e dispara REGISTRATION_APPROVED) ou recusar (só
+// muda o status, sem criar conta nem enviar e-mail).
+
+enum RegistrationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model RegistrationRequest {
+  id               String                    @id @default(cuid())
+  organizationId   String
+  name             String
+  email            String
+  phone            String
+  /// Subconjunto de StudentProfile submetido pela pessoa — só os campos que estavam
+  /// habilitados em Organization.publicRegistrationFields no momento do envio. Guardados
+  /// soltos aqui (não em StudentProfile) porque a conta real só existe após aprovação.
+  baptismDate      DateTime?
+  pioneerStatus    PioneerStatus?
+  signedPetitions  String[]                  @default([])
+  profession       String?
+  status           RegistrationRequestStatus @default(PENDING)
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  rejectionReason  String?
+  /// Preenchido só quando status = APPROVED.
+  createdUserId    String?                   @unique
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy   User?        @relation("RegistrationRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdUser  User?        @relation("RegistrationRequestCreatedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
 }
 
 // ================================= COMUNICADOS (e-mail avulso) =================================

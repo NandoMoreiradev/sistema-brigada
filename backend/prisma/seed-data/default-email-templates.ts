@@ -58,6 +58,20 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultEmailTemplate[] = [
         `.trim(),
     },
     {
+        name: 'Padrão — Cadastro aprovado (autocadastro público)',
+        trigger: EmailTriggerType.REGISTRATION_APPROVED,
+        subject: 'Seu cadastro em {{organization_name}} foi aprovado!',
+        body: `
+            <h2>Cadastro aprovado!</h2>
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Seu cadastro em <strong>{{organization_name}}</strong> foi revisado e aprovado. Clique no botão abaixo para definir sua senha e acessar o sistema.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{login_link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Definir minha senha e acessar</a>
+            </p>
+            <p>Se você não esperava este e-mail, pode ignorá-lo com segurança.</p>
+        `.trim(),
+    },
+    {
         name: 'Padrão — Certificado vencendo',
         trigger: EmailTriggerType.CERTIFICATE_EXPIRING,
         subject: 'Seu certificado está vencendo',

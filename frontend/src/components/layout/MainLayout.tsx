@@ -22,6 +22,7 @@ import {
     ChevronDown,
     Mail,
     Eye,
+    UserPlus,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -341,6 +342,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
                   ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
                   : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
               ...(hasPermission(user, 'people:manage') ? [{ to: '/people', label: 'Pessoas', icon: Users }] : []),
+              ...(hasPermission(user, 'registrations:manage') ? [{ to: '/registrations', label: 'Cadastros pendentes', icon: UserPlus }] : []),
               hasPermission(user, 'certificates:manage')
                   ? { to: '/certificates', label: 'Certificados', icon: Award }
                   : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
