@@ -94,7 +94,7 @@ export default function Login() {
     }
 
     return (
-        <AuthLayout title="Ignis" subtitle="Entre com sua conta">
+        <AuthLayout title="Pronthea" subtitle="Entre com sua conta">
             <Form onSubmit={handleSubmit(onSubmit)}>
                 <Field>
                     <Label htmlFor="email">E-mail</Label>

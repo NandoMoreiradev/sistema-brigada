@@ -1,6 +1,6 @@
 # Decisões do projeto — Escola de Treinamento de Brigada e Segurança
 
-> Nome do projeto/produto: **Ignis**. Base de código de referência: `maskotCrmEdu` (CRM/plataforma para escolas, NestJS + Prisma + React).
+> Nome do projeto/produto: **Pronthea** (nome anterior, Ignis, não estava disponível pra registro — trocado em 2026-09-25). Base de código de referência: `maskotCrmEdu` (CRM/plataforma para escolas, NestJS + Prisma + React).
 
 ## Contexto
 
@@ -274,7 +274,7 @@ WhatsApp/Instagram/Messenger, chatbot de vendas, `EnrollmentCampaign` (é campan
 Com Fases 1-3 de permissões fechadas e o mobile adiado, os candidatos a próximo passo são os itens já registrados como pendência parcial ou em aberto (ver seções abaixo) — falta decidir qual priorizar.
 
 ## Itens menores em aberto (não bloqueiam a codificação)
-- Nome definitivo do projeto/produto: **fechado como Ignis** (2026-09-19). Nomes visíveis no código (títulos, telas de login, `package.json`) já atualizados; pasta local e repositório GitHub seguem com o nome antigo (`sistema-brigada`) até decisão de renomear o repo.
+- Nome definitivo do projeto/produto: fechado como Ignis em 2026-09-19, **renomeado para Pronthea em 2026-09-25** (Ignis não estava disponível pra registro de marca). Nomes visíveis no código (títulos, telas de login, `package.json` dos três apps) já atualizados; pasta local e repositório GitHub seguem com o nome antigo (`sistema-brigada`) até decisão de renomear o repo.
 - Layout de impressão do diploma (além do PDF gerado, algum requisito de gráfica/papel especial?).
 - Terminologia final dos papéis do sistema no schema (`SUPER_ADMIN`, admin de academia, instrutor, aluno, staff/brigadista etc.) — resolver ao desenhar o schema Prisma.
 - Refinar o catálogo de permissões (decisão 24) para granularidade por ação, se a equipe administrativa pedir.
