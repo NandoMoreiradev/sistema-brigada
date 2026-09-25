@@ -203,8 +203,8 @@ export class OrganizationsService {
             await this.mailService.sendSingleOrThrow({
                 organizationId: id,
                 to,
-                subject: 'E-mail de teste — configuração de envio (Ignis)',
-                html: '<p>Se você recebeu este e-mail, a configuração de envio da sua academia no Ignis está funcionando corretamente.</p>',
+                subject: 'E-mail de teste — configuração de envio (Pronthea)',
+                html: '<p>Se você recebeu este e-mail, a configuração de envio da sua academia no Pronthea está funcionando corretamente.</p>',
             });
         } catch (error) {
             throw new BadRequestException(`Não foi possível enviar o e-mail de teste: ${(error as Error).message}`);

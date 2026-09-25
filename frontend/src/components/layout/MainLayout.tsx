@@ -354,7 +354,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
                 <Brand>
                     <BrandIcon><Flame size={18} /></BrandIcon>
                     <BrandText>
-                        <strong>Ignis</strong>
+                        <strong>Pronthea</strong>
                         <span>Portal de treinamentos</span>
                     </BrandText>
                 </Brand>
