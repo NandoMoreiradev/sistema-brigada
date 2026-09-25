@@ -38,6 +38,7 @@ import { MeModule } from './me/me.module';
 import { CommunicationsModule } from './communications/communications.module';
 import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { TransactionalEmailModule } from './transactional-email/transactional-email.module';
+import { RegistrationsModule } from './registrations/registrations.module';
 
 @Module({
     imports: [
@@ -59,6 +60,7 @@ import { TransactionalEmailModule } from './transactional-email/transactional-em
         CommunicationsModule,
         EmailTemplatesModule,
         TransactionalEmailModule,
+        RegistrationsModule,
     ],
     controllers: [AppController],
 })

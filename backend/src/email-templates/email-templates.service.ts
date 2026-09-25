@@ -24,6 +24,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
     PASSWORD_RESET: 'Redefinição de senha',
     CERTIFICATE_EXPIRING: 'Certificado vencendo',
     USER_WELCOME: 'Boas-vindas de novo usuário',
+    REGISTRATION_APPROVED: 'Cadastro aprovado (autocadastro público)',
 };
 
 @Injectable()

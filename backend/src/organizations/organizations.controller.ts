@@ -75,6 +75,15 @@ export class OrganizationsController {
         return this.organizationsService.getResendDomainStatus(this.requireOrganizationId(organizationId));
     }
 
+    // Troca o token do link público de autocadastro, invalidando o link já compartilhado
+    // (ver OrganizationsService.regeneratePublicRegistrationToken).
+    @Post('me/public-registration/regenerate-token')
+    @Roles(Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN)
+    @HttpCode(HttpStatus.OK)
+    regeneratePublicRegistrationToken(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.organizationsService.regeneratePublicRegistrationToken(this.requireOrganizationId(organizationId));
+    }
+
     @Get(':id')
     findOne(@Param('id') id: string) {
         return this.organizationsService.findOne(id);

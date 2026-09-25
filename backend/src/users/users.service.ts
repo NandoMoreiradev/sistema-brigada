@@ -14,6 +14,7 @@ import { Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { StudentProfileDto } from './dto/student-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
@@ -45,13 +46,27 @@ export class UsersService {
         private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
 
-    async create(dto: CreateUserDto, organizationId: string) {
-        const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    /**
+     * Miolo de criação de conta reutilizado por `create()` (cadastro manual pela tela de
+     * Alunos) e por `RegistrationsService.approve()` (aprovação de autocadastro público) —
+     * cria User+StudentProfile e gera o link de ativação, mas não manda e-mail nenhum: cada
+     * chamador dispara o gatilho transacional certo (USER_WELCOME vs REGISTRATION_APPROVED)
+     * com o link retornado aqui.
+     */
+    async createAccount(input: {
+        name: string;
+        email: string;
+        phone?: string;
+        organizationId: string;
+        role?: Role;
+        studentProfile?: StudentProfileDto;
+    }) {
+        const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
         if (existing) {
             throw new ConflictException('Já existe um usuário cadastrado com este e-mail.');
         }
 
-        const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+        const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: input.organizationId } });
 
         // Senha aleatória, nunca exposta em lugar nenhum — a pessoa define a própria
         // senha pelo link de ativação do e-mail de boas-vindas (mesmo padrão do
@@ -61,29 +76,29 @@ export class UsersService {
         const user = await this.prisma.$transaction(async (tx) => {
             const user = await tx.user.create({
                 data: {
-                    name: dto.name,
-                    email: dto.email,
+                    name: input.name,
+                    email: input.email,
                     password: hashedPassword,
-                    phone: dto.phone,
-                    role: dto.role ?? Role.ORG_USER,
-                    organizationId,
+                    phone: input.phone,
+                    role: input.role ?? Role.ORG_USER,
+                    organizationId: input.organizationId,
                 },
             });
 
-            if (dto.studentProfile) {
+            if (input.studentProfile) {
                 await tx.studentProfile.create({
                     data: {
                         userId: user.id,
-                        organizationId,
-                        birthDate: dto.studentProfile.birthDate ? new Date(dto.studentProfile.birthDate) : undefined,
-                        gender: dto.studentProfile.gender,
-                        healthInfo: dto.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
-                        guardianName: dto.studentProfile.guardianName,
-                        guardianPhone: dto.studentProfile.guardianPhone,
-                        baptismDate: dto.studentProfile.baptismDate ? new Date(dto.studentProfile.baptismDate) : undefined,
-                        pioneerStatus: dto.studentProfile.pioneerStatus,
-                        signedPetitions: dto.studentProfile.signedPetitions,
-                        profession: dto.studentProfile.profession,
+                        organizationId: input.organizationId,
+                        birthDate: input.studentProfile.birthDate ? new Date(input.studentProfile.birthDate) : undefined,
+                        gender: input.studentProfile.gender,
+                        healthInfo: input.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
+                        guardianName: input.studentProfile.guardianName,
+                        guardianPhone: input.studentProfile.guardianPhone,
+                        baptismDate: input.studentProfile.baptismDate ? new Date(input.studentProfile.baptismDate) : undefined,
+                        pioneerStatus: input.studentProfile.pioneerStatus,
+                        signedPetitions: input.studentProfile.signedPetitions,
+                        profession: input.studentProfile.profession,
                     },
                 });
             }
@@ -91,15 +106,29 @@ export class UsersService {
             return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userListSelect });
         });
 
+        const activationToken = this.authService.createPasswordResetToken(user.id);
+        const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
+
+        return { user, organizationName: organization.name, activationLink };
+    }
+
+    async create(dto: CreateUserDto, organizationId: string) {
+        const { user, organizationName, activationLink } = await this.createAccount({
+            name: dto.name,
+            email: dto.email,
+            phone: dto.phone,
+            organizationId,
+            role: dto.role,
+            studentProfile: dto.studentProfile,
+        });
+
         // Fora da transação e sem `await` — o e-mail não pode impedir nem atrasar a
         // resposta de criação da pessoa (ex: Resend fora do ar/lento).
         // TransactionalEmailService já captura e loga qualquer falha internamente.
-        const activationToken = this.authService.createPasswordResetToken(user.id);
-        const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
         void this.transactionalEmailService.sendUserWelcomeEmail(
             { name: user.name, email: user.email },
             organizationId,
-            organization.name,
+            organizationName,
             activationLink,
         );
 

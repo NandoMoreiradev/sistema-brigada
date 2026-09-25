@@ -61,4 +61,11 @@ export const PERMISSIONS_CATALOG: PermissionCatalogEntry[] = [
         module: 'COMMUNICATIONS',
         group: 'Comunicações',
     },
+    {
+        id: 'registrations:manage',
+        name: 'Gerenciar Cadastros',
+        description: 'Permite revisar, aprovar e recusar solicitações de autocadastro público.',
+        module: 'REGISTRATIONS',
+        group: 'Cadastros',
+    },
 ];

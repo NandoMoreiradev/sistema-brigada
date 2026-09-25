@@ -19,6 +19,7 @@ import Login from '@/pages/Login';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import BadgePage from '@/pages/public/BadgePage';
+import RegistrationFormPage from '@/pages/public/RegistrationFormPage';
 import Dashboard from '@/pages/Dashboard';
 import Courses from '@/pages/Courses';
 import CourseDetail from '@/pages/CourseDetail';
@@ -28,6 +29,7 @@ import Staff from '@/pages/Staff';
 import People from '@/pages/People';
 import Certificates from '@/pages/Certificates';
 import Roles from '@/pages/Roles';
+import Registrations from '@/pages/Registrations';
 import Organizations from '@/pages/admin/Organizations';
 import EmailsAndCommunications from '@/pages/admin/EmailsAndCommunications';
 import EmailTemplateEditor from '@/pages/admin/EmailTemplateEditor';
@@ -47,6 +49,7 @@ export function Router() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/badge/:token" element={<BadgePage />} />
+            <Route path="/register/:token" element={<RegistrationFormPage />} />
 
             {/* Privadas — qualquer autenticado */}
             <Route element={<ProtectedRoute />}>
@@ -73,6 +76,9 @@ export function Router() {
             </Route>
             <Route element={<PermissionRoute permission="certificates:manage" />}>
                 <Route path="/certificates" element={<Certificates />} />
+            </Route>
+            <Route element={<PermissionRoute permission="registrations:manage" />}>
+                <Route path="/registrations" element={<Registrations />} />
             </Route>
 
             {/* Privadas — só SUPER_ADMIN */}

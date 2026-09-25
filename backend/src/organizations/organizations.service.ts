@@ -129,18 +129,39 @@ export class OrganizationsService {
     }
 
     async update(id: string, dto: UpdateOrganizationDto) {
-        await this.findOne(id);
+        const existing = await this.findOne(id);
 
         if (dto.subdomain) {
-            const existing = await this.prisma.organization.findFirst({
+            const duplicate = await this.prisma.organization.findFirst({
                 where: { subdomain: dto.subdomain, NOT: { id } },
             });
-            if (existing) {
+            if (duplicate) {
                 throw new ConflictException('Já existe uma academia cadastrada com este subdomínio.');
             }
         }
 
-        const updated = await this.prisma.organization.update({ where: { id }, data: dto });
+        const data: Prisma.OrganizationUpdateInput = { ...dto };
+        // Ativar pela primeira vez gera o token do link público; reativar depois de
+        // desativar reaproveita o mesmo (só "Gerar novo link" troca, ver
+        // regeneratePublicRegistrationToken).
+        if (dto.publicRegistrationEnabled === true && !existing.publicRegistrationToken) {
+            data.publicRegistrationToken = crypto.randomUUID();
+        }
+
+        const updated = await this.prisma.organization.update({ where: { id }, data });
+        return this.maskResendKey(updated);
+    }
+
+    async regeneratePublicRegistrationToken(id: string) {
+        const organization = await this.findOne(id);
+        if (!organization.publicRegistrationEnabled) {
+            throw new BadRequestException('Ative o autocadastro público antes de gerar um link.');
+        }
+
+        const updated = await this.prisma.organization.update({
+            where: { id },
+            data: { publicRegistrationToken: crypto.randomUUID() },
+        });
         return this.maskResendKey(updated);
     }
 
