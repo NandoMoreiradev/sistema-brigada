@@ -1,7 +1,7 @@
 // backend/src/transactional-email/transactional-email.service.ts
 //
 // Adaptado de maskotCrmEdu/backend/src/transactional-email/transactional-email.service.ts,
-// trimado para os gatilhos deste produto (sem CRM de lead/visita/onboarding, sem
+// trimado para os 3 gatilhos deste produto (sem CRM de lead/visita/onboarding, sem
 // unsubscribe — todos transacionais, nenhum de campanha).
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -147,6 +147,29 @@ export class TransactionalEmailService {
         };
 
         await this.sendEmailByTrigger(user.email, EmailTriggerType.USER_WELCOME, context, organizationId);
+    }
+
+    /**
+     * Credenciais de acesso pra quem teve o autocadastro público (registrations/) aprovado
+     * por um staff da academia — gatilho próprio (não USER_WELCOME) porque a mensagem faz
+     * sentido ser diferente do "boas-vindas" de quando um admin cadastra alguém manualmente.
+     * Mesma regra de remetente de USER_WELCOME: sai pelo Resend da própria academia.
+     */
+    async sendRegistrationApprovedEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        activationLink: string,
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            login_link: activationLink,
+        };
+
+        await this.sendEmailByTrigger(user.email, EmailTriggerType.REGISTRATION_APPROVED, context, organizationId);
     }
 
     /** Certificado emitido — sai pelo Resend da academia, como CERTIFICATE_EXPIRING. */

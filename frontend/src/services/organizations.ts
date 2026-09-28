@@ -36,6 +36,8 @@ export interface UpdateMyOrganizationInput {
     resendApiKey?: string;
     emailFromAddress?: string;
     emailFromName?: string;
+    publicRegistrationEnabled?: boolean;
+    publicRegistrationFields?: string[];
 }
 
 export const organizationsApi = {
@@ -54,6 +56,11 @@ export const organizationsApi = {
     /** Só leitura: domínios já cadastrados na conta Resend cuja chave a academia colou. */
     getResendDomains: async () => {
         const { data } = await api.get<{ domains: { name: string; status: string }[] }>('/organizations/me/resend-domains');
+        return data;
+    },
+    /** Troca o token do link público de autocadastro, invalidando o link já compartilhado. */
+    regeneratePublicRegistrationToken: async () => {
+        const { data } = await api.post<Organization>('/organizations/me/public-registration/regenerate-token');
         return data;
     },
     list: async (search?: string) => {

@@ -19,4 +19,6 @@ export class UpdateMyOrganizationDto extends PickType(UpdateOrganizationDto, [
     'resendApiKey',
     'emailFromAddress',
     'emailFromName',
+    'publicRegistrationEnabled',
+    'publicRegistrationFields',
 ] as const) {}

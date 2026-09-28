@@ -12,6 +12,7 @@ export const PUBLIC_ROUTE_PREFIXES = [
     '/forgot-password',
     '/reset-password',
     '/badge/', // validação pública de crachá (/badge/:token)
+    '/register/', // autocadastro público de pessoas (/register/:token)
 ];
 
 export const isPublicPath = (pathname: string = window.location.pathname): boolean => {

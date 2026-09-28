@@ -9,13 +9,13 @@
 // no onboarding, não preferência de autoatendimento.
 
 import { useEffect, useState } from 'react';
-import { Building2, Globe, Send } from 'lucide-react';
+import { Building2, Globe, Send, Copy, RefreshCw } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import styled from 'styled-components';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Field, Label, Input, ErrorText, Form, FormActions, HelpText } from '@/components/ui/FormField';
+import { Field, Label, Input, ErrorText, CheckboxField, Form, FormActions, HelpText } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Table';
 import { organizationsApi } from '@/services/organizations';
@@ -41,6 +41,15 @@ const DOMAIN_STATUS_TONE: Record<DomainStatus, 'success' | 'warning' | 'danger' 
     partially_verified: 'warning',
     partially_failed: 'danger',
 };
+
+// Mesmo catálogo fixo de backend/src/common/constants/public-registration-fields.constant.ts
+// (não é form-builder livre — só toggle sobre esses 4 campos).
+const PUBLIC_REGISTRATION_FIELDS: { value: string; label: string }[] = [
+    { value: 'baptismDate', label: 'Data de batismo' },
+    { value: 'pioneerStatus', label: 'Situação de pioneiro' },
+    { value: 'signedPetitions', label: 'Petições assinadas' },
+    { value: 'profession', label: 'Profissão' },
+];
 
 function emailDomain(email: string): string | null {
     const at = email.lastIndexOf('@');
@@ -109,6 +118,18 @@ const TestEmailRow = styled.div`
     align-items: flex-start;
 `;
 
+const LinkRow = styled.div`
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+`;
+
+const FieldCheckboxGroup = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+`;
+
 const schema = z.object({
     name: z.string().min(1, 'Informe o nome da academia'),
     subdomain: z.string().optional(),
@@ -116,6 +137,7 @@ const schema = z.object({
     resendApiKey: z.string().optional(),
     emailFromAddress: z.string().email('E-mail inválido').optional().or(z.literal('')),
     emailFromName: z.string().optional(),
+    publicRegistrationEnabled: z.boolean().optional(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -123,6 +145,7 @@ export function OrganizationTab() {
     const { organization, setOrganization, user } = useAuth();
     const queryClient = useQueryClient();
     const [testEmailTo, setTestEmailTo] = useState('');
+    const [selectedRegistrationFields, setSelectedRegistrationFields] = useState<string[]>([]);
 
     const { data, isLoading } = useQuery({
         queryKey: ['organizations', 'me'],
@@ -140,8 +163,21 @@ export function OrganizationTab() {
 
     const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
-        defaultValues: { name: '', subdomain: '', groupName: '', resendApiKey: '', emailFromAddress: '', emailFromName: '' },
+        defaultValues: {
+            name: '',
+            subdomain: '',
+            groupName: '',
+            resendApiKey: '',
+            emailFromAddress: '',
+            emailFromName: '',
+            publicRegistrationEnabled: false,
+        },
     });
+
+    const publicRegistrationEnabled = watch('publicRegistrationEnabled');
+    const registrationLink = data?.publicRegistrationToken
+        ? `${window.location.origin}/register/${data.publicRegistrationToken}`
+        : null;
 
     const fromDomain = emailDomain(watch('emailFromAddress') || '');
     const verifiedDomainNames = new Set((domainsData?.domains ?? []).filter((d) => d.status === 'verified').map((d) => d.name));
@@ -160,7 +196,9 @@ export function OrganizationTab() {
             resendApiKey: '',
             emailFromAddress: data.emailFromAddress || '',
             emailFromName: data.emailFromName || '',
+            publicRegistrationEnabled: data.publicRegistrationEnabled,
         });
+        setSelectedRegistrationFields(data.publicRegistrationFields || []);
     }, [data, reset]);
 
     const saveMutation = useMutation({
@@ -171,6 +209,8 @@ export function OrganizationTab() {
             resendApiKey: input.resendApiKey || undefined,
             emailFromAddress: input.emailFromAddress || undefined,
             emailFromName: input.emailFromName || undefined,
+            publicRegistrationEnabled: input.publicRegistrationEnabled,
+            publicRegistrationFields: selectedRegistrationFields,
         }),
         onSuccess: (updated) => {
             toast.success('Configurações da academia atualizadas.');
@@ -186,6 +226,30 @@ export function OrganizationTab() {
         onSuccess: (result) => toast.success(result.message),
         onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível enviar o e-mail de teste.'),
     });
+
+    const regenerateTokenMutation = useMutation({
+        mutationFn: () => organizationsApi.regeneratePublicRegistrationToken(),
+        onSuccess: (updated) => {
+            toast.success('Novo link gerado — o link anterior parou de funcionar.');
+            queryClient.invalidateQueries({ queryKey: ['organizations', 'me'] });
+            setOrganization((prev) => (prev ? { ...prev, ...updated } : prev));
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível gerar um novo link.'),
+    });
+
+    const toggleRegistrationField = (value: string) => {
+        setSelectedRegistrationFields((prev) => (prev.includes(value) ? prev.filter((f) => f !== value) : [...prev, value]));
+    };
+
+    const copyRegistrationLink = async () => {
+        if (!registrationLink) return;
+        try {
+            await navigator.clipboard.writeText(registrationLink);
+            toast.success('Link copiado.');
+        } catch {
+            toast.error('Não foi possível copiar o link.');
+        }
+    };
 
     if (isLoading) return null;
 
@@ -270,6 +334,65 @@ export function OrganizationTab() {
                             A verificação de domínio (DNS/SPF/DKIM) é feita direto no painel do Resend — aqui só espelhamos o status.
                         </HelpText>
                     </Field>
+                )}
+
+                <SectionTitle>Autocadastro público</SectionTitle>
+                <Field>
+                    <CheckboxField>
+                        <input type="checkbox" {...register('publicRegistrationEnabled')} />
+                        Permitir que pessoas se cadastrem por um link público
+                    </CheckboxField>
+                    <HelpText>
+                        Quem preencher o formulário fica pendente até alguém com a permissão "Gerenciar Cadastros" aprovar —
+                        a aprovação cria a conta e manda o e-mail de acesso automaticamente.
+                    </HelpText>
+                </Field>
+
+                {publicRegistrationEnabled && (
+                    <>
+                        <Field>
+                            <Label>Campos exibidos no formulário</Label>
+                            <FieldCheckboxGroup>
+                                {PUBLIC_REGISTRATION_FIELDS.map((field) => (
+                                    <CheckboxField key={field.value}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedRegistrationFields.includes(field.value)}
+                                            onChange={() => toggleRegistrationField(field.value)}
+                                        />
+                                        {field.label}
+                                    </CheckboxField>
+                                ))}
+                            </FieldCheckboxGroup>
+                            <HelpText>Nome, e-mail e telefone são sempre pedidos — estes são os campos extras opcionais.</HelpText>
+                        </Field>
+
+                        {registrationLink && (
+                            <Field>
+                                <Label>Link para compartilhar</Label>
+                                <LinkRow>
+                                    <Input readOnly value={registrationLink} onFocus={(e) => e.target.select()} />
+                                    <Button type="button" $variant="secondary" onClick={copyRegistrationLink}>
+                                        <Copy size={16} />
+                                    </Button>
+                                </LinkRow>
+                                <TestEmailRow>
+                                    <Button
+                                        type="button"
+                                        $variant="secondary"
+                                        disabled={regenerateTokenMutation.isPending}
+                                        onClick={() => {
+                                            if (window.confirm('Gerar um novo link vai invalidar o link atual — quem já tiver o link antigo não vai mais conseguir usá-lo. Continuar?')) {
+                                                regenerateTokenMutation.mutate();
+                                            }
+                                        }}
+                                    >
+                                        <RefreshCw size={16} /> Gerar novo link
+                                    </Button>
+                                </TestEmailRow>
+                            </Field>
+                        )}
+                    </>
                 )}
 
                 <SectionTitle>Testar envio</SectionTitle>

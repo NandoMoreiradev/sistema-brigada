@@ -19,6 +19,29 @@ export interface Organization {
     hasCustomResendKey?: boolean;
     emailFromAddress?: string | null;
     emailFromName?: string | null;
+    publicRegistrationEnabled: boolean;
+    /** Só presente quando publicRegistrationEnabled (ou já foi ativado antes). */
+    publicRegistrationToken?: string | null;
+    /** Subconjunto de PublicRegistrationField exibido no form público desta academia. */
+    publicRegistrationFields: string[];
+}
+
+export type PublicRegistrationField = 'baptismDate' | 'pioneerStatus' | 'signedPetitions' | 'profession';
+
+export interface RegistrationRequest {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    baptismDate?: string | null;
+    pioneerStatus?: PioneerStatus | null;
+    signedPetitions: string[];
+    profession?: string | null;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    reviewedAt?: string | null;
+    rejectionReason?: string | null;
+    createdAt: string;
+    reviewedBy?: { id: string; name: string } | null;
 }
 
 export interface User {
