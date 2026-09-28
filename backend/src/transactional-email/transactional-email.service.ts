@@ -171,4 +171,66 @@ export class TransactionalEmailService {
 
         await this.sendEmailByTrigger(user.email, EmailTriggerType.REGISTRATION_APPROVED, context, organizationId);
     }
+
+    /** Certificado emitido — sai pelo Resend da academia, como CERTIFICATE_EXPIRING. */
+    async sendCertificateIssuedEmail(
+        student: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        courseName: string,
+        link: string,
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: student.name, email: student.email },
+            user_name: student.name,
+            student: { name: student.name },
+            student_name: student.name,
+            course: { name: courseName },
+            certificate: { link },
+        };
+
+        await this.sendEmailByTrigger(student.email, EmailTriggerType.CERTIFICATE_ISSUED, context, organizationId);
+    }
+
+    /** Matrícula confirmada em uma turma. */
+    async sendEnrollmentConfirmedEmail(
+        student: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        course: { name: string; startDate: string; location: string; link: string },
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: student.name, email: student.email },
+            user_name: student.name,
+            student: { name: student.name },
+            student_name: student.name,
+            course,
+        };
+
+        await this.sendEmailByTrigger(student.email, EmailTriggerType.ENROLLMENT_CONFIRMED, context, organizationId);
+    }
+
+    /** Pessoa escalada (designada) para um evento. */
+    async sendDesignationAssignedEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        event: { name: string; date: string; location: string; link: string },
+        role: string,
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            event,
+            designation: { role },
+        };
+
+        await this.sendEmailByTrigger(user.email, EmailTriggerType.DESIGNATION_ASSIGNED, context, organizationId);
+    }
 }

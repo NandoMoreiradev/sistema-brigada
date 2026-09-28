@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "public"."EmailTriggerType" ADD VALUE 'CERTIFICATE_ISSUED';
+ALTER TYPE "public"."EmailTriggerType" ADD VALUE 'ENROLLMENT_CONFIRMED';
+ALTER TYPE "public"."EmailTriggerType" ADD VALUE 'DESIGNATION_ASSIGNED';

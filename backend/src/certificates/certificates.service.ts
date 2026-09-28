@@ -252,6 +252,19 @@ export class CertificatesService {
             link: '/my-certificates',
         });
 
+        const organization = await this.prisma.organization.findUnique({
+            where: { id: enrollment.organizationId },
+            select: { name: true },
+        });
+        // Sem await: o e-mail não pode atrasar nem derrubar a emissão (o serviço já loga falhas).
+        void this.transactionalEmailService.sendCertificateIssuedEmail(
+            { name: student.name, email: student.email },
+            enrollment.organizationId,
+            organization?.name ?? '',
+            courseName,
+            `${process.env.FRONTEND_URL}/my-certificates`,
+        );
+
         return this.findOne(certificate.id, enrollment.organizationId);
     }
 

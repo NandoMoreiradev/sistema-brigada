@@ -13,7 +13,7 @@
 // certificação externa) esteja vencida — completa a parte de "gestão ativa"
 // da reciclagem que faltava (o alerta de vencimento já existia).
 
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -21,7 +21,8 @@ import { CreateDesignationDto } from './dto/create-designation.dto';
 import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
 import { UpdateDesignationDto } from './dto/update-designation.dto';
 import { DesignationStatus, CertificateStatus } from '@prisma/client';
-import { parseAppDateTime } from '../common/datetime';
+import { parseAppDateTime, formatAppDateTime } from '../common/datetime';
+import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 
@@ -33,10 +34,13 @@ const designationInclude = {
 
 @Injectable()
 export class DesignationsService {
+    private readonly logger = new Logger(DesignationsService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly eventsService: EventsService,
         private readonly notificationsService: NotificationsService,
+        private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
 
     async create(eventId: string, organizationId: string, dto: CreateDesignationDto) {
@@ -79,6 +83,8 @@ export class DesignationsService {
             message: `Você foi designado(a) como ${dto.role} para o evento "${event.title}".`,
             link: `/events/${eventId}`,
         });
+
+        void this.sendAssignedEmails(event, organizationId, [{ user: staffMember.user, role: dto.role }]);
 
         return designation;
     }
@@ -155,7 +161,36 @@ export class DesignationsService {
             ),
         );
 
+        void this.sendAssignedEmails(
+            event,
+            organizationId,
+            designations.map((designation) => ({ user: designation.staffMember.user, role: dto.role })),
+        );
+
         return designations;
+    }
+
+    /** Fire-and-forget: TransactionalEmailService já captura e loga qualquer falha de envio. */
+    private async sendAssignedEmails(
+        event: { id: string; title: string; startDate: Date; location: string | null },
+        organizationId: string,
+        assignments: { user: { name: string; email: string }; role: string }[],
+    ): Promise<void> {
+        try {
+            const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+            const eventInfo = {
+                name: event.title,
+                date: formatAppDateTime(event.startDate),
+                location: event.location ?? '',
+                link: `${process.env.FRONTEND_URL}/events/${event.id}`,
+            };
+
+            for (const { user, role } of assignments) {
+                await this.transactionalEmailService.sendDesignationAssignedEmail(user, organizationId, organization?.name ?? '', eventInfo, role);
+            }
+        } catch (error) {
+            this.logger.error('Falha ao enviar e-mails de nova designação.', (error as Error).stack);
+        }
     }
 
     /** Confirma que o brigadista existe na organização e não tem outro turno que conflite com o horário informado. */

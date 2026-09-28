@@ -19,3 +19,14 @@ export function parseAppDateTime(value: string | undefined): Date | undefined {
     if (value === undefined) return undefined;
     return fromZonedTime(value, APP_TIME_ZONE);
 }
+
+/** "15/03/2026" — data no fuso da aplicação, para textos de e-mail. */
+export function formatAppDate(value: Date): string {
+    return value.toLocaleDateString('pt-BR', { timeZone: APP_TIME_ZONE });
+}
+
+/** "15/03/2026 às 08:00" — data e hora no fuso da aplicação, para textos de e-mail. */
+export function formatAppDateTime(value: Date): string {
+    const time = value.toLocaleTimeString('pt-BR', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
+    return `${formatAppDate(value)} às ${time}`;
+}
