@@ -24,6 +24,9 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
     PASSWORD_RESET: 'Redefinição de senha',
     CERTIFICATE_EXPIRING: 'Certificado vencendo',
     USER_WELCOME: 'Boas-vindas de novo usuário',
+    CERTIFICATE_ISSUED: 'Certificado emitido',
+    ENROLLMENT_CONFIRMED: 'Matrícula confirmada',
+    DESIGNATION_ASSIGNED: 'Nova designação em evento',
 };
 
 @Injectable()
@@ -252,7 +255,9 @@ export class EmailTemplatesService {
             user: { name: 'João da Silva', email: 'joao@exemplo.com' },
             user_name: 'João da Silva',
             student: { name: 'Maria Souza' },
-            course: { name: 'Brigada de Incêndio — Turma 2026' },
+            course: { name: 'Brigada de Incêndio — Turma 2026', startDate: '15/03/2026', location: 'Sede da Academia Exemplo', link: 'https://exemplo.com/courses/teste' },
+            event: { name: 'Assembleia Geral 2026', date: '15/03/2026 às 08:00', location: 'Sede da Academia Exemplo', link: 'https://exemplo.com/events/teste' },
+            designation: { role: 'Brigadista' },
             certificate: { expiresAt: '15/03/2026', link: 'https://exemplo.com/certificates' },
             login_link: 'https://exemplo.com/reset-password?token=teste',
             password_reset_link: 'https://exemplo.com/reset-password?token=teste',

@@ -725,6 +725,9 @@ enum EmailTriggerType {
   PASSWORD_RESET
   CERTIFICATE_EXPIRING
   USER_WELCOME
+  CERTIFICATE_ISSUED
+  ENROLLMENT_CONFIRMED
+  DESIGNATION_ASSIGNED
 }
 
 /// organizationId = null -> template padrão global (usado quando a academia não tem override).
@@ -751,7 +754,7 @@ model EmailTemplate {
 }
 
 // ================================= COMUNICADOS (e-mail avulso) =================================
-// Diferente de EmailTemplate (templates dos 3 gatilhos automáticos acima): Communication é um
+// Diferente de EmailTemplate (templates dos gatilhos automáticos acima): Communication é um
 // e-mail avulso que um admin/cargo delegado (communications:manage) escreve e manda pra um
 // público-alvo da própria academia (todos, alunos, equipe ou pessoas específicas). Reaproveita
 // a mesma infra de renderização/envio (EmailRendererService/MailService), mas não tem o

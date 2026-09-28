@@ -7,7 +7,7 @@
 // emissão automática de certificado (decisão 16) fica para o módulo de
 // certificados; aqui a troca de status é manual.
 
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentStatus } from '@prisma/client';
 import { UsersService } from '../users/users.service';
@@ -15,21 +15,26 @@ import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
 import { CreateBulkEnrollmentDto } from './dto/create-bulk-enrollment.dto';
 import { CertificatesService } from '../certificates/certificates.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
+import { formatAppDate } from '../common/datetime';
 
 @Injectable()
 export class EnrollmentsService {
+    private readonly logger = new Logger(EnrollmentsService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly usersService: UsersService,
         private readonly certificatesService: CertificatesService,
         private readonly notificationsService: NotificationsService,
+        private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
 
     private async requireCourse(courseId: string, organizationId: string) {
         const course = await this.prisma.course.findFirst({
             where: { id: courseId, organizationId },
             include: {
-                event: { select: { title: true } },
+                event: { select: { title: true, startDate: true, location: true } },
                 _count: { select: { enrollments: { where: { status: EnrollmentStatus.ACTIVE } } } },
             },
         });
@@ -67,6 +72,8 @@ export class EnrollmentsService {
             message: `Sua matrícula na turma "${course.event.title}" foi confirmada.`,
             link: `/courses/${courseId}`,
         });
+
+        void this.sendConfirmationEmails(course, organizationId, [enrollment.studentProfile.user]);
 
         return enrollment;
     }
@@ -119,7 +126,36 @@ export class EnrollmentsService {
             ),
         );
 
+        void this.sendConfirmationEmails(
+            course,
+            organizationId,
+            enrollments.map((enrollment) => enrollment.studentProfile.user),
+        );
+
         return enrollments;
+    }
+
+    /** Fire-and-forget: TransactionalEmailService já captura e loga qualquer falha de envio. */
+    private async sendConfirmationEmails(
+        course: { id: string; event: { title: string; startDate: Date; location: string | null } },
+        organizationId: string,
+        students: { name: string; email: string }[],
+    ): Promise<void> {
+        try {
+            const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+            const courseInfo = {
+                name: course.event.title,
+                startDate: formatAppDate(course.event.startDate),
+                location: course.event.location ?? '',
+                link: `${process.env.FRONTEND_URL}/courses/${course.id}`,
+            };
+
+            for (const student of students) {
+                await this.transactionalEmailService.sendEnrollmentConfirmedEmail(student, organizationId, organization?.name ?? '', courseInfo);
+            }
+        } catch (error) {
+            this.logger.error('Falha ao enviar e-mails de matrícula confirmada.', (error as Error).stack);
+        }
     }
 
     findAll(courseId: string, organizationId: string) {

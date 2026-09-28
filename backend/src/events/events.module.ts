@@ -16,9 +16,10 @@ import { EventPostsController } from './event-posts.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UserIntegrationsModule } from '../user-integrations/user-integrations.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TransactionalEmailModule } from '../transactional-email/transactional-email.module';
 
 @Module({
-    imports: [PrismaModule, UserIntegrationsModule, NotificationsModule],
+    imports: [PrismaModule, UserIntegrationsModule, NotificationsModule, TransactionalEmailModule],
     controllers: [
         EventsController,
         DesignationsController,

@@ -1,6 +1,6 @@
 // backend/prisma/seed-data/default-email-templates.ts
 //
-// Templates padrão globais (organizationId: null) para os 3 gatilhos de e-mail
+// Templates padrão globais (organizationId: null) para os gatilhos de e-mail
 // transacional do produto — ver EmailTriggerType em schema.prisma. `designJson: null`:
 // o envio cai para `body` (HTML puro) até alguém abrir e salvar pelo construtor visual
 // (frontend/src/components/email-builder), que populariza o designJson organicamente.
@@ -67,6 +67,49 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultEmailTemplate[] = [
             <p style="text-align: center; margin: 24px 0;">
                 <a href="{{certificate.link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Ver meus certificados</a>
             </p>
+        `.trim(),
+    },
+    {
+        name: 'Padrão — Certificado emitido',
+        trigger: EmailTriggerType.CERTIFICATE_ISSUED,
+        subject: 'Parabéns! Seu certificado de {{course.name}} está disponível',
+        body: `
+            <h2>Parabéns pela conclusão!</h2>
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Seu certificado do curso <strong>{{course.name}}</strong> já foi emitido e está disponível, junto com o seu crachá digital (com QR Code de verificação).</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{certificate.link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Ver meu certificado</a>
+            </p>
+            <p>Guarde-o com cuidado: ele comprova a sua qualificação perante empresas e fiscalizações.</p>
+        `.trim(),
+    },
+    {
+        name: 'Padrão — Matrícula confirmada',
+        trigger: EmailTriggerType.ENROLLMENT_CONFIRMED,
+        subject: 'Matrícula confirmada em {{course.name}}',
+        body: `
+            <h2>Matrícula confirmada!</h2>
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Sua matrícula na turma <strong>{{course.name}}</strong> da {{organization_name}} está confirmada.</p>
+            <p>Início: <strong>{{course.startDate}}</strong>{{#if course.location}}<br />Local: <strong>{{course.location}}</strong>{{/if}}</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{course.link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Ver minha turma</a>
+            </p>
+            <p>Fique de olho nos avisos: datas, horários e materiais aparecem na sua área.</p>
+        `.trim(),
+    },
+    {
+        name: 'Padrão — Nova designação em evento',
+        trigger: EmailTriggerType.DESIGNATION_ASSIGNED,
+        subject: 'Você foi escalado(a) para {{event.name}}',
+        body: `
+            <h2>Nova designação</h2>
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Você foi designado(a) para o evento <strong>{{event.name}}</strong>, em <strong>{{event.date}}</strong>, na função de <strong>{{designation.role}}</strong>.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{event.link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Ver detalhes e confirmar</a>
+            </p>
+            <p>Se não puder comparecer, avise a coordenação o quanto antes para que a escala seja reorganizada.</p>
         `.trim(),
     },
 ];
