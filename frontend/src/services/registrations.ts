@@ -28,8 +28,8 @@ export interface SubmitRegistrationInput {
 
 // Sem autenticação — usado pela página pública de autocadastro (/register/:token).
 export const registrationsPublicApi = {
-    getForm: async (token: string) => {
-        const { data } = await api.get<PublicRegistrationForm>(`/public/registrations/${token}`);
+    getForm: async (token: string, kind?: RegistrationKind) => {
+        const { data } = await api.get<PublicRegistrationForm>(`/public/registrations/${token}`, { params: { kind } });
         return data;
     },
     submit: async (token: string, input: SubmitRegistrationInput) => {

@@ -23,3 +23,21 @@ export const PUBLIC_REGISTRATION_FIELD_LABELS: Record<PublicRegistrationField, s
     signedPetitions: 'Petições assinadas',
     profession: 'Profissão',
 };
+
+/** Campos habilitados de uma academia para um papel (a lista do aluno é a original; as outras são por papel). */
+export function registrationFieldsFor(
+    organization: {
+        publicRegistrationFields: string[];
+        publicRegistrationFieldsInstructor: string[];
+        publicRegistrationFieldsStaff: string[];
+    },
+    kind: 'STUDENT' | 'INSTRUCTOR' | 'STAFF',
+): PublicRegistrationField[] {
+    const list =
+        kind === 'INSTRUCTOR'
+            ? organization.publicRegistrationFieldsInstructor
+            : kind === 'STAFF'
+              ? organization.publicRegistrationFieldsStaff
+              : organization.publicRegistrationFields;
+    return list as PublicRegistrationField[];
+}

@@ -24,6 +24,9 @@ export interface Organization {
     publicRegistrationToken?: string | null;
     /** Subconjunto de PublicRegistrationField exibido no form público desta academia. */
     publicRegistrationFields: string[];
+    /** Mesmo catálogo, escolhido à parte para instrutor e equipe (o de cima é o do aluno). */
+    publicRegistrationFieldsInstructor: string[];
+    publicRegistrationFieldsStaff: string[];
 }
 
 export type PublicRegistrationField = 'birthDate' | 'baptismDate' | 'pioneerStatus' | 'signedPetitions' | 'profession';

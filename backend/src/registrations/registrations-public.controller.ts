@@ -6,7 +6,8 @@
 // em registrations.module.ts, igual auth.module.ts faz) protege o POST contra abuso —
 // é o único endpoint da app que cria dados a partir de uma requisição sem login.
 
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards, ParseEnumPipe } from '@nestjs/common';
+import { RegistrationKind } from '@prisma/client';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { RegistrationsService } from './registrations.service';
 import { SubmitRegistrationDto } from './dto/submit-registration.dto';
@@ -34,8 +35,12 @@ export class RegistrationsPublicController {
 
     @Public()
     @Get(':token')
-    getForm(@Param('token') token: string) {
-        return this.registrationsService.getPublicFormConfig(token);
+    getForm(
+        @Param('token') token: string,
+        // Papel sugerido pelo link (?kind=): decide quais campos opcionais o formulário mostra.
+        @Query('kind', new ParseEnumPipe(RegistrationKind, { optional: true })) kind?: RegistrationKind,
+    ) {
+        return this.registrationsService.getPublicFormConfig(token, kind);
     }
 
     @Public()

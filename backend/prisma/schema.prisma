@@ -39,6 +39,9 @@ model Organization {
   /// formulário público desta academia — não é form-builder livre, é toggle sobre um
   /// catálogo fixo de campos de StudentProfile.
   publicRegistrationFields  String[]  @default([])
+  /// Mesmo catálogo, escolhido separadamente para quem entra como instrutor / equipe (o de cima é o do aluno).
+  publicRegistrationFieldsInstructor String[] @default([])
+  publicRegistrationFieldsStaff      String[] @default([])
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
   deletedAt                 DateTime?

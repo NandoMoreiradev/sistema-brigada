@@ -96,7 +96,7 @@ export default function RegistrationFormPage({ mode = 'link' }: { mode?: 'link' 
 
     useEffect(() => {
         if (!token) return;
-        const load = isInvite ? registrationsPublicApi.getInviteForm(token) : registrationsPublicApi.getForm(token);
+        const load = isInvite ? registrationsPublicApi.getInviteForm(token) : registrationsPublicApi.getForm(token, kindFromQuery(searchParams.get('tipo')));
         load
             .then((loaded) => {
                 setForm(loaded);
@@ -105,7 +105,7 @@ export default function RegistrationFormPage({ mode = 'link' }: { mode?: 'link' 
             })
             .catch((err) => setError(err?.response?.data?.message || (isInvite ? 'Convite inválido ou vencido.' : 'Link de cadastro inválido ou desativado.')))
             .finally(() => setIsLoading(false));
-    }, [token, isInvite, reset]);
+    }, [token, isInvite, reset, searchParams]);
 
     // Papel: do convite, ou sugerido pelo `?tipo=` do link. Os campos opcionais (dados pessoais) valem para todos.
     const kind = isInvite ? (form?.kind ?? 'STUDENT') : kindFromQuery(searchParams.get('tipo'));

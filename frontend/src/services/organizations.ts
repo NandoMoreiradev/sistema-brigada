@@ -38,6 +38,8 @@ export interface UpdateMyOrganizationInput {
     emailFromName?: string;
     publicRegistrationEnabled?: boolean;
     publicRegistrationFields?: string[];
+    publicRegistrationFieldsInstructor?: string[];
+    publicRegistrationFieldsStaff?: string[];
 }
 
 export const organizationsApi = {

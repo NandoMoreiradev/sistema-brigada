@@ -20,7 +20,13 @@ import { RejectRegistrationDto } from './dto/reject-registration.dto';
 import { ListRegistrationsQueryDto } from './dto/list-registrations-query.dto';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { SubmitInviteRegistrationDto } from './dto/submit-invite-registration.dto';
-import { PublicRegistrationField } from '../common/constants/public-registration-fields.constant';
+import { PublicRegistrationField, registrationFieldsFor } from '../common/constants/public-registration-fields.constant';
+
+const organizationFieldsSelect = {
+    publicRegistrationFields: true,
+    publicRegistrationFieldsInstructor: true,
+    publicRegistrationFieldsStaff: true,
+} as const;
 
 /** Convite dirigido vale 7 dias (renovável por "Reenviar"). */
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -91,7 +97,7 @@ export class RegistrationsService {
     private async findOrganizationByToken(token: string) {
         const organization = await this.prisma.organization.findFirst({
             where: { publicRegistrationToken: token, publicRegistrationEnabled: true },
-            select: { id: true, name: true, logoUrl: true, publicRegistrationFields: true },
+            select: { id: true, name: true, logoUrl: true, ...organizationFieldsSelect },
         });
         if (!organization) {
             throw new NotFoundException('Link de cadastro inválido ou desativado.');
@@ -99,18 +105,20 @@ export class RegistrationsService {
         return organization;
     }
 
-    async getPublicFormConfig(token: string) {
+    async getPublicFormConfig(token: string, kind: RegistrationKind = RegistrationKind.STUDENT) {
         const organization = await this.findOrganizationByToken(token);
         return {
             organizationName: organization.name,
             organizationLogoUrl: organization.logoUrl,
-            enabledFields: organization.publicRegistrationFields,
+            enabledFields: registrationFieldsFor(organization, kind),
         };
     }
 
     async submitPublic(token: string, dto: SubmitRegistrationDto) {
         const organization = await this.findOrganizationByToken(token);
-        const enabledFields = new Set(organization.publicRegistrationFields as PublicRegistrationField[]);
+        // Os campos aceitos dependem do papel pedido: cada papel tem a sua lista na academia.
+        const requestedKind = dto.requestedKind ?? RegistrationKind.STUDENT;
+        const enabledFields = new Set<PublicRegistrationField>(registrationFieldsFor(organization, requestedKind));
 
         // Duplicata de pending pro mesmo e-mail: ignora silenciosamente (mesma mensagem de
         // sucesso) em vez de erro — não vaza pra quem preenche o form se aquele e-mail já
@@ -121,7 +129,6 @@ export class RegistrationsService {
         });
 
         if (!duplicate) {
-            const requestedKind = dto.requestedKind ?? RegistrationKind.STUDENT;
             await this.prisma.registrationRequest.create({
                 data: {
                     organizationId: organization.id,
@@ -427,7 +434,7 @@ export class RegistrationsService {
     private async findUsableInvite(token: string) {
         const invite = await this.prisma.registrationInvite.findFirst({
             where: { token, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
-            include: { organization: { select: { id: true, name: true, logoUrl: true, publicRegistrationFields: true } } },
+            include: { organization: { select: { id: true, name: true, logoUrl: true, ...organizationFieldsSelect } } },
         });
         if (!invite) {
             throw new NotFoundException('Convite inválido, vencido ou já utilizado. Peça um novo convite à academia.');
@@ -443,13 +450,13 @@ export class RegistrationsService {
             kind: invite.kind,
             email: invite.email,
             name: invite.name,
-            enabledFields: invite.organization.publicRegistrationFields,
+            enabledFields: registrationFieldsFor(invite.organization, invite.kind),
         };
     }
 
     async submitInvite(token: string, dto: SubmitInviteRegistrationDto) {
         const invite = await this.findUsableInvite(token);
-        const enabledFields = new Set(invite.organization.publicRegistrationFields as PublicRegistrationField[]);
+        const enabledFields = new Set<PublicRegistrationField>(registrationFieldsFor(invite.organization, invite.kind));
 
         if (await this.prisma.user.findFirst({ where: { email: { equals: invite.email, mode: 'insensitive' } }, select: { id: true } })) {
             throw new ConflictException('Já existe uma conta com este e-mail. Use "Esqueci minha senha" na tela de login.');
