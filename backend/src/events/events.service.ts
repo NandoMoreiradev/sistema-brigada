@@ -32,6 +32,7 @@ const eventInclude = {
         include: {
             _count: { select: { designations: true, occurrenceReports: true } },
             posts: { orderBy: { createdAt: 'asc' } },
+            shifts: { orderBy: [{ start: 'asc' }, { end: 'asc' }] },
         },
     },
     meeting: { include: { _count: { select: { attendances: true } } } },

@@ -102,8 +102,6 @@ export default function CourseDetail() {
     const canManage = hasPermission(user, 'courses:manage');
     // Emissão manual de certificado é um módulo à parte (certificates:manage).
     const canIssueCertificates = hasPermission(user, 'certificates:manage');
-    // Escolher instrutor precisa da lista de pessoas (people:manage).
-    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data: course, isLoading, isError } = useQuery({ queryKey: ['courses', courseId], queryFn: () => coursesApi.get(courseId) });
     const { data: sessions } = useQuery({ queryKey: ['courses', courseId, 'sessions'], queryFn: () => classSessionsApi.list(courseId) });
@@ -164,12 +162,20 @@ export default function CourseDetail() {
                         sessions={sessions ?? []}
                         enrollmentsCount={enrollments?.length ?? 0}
                         canManage={canManage}
+                        courseInstructors={course.instructors}
+                        currentUserId={user?.id}
                         onOpenAttendance={setActiveSessionId}
                     />
                 </Tabs.Content>
 
                 <Tabs.Content value="lessons">
-                    <LessonsTab courseId={courseId} canManageCourse={canManage} canEditLessons={canManage || isInstructor} />
+                    <LessonsTab
+                        courseId={courseId}
+                        canManageCourse={canManage}
+                        isCourseInstructor={isInstructor}
+                        courseInstructors={course.instructors}
+                        currentUserId={user?.id}
+                    />
                 </Tabs.Content>
 
                 <Tabs.Content value="enrollments">
@@ -184,9 +190,9 @@ export default function CourseDetail() {
             </Tabs.Root>
 
             {/* Chamada de presença + diário de aula */}
-            {activeSession && <AttendanceModal courseId={courseId} session={activeSession} onClose={() => setActiveSessionId(null)} />}
+            {activeSession && <AttendanceModal courseId={courseId} session={activeSession} currentUserId={user?.id} onClose={() => setActiveSessionId(null)} />}
 
-            {canManage && <EditCourseModal course={course} open={editModalOpen} onOpenChange={setEditModalOpen} canListPeople={canListPeople} />}
+            {canManage && <EditCourseModal course={course} open={editModalOpen} onOpenChange={setEditModalOpen} />}
         </PageLayout>
     );
 }

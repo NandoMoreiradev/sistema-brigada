@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Put, Param, Delete, UseGuards, BadRequestException } from '@nestjs/common';
 import { CourseModulesService } from './course-modules.service';
 import { CreateCourseModuleDto } from './dto/create-course-module.dto';
 import { UpdateCourseModuleDto } from './dto/update-course-module.dto';
+import { SetModuleInstructorsDto } from './dto/set-module-instructors.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -54,6 +55,17 @@ export class CourseModulesController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.courseModulesService.update(courseId, this.requireOrganizationId(organizationId), moduleId, dto);
+    }
+
+    @Put(':moduleId/instructors')
+    @RequirePermission('courses:manage')
+    setInstructors(
+        @Param('courseId') courseId: string,
+        @Param('moduleId') moduleId: string,
+        @Body() dto: SetModuleInstructorsDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.courseModulesService.setInstructors(courseId, this.requireOrganizationId(organizationId), moduleId, dto.userIds);
     }
 
     @Delete(':moduleId')

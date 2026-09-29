@@ -91,6 +91,9 @@ model User {
   studentProfile                 StudentProfile?
   staffMember                    StaffMember?
   instructorAssignments          CourseInstructor[]
+  moduleAssignments              CourseModuleInstructor[]
+  sessionAssignments             ClassSessionInstructor[]
+  classLogs                      ClassLog[]
   lessonProgress                 LessonProgress[]
   meetingAttendances             MeetingAttendance[]
   integrations                   UserIntegration[]
@@ -276,12 +279,17 @@ model ClassSession {
   startTime String   @db.Char(5)
   endTime   String   @db.Char(5)
   roomId    String?
+  /// Assunto/tema da aula do dia (ex.: "Primeiros socorros — RCP"), texto livre.
+  topic     String?
   createdAt DateTime @default(now())
 
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  room        Room?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  room        Room?                    @relation(fields: [roomId], references: [id], onDelete: SetNull)
   attendances Attendance[]
-  classLog    ClassLog?
+  /// Um diário por professor: dois professores na mesma aula não se sobrescrevem.
+  classLogs   ClassLog[]
+  /// Professores escalados nesta aula. Vazio = qualquer instrutor da turma pode lançar chamada/diário.
+  instructors ClassSessionInstructor[]
 
   @@index([courseId])
   @@index([date])
@@ -290,13 +298,31 @@ model ClassSession {
 
 model ClassLog {
   id              String   @id @default(cuid())
-  classSessionId  String   @unique
+  classSessionId  String
   content         String   @db.Text
   createdByUserId String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   classSession ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([classSessionId, createdByUserId])
+  @@index([createdByUserId])
+}
+
+/// Quem leciona a aula presencial do dia. Sempre um CourseInstructor da turma (validado no service).
+model ClassSessionInstructor {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
 }
 
 enum EnrollmentStatus {
@@ -356,10 +382,26 @@ model CourseModule {
   order    Int     @default(0)
   active   Boolean @default(true)
 
-  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lessons CourseLesson[]
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     CourseLesson[]
+  /// Professores responsáveis por este módulo/assunto. Vazio = qualquer instrutor da turma edita as aulas.
+  instructors CourseModuleInstructor[]
 
   @@index([courseId])
+}
+
+/// Responsável(is) por um módulo. Sempre um CourseInstructor da turma (validado no service).
+model CourseModuleInstructor {
+  id        String   @id @default(cuid())
+  moduleId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  module CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, userId])
+  @@index([userId])
 }
 
 model CourseLesson {
@@ -469,6 +511,27 @@ model EventOperation {
   occurrenceReports OccurrenceReport[]
   posts             EventPost[]
   teams             Team[]
+  shifts            EventShift[]
+}
+
+/// Turno do evento (ex.: "Dia 1 · Manhã · 08:00–12:00"). Os turnos são os MESMOS para todos os postos;
+/// cada pessoa é escalada em um ou mais turnos (manhã num dia, o dia todo em outro...). O "dia" é
+/// derivado do início do turno no fuso do app — não existe tabela de dias.
+/// Designation.shiftStart/shiftEnd continuam gravados (cópia do turno) para "minhas escalas" e para o
+/// conflito de horário entre eventos não dependerem desta tabela.
+model EventShift {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  start            DateTime
+  end              DateTime
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@unique([eventOperationId, start, end])
+  @@index([eventOperationId])
 }
 
 /// Posto de atuação (local físico) dentro do evento — ex.: "Portão A", "Palco", "Enfermaria".
@@ -522,13 +585,17 @@ model Designation {
   status           DesignationStatus @default(PENDING)
   postId           String?
   teamId           String?
+  /// Turno do evento. shiftStart/shiftEnd acima são a cópia dos horários dele.
+  shiftId          String?
   createdAt        DateTime          @default(now())
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
   staffMember    StaffMember    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
   post           EventPost?     @relation(fields: [postId], references: [id], onDelete: SetNull)
   team           Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  shift          EventShift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
+  @@index([shiftId])
   @@index([eventOperationId])
   @@index([staffMemberId])
   @@index([postId])

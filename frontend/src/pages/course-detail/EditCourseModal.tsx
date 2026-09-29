@@ -92,18 +92,17 @@ interface EditCourseModalProps {
     course: Course;
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    /** Adicionar/remover instrutor e listar pessoas exigem, respectivamente, courses:manage e people:manage. */
-    canListPeople: boolean;
 }
 
-export function EditCourseModal({ course, open, onOpenChange, canListPeople }: EditCourseModalProps) {
+export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalProps) {
     const queryClient = useQueryClient();
     const courseId = course.id;
 
     const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>();
 
     const { data: allCoursesData } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list(), enabled: open });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: open && canListPeople });
+    // Lista enxuta (id + nome) aberta a qualquer usuário da escola: não exige acesso ao cadastro de pessoas.
+    const { data: roster } = useQuery({ queryKey: ['people', 'roster'], queryFn: () => peopleApi.roster(), enabled: open });
 
     // Reinicia o formulário sempre que o modal abre (ou a turma é recarregada com dados novos).
     useEffect(() => {
@@ -165,7 +164,7 @@ export function EditCourseModal({ course, open, onOpenChange, canListPeople }: E
 
     const startDate = watch('startDate');
     const instructorIds = new Set(course.instructors.map((i) => i.userId));
-    const candidates = (peopleData?.data ?? []).filter((p) => !instructorIds.has(p.id));
+    const candidates = (roster ?? []).filter((p) => !instructorIds.has(p.id));
 
     return (
         <Modal open={open} onOpenChange={onOpenChange} title="Editar turma" width="620px">
@@ -248,22 +247,18 @@ export function EditCourseModal({ course, open, onOpenChange, canListPeople }: E
                             </InstructorChip>
                         ))}
                     </div>
-                    {canListPeople ? (
-                        <Select
-                            aria-label="Adicionar instrutor"
-                            value=""
-                            disabled={assignMutation.isPending || candidates.length === 0}
-                            onChange={(e) => e.target.value && assignMutation.mutate(e.target.value)}
-                        >
-                            <option value="">{candidates.length === 0 ? 'Todas as pessoas já são instrutoras' : 'Adicionar instrutor…'}</option>
-                            {candidates.map((person) => (
-                                <option key={person.id} value={person.id}>{person.name}</option>
-                            ))}
-                        </Select>
-                    ) : (
-                        <HelpText>Para adicionar instrutores é preciso ter acesso ao cadastro de pessoas.</HelpText>
-                    )}
-                    <HelpText>Mudanças nos instrutores são aplicadas na hora, sem precisar salvar a turma.</HelpText>
+                    <Select
+                    aria-label="Adicionar instrutor"
+                    value=""
+                    disabled={assignMutation.isPending || candidates.length === 0}
+                    onChange={(e) => e.target.value && assignMutation.mutate(e.target.value)}
+                >
+                    <option value="">{candidates.length === 0 ? 'Todas as pessoas já são instrutoras' : 'Adicionar instrutor…'}</option>
+                    {candidates.map((person) => (
+                        <option key={person.id} value={person.id}>{person.name}</option>
+                    ))}
+                </Select>
+                <HelpText>Mudanças nos instrutores são aplicadas na hora. Quem sai da turma deixa também os módulos e aulas pelos quais era responsável.</HelpText>
                 </div>
 
                 <SectionTitle>Certificado</SectionTitle>

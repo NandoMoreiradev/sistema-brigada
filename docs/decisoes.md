@@ -239,6 +239,23 @@ override por academia) já existente pros outros 4 gatilhos.
 38. Formulário público tem **campos opcionais configuráveis por academia**: nome/e-mail/telefone sempre obrigatórios; os 4 campos opcionais de `StudentProfile` (batismo/pioneiro/petições/profissão) a academia escolhe quais aparecem, via toggle sobre um catálogo fixo (não é form-builder livre).
 39. Autocadastro é **opt-in por academia**: precisa ativar em Configurações, o que gera um link/token único (regenerável, invalidando o anterior; sobrevive a desativar/reativar). Sem isso, nenhuma academia ganharia o link "de graça" sem decidir usar.
 
+### Turma com vários professores (fechadas em 2026-09-29)
+40. Responsabilidade é **opt-in e retrocompatível**: módulo sem responsável e aula sem professor escalado continuam com a regra antiga (qualquer `CourseInstructor` da turma). Só passa a restringir quando alguém é marcado, então nenhuma turma existente muda de comportamento.
+41. **Responsável por módulo** (`CourseModuleInstructor`) e **professor da aula presencial** (`ClassSessionInstructor`) são sempre subconjunto dos instrutores da turma (validado no service). Quem sai da turma (`removeInstructor`) sai também dessas listas.
+42. Aula presencial ganha `topic` (assunto) e o **diário passa a ser um por professor** (`ClassLog` único por `(aula, autor)`), para dois professores no mesmo dia não se sobrescreverem. Os diários dos colegas aparecem só para leitura.
+43. Excluir vídeo-aula é do admin (`courses:manage`) ou de **responsável explícito** pelo módulo — em módulo sem responsável, qualquer instrutor edita mas não apaga. Criar/excluir módulo e definir responsáveis seguem exclusivos de `courses:manage`.
+44. Lista de presença (`GET .../attendance`) e diários (`classLogs` em `GET .../sessions`) deixaram de ser legíveis por qualquer membro da organização: exigem `courses:manage` ou ser instrutor da turma (e, com escala, um dos escalados). Aluno continua vendo a agenda (assunto/professor), sem diários.
+45. Escolher instrutor (nova turma / editar turma) usa a lista enxuta `GET /users/roster`, sem exigir `people:manage`.
+
+### Escala de eventos com vários dias e turnos (fechadas em 2026-09-29)
+46. **Turno é entidade do evento** (`EventShift`: nome + início + fim), **igual para todos os postos**. O "dia" não é tabela: deriva do início do turno no fuso do app. Turno pode atravessar a meia-noite (Noite 22:00–02:00). Único por `(evento, início, fim)`.
+47. **Designação = pessoa × turno × posto.** Uma pessoa pode estar em turnos diferentes por dia (manhã num dia, dia todo em outro): o lote escala pessoas × turnos de uma vez, uma notificação/e-mail por pessoa. `Designation.shiftStart/shiftEnd` continuam gravados (cópia do turno) — "minhas escalas" e o conflito entre eventos não dependem da tabela de turnos. Migration cria um turno por janela distinta já usada e liga as designações existentes.
+48. **Passagem de turno**: turnos que encostam (12:00/12:00) não conflitam; sobreposição entre turnos é permitida (passagem com sobreposição) mas a mesma pessoa não pode estar em dois turnos sobrepostos (nem dentro do mesmo lote). A tela de turnos avisa lacuna (posto sem cobertura) ou sobreposição entre turnos seguidos do dia.
+49. **Remarcar um turno** propaga o novo horário às designações dele, depois de revalidar o conflito de cada pessoa; **excluir turno** só se não tiver ninguém escalado.
+50. **Quem recusou não conta em nenhuma saída** (mapa, matriz, texto, impressão): antes a recusa ainda ocupava a vaga do posto e saía na escala impressa. Pendente conta, mas vem marcado (`*` / "pendente").
+51. **Um modelo único** (`frontend/src/utils/schedule.ts`: dia → turno → posto → pessoas) alimenta lista, matriz de cobertura, mapa (tela, PNG e impressão) e os dois textos (grupo e por pessoa) — as saídas não divergem entre si. Capacidade continua por posto (não por turno).
+52. **Mapa mostra um turno por vez** (ou o resumo do dia), com os **nomes direto no mapa** (cartões posicionados sem sobreposição por `layoutLabels`). PNG e impressão usam a mesma folha (`MapSheet`) com cabeçalho (dia + turno), legenda e carimbo "gerada em"; impressão = uma folha A4 paisagem por turno.
+
 ### Reaproveitar quase pronto
 | Maskot Edu | Novo projeto | Observação | Status |
 |---|---|---|---|
