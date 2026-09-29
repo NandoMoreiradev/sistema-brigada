@@ -59,6 +59,19 @@ export interface CreateExternalCertificationInput {
     proofFileKey?: string;
 }
 
+/** Um motivo que impede excluir a pessoa (histórico, papel...) — ver GET /users/:id/deletion-check. */
+export interface DeletionBlocker {
+    code: string;
+    message: string;
+    count?: number;
+}
+
+export interface DeletionCheck {
+    canDelete: boolean;
+    blockers: DeletionBlocker[];
+    isActive: boolean;
+}
+
 export const peopleApi = {
     list: async (params?: { search?: string; hasStudentProfile?: boolean; limit?: number }) => {
         const { data } = await api.get<Paginated<OrgPerson>>('/users', { params: { limit: 100, ...params } });
@@ -91,6 +104,16 @@ export const peopleApi = {
     },
     resendAccess: async (id: string) => {
         const { data } = await api.post<{ sent: boolean; message: string }>(`/users/${id}/resend-access`);
+        return data;
+    },
+    /** O que impede excluir a pessoa; lista vazia = pode excluir. */
+    checkDeletion: async (id: string) => {
+        const { data } = await api.get<DeletionCheck>(`/users/${id}/deletion-check`);
+        return data;
+    },
+    /** Exclusão (soft delete) — só de quem não tem histórico; quem tem, o backend recusa com 409. */
+    remove: async (id: string) => {
+        const { data } = await api.delete<{ message: string }>(`/users/${id}`);
         return data;
     },
     addExternalCertification: async (userId: string, input: CreateExternalCertificationInput) => {

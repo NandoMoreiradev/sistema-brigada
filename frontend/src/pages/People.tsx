@@ -32,6 +32,8 @@ import { Field, Label, Input, Select, ErrorText, CheckboxField, Form, FormAction
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { peopleApi, type CreatePersonInput, type UpdatePersonInput } from '@/services/people';
 import { toast } from '@/utils/toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { DeletePersonModal } from '@/pages/people/DeletePersonModal';
 import type { OrgPerson } from '@/types';
 
 // Dois schemas em vez de um só: e-mail/tipo de cadastro só existem na criação
@@ -91,6 +93,8 @@ function personRoleBadges(person: OrgPerson): string[] {
 export default function People() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<OrgPerson | null>(null);
+    const [deleting, setDeleting] = useState<OrgPerson | null>(null);
+    const { user } = useAuth();
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
     const queryClient = useQueryClient();
@@ -310,6 +314,11 @@ export default function People() {
                                         <Button $variant="ghost" onClick={() => openEdit(person)}>
                                             Editar
                                         </Button>
+                                        {person.id !== user?.id && (
+                                            <Button $variant="ghost" onClick={() => setDeleting(person)}>
+                                                Excluir
+                                            </Button>
+                                        )}
                                     </Td>
                                 </Tr>
                             );
@@ -322,6 +331,8 @@ export default function People() {
                     </EmptyState>
                 )}
             </TableWrapper>
+
+            <DeletePersonModal person={deleting} onClose={() => setDeleting(null)} />
 
             <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar pessoa' : 'Nova pessoa'} width="560px">
                 <Form onSubmit={handleSubmit(onSubmit)}>

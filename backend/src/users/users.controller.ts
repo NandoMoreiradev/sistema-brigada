@@ -10,8 +10,9 @@
 // ORG_ADMIN. `findOne` de uma pessoa específica continua restrito a
 // ADMIN_ROLES sem mudança.
 
-import { Controller, Get, Post, Body, Patch, Put, Param, UseGuards, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Put, Delete, Param, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { UserDeletionService } from './user-deletion.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
@@ -32,7 +33,10 @@ const ADMIN_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN] as cons
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class UsersController {
-    constructor(private readonly usersService: UsersService) {}
+    constructor(
+        private readonly usersService: UsersService,
+        private readonly userDeletionService: UserDeletionService,
+    ) {}
 
     private requireOrganizationId(organizationId: string | undefined): string {
         if (!organizationId) {
@@ -79,6 +83,31 @@ export class UsersController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.usersService.update(id, this.requireOrganizationId(organizationId), dto);
+    }
+
+    /** O que impede excluir esta pessoa (histórico, papel...) — a tela mostra antes de confirmar. */
+    @Get(':id/deletion-check')
+    @RequirePermission('people:manage')
+    checkDeletion(
+        @Param('id') id: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.userDeletionService.check(id, this.requireOrganizationId(organizationId), user);
+    }
+
+    /**
+     * Exclui a pessoa (soft delete) só se ela não tem histórico — quem já participou de algo
+     * é desativado via `PATCH :id { isActive: false }`. Ver user-deletion.service.ts.
+     */
+    @Delete(':id')
+    @RequirePermission('people:manage')
+    remove(
+        @Param('id') id: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.userDeletionService.remove(id, this.requireOrganizationId(organizationId), user);
     }
 
     /**
