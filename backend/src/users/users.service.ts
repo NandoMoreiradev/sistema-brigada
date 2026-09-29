@@ -276,6 +276,19 @@ export class UsersService {
             throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
         }
 
+        // Mesma regra da exclusão (user-deletion.service.ts, LAST_ADMIN): desativar o único admin
+        // ativo deixa a academia sem ninguém que mande nela — e o "Acessar como" do superadmin
+        // (auth.service.ts, impersonateOrganizationAdmin) passa a falhar com "não tem um
+        // administrador ativo".
+        if (dto.isActive === false && user.isActive && (user.role === Role.ORG_ADMIN || user.role === Role.GROUP_ADMIN)) {
+            const otherAdmins = await this.prisma.user.count({
+                where: { organizationId, id: { not: id }, isActive: true, role: { in: [Role.ORG_ADMIN, Role.GROUP_ADMIN] } },
+            });
+            if (otherAdmins === 0) {
+                throw new BadRequestException('Esta é a única pessoa administradora ativa da academia — cadastre outra antes de desativá-la.');
+            }
+        }
+
         return this.prisma.$transaction(async (tx) => {
             await tx.user.update({
                 where: { id },
