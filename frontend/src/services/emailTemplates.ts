@@ -84,6 +84,11 @@ export const emailTemplatesApi = {
         const { data } = await api.patch<EmailTemplate>(`/email-templates/${id}`, input);
         return data;
     },
+    /** Copia um template global pra academia ativa (override editável). */
+    customize: async (id: string) => {
+        const { data } = await api.post<EmailTemplate>(`/email-templates/${id}/customize`);
+        return data;
+    },
     remove: async (id: string) => {
         await api.delete(`/email-templates/${id}`);
     },
