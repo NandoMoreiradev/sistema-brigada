@@ -10,7 +10,7 @@ Para quem monta e acompanha a escala do evento. Vale para eventos de vários dia
 
 ## Passo a passo
 
-### 1. Criar os turnos (aba **Escala → Turnos**, ou **Mapa → Turnos**)
+### 1. Criar os turnos (aba **Escala → Turnos**, ou **Mapa → ⋯ → Gerenciar turnos**)
 - Marque os **dias** do evento e defina os **modelos** de turno (Manhã, Tarde, Noite…). Clique em **Criar**: cada modelo é repetido em cada dia.
 - Turno que passa da meia-noite (Noite 22:00–02:00): coloque o fim menor que o início.
 - Para **remarcar** um turno, edite o horário e salve: a escala de todo mundo nele é remarcada. Se alguém ficar em conflito com outro evento, o sistema avisa e não salva.
@@ -18,7 +18,7 @@ Para quem monta e acompanha a escala do evento. Vale para eventos de vários dia
 - A tela avisa **lacuna** (nenhum posto coberto entre um turno e o seguinte) e **sobreposição** (passagem de turno). O ideal é os turnos **encostarem** (12:00 → 12:00).
 
 ### 2. Cadastrar os postos (aba **Mapa**)
-- Envie a **planta baixa** (uma só por evento).
+- Envie a **planta baixa** (uma só por evento; para trocar depois: **⋯ → Trocar planta baixa**).
 - **Adicionar posto** → clique no local da planta → dê o nome e **quantas pessoas o posto precisa**.
 - Arraste o pino para reposicionar. Clique no pino para renomear, ajustar a quantidade ou remover.
 
@@ -29,19 +29,23 @@ Para quem monta e acompanha a escala do evento. Vale para eventos de vários dia
 - Não deixa escalar a mesma pessoa em turnos que se sobrepõem, nem quem está com o certificado vencido.
 
 ### 4. Acompanhar (aba **Escala**)
-- **Lista**: quem está onde, com status. Filtre por dia e por situação (pendente, confirmada, recusada).
+- Alterne entre **Lista** e **Cobertura** no controle no topo da aba.
+- **Lista**: quem está onde. A **situação** (pendente, confirmada, recusada) é uma etiqueta que se altera com um toque. O menu **⋯** de cada linha tem **Editar** e **Remover**. Filtre por dia (só aparece se o evento tem mais de um dia) e por situação.
 - **Cobertura** (postos × turnos): 🟥 vermelho = sem ninguém · 🟨 amarelo = parcial · 🟩 verde = completo · 🟪 roxo = acima do necessário. É a melhor tela para achar buracos. `*` = ainda não confirmou.
 
 ### 5. Mapa (aba **Mapa**)
 - Escolha o **dia** e o **turno**: o mapa mostra **só aquele turno**, com os **nomes em cada posto**. **Dia todo** mostra um resumo por turno.
 - O número no pino é "escalados/necessários". **Nomes no mapa** e **Mostrar funções** ligam/desligam os detalhes.
-- **Baixar imagem**: PNG do que está na tela, com cabeçalho (dia e turno), legenda e hora em que foi gerado.
-- **Imprimir mapas**: escolha os turnos; sai **uma folha A4 paisagem por turno**.
+- **Exportar ▾ → Baixar imagem (PNG)**: o que está na tela, com cabeçalho (dia e turno), legenda e hora em que foi gerado.
+- **Exportar ▾ → Imprimir mapas**: escolha os turnos; sai **uma folha A4 paisagem por turno**.
+- **Exibir ▾**: liga/desliga *Nomes no mapa* e *Mostrar funções*.
+- Em tela estreita (iPad em pé) o mapa rola na horizontal para os nomes continuarem legíveis.
 
-### 6. Enviar a escala por texto (aba **Escala → Copiar escala**)
-- **Para o grupo**: a escala inteira (dia → turno → posto → pessoas), pronta para colar no WhatsApp. Marque quais turnos entram. Opcional: listar postos sem ninguém.
-- **Por pessoa**: só os turnos daquela pessoa, com saudação. Escolha a pessoa e copie; **Copiar de todos** junta todos os textos separados por linhas.
+### 6. Enviar a escala (aba **Escala → Exportar ▾**)
+- **Copiar para o grupo**: a escala inteira (dia → turno → posto → pessoas), pronta para colar no WhatsApp. Marque quais turnos entram. Opcional: listar postos sem ninguém.
+- **Copiar por pessoa**: só os turnos daquela pessoa, com saudação. Escolha a pessoa e copie; **Copiar de todos** junta todos os textos separados por linhas.
 - **Imprimir lista**: uma página por dia, com os turnos e postos.
+- O evento em si: **Editar evento** fica visível; **Excluir evento** fica no menu **⋯** do cabeçalho, com confirmação.
 
 ## Regras que valem para todas as saídas
 - **Quem recusou não aparece em lugar nenhum** (nem conta vaga). Se recusar, o horário fica livre para outro evento.

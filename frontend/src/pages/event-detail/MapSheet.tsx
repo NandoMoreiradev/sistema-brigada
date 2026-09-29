@@ -33,6 +33,8 @@ export interface MapPinData {
 
 
 const BASE_WIDTH = 1000;
+/** Em telas estreitas o mapa não encolhe abaixo disto (os nomes ficariam ilegíveis): rola na horizontal. */
+const MIN_INTERACTIVE_WIDTH = 880;
 
 const Wrapper = styled.div`
     position: relative;
@@ -177,7 +179,7 @@ export function MapSheet({
     }, [width]);
 
     const fitted = width && maxHeight ? Math.min(width, Math.floor(maxHeight / ratio)) : width;
-    const w = fitted ?? measured;
+    const w = fitted ?? (measured > 0 ? Math.max(measured, MIN_INTERACTIVE_WIDTH) : 0);
     const h = Math.round(w * ratio);
     const s = w / BASE_WIDTH;
     const interactive = Boolean(onPinPointerDown);
@@ -208,7 +210,7 @@ export function MapSheet({
     }, [positioned, showNames, w, h, s]);
 
     return (
-        <Wrapper ref={wrapperRef} style={fitted ? { width: fitted, marginInline: 'auto' } : undefined}>
+        <Wrapper ref={wrapperRef} style={fitted ? { width: fitted, marginInline: 'auto' } : { overflowX: 'auto' }}>
             {header}
             <Canvas ref={canvasRef} $placing={placing} onClick={onCanvasClick} style={{ width: w || '100%' }}>
                 <img

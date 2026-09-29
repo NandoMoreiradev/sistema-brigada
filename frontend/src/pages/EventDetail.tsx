@@ -14,6 +14,8 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
+import { ActionMenu, MoreButton } from '@/components/ui/ActionMenu';
+import { PillSelect } from '@/components/ui/PillSelect';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Textarea, Form, FormActions, FieldRow, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
@@ -167,9 +169,11 @@ export default function EventDetail() {
                         <Button $variant="secondary" onClick={() => setEditOpen(true)}>
                             <Pencil size={16} /> Editar evento
                         </Button>
-                        <Button $variant="danger" onClick={handleDelete} disabled={removeMutation.isPending}>
-                            <Trash2 size={16} /> Excluir
-                        </Button>
+                        {/* Ação destrutiva fora do alcance de um toque acidental: atrás do menu, com confirmação. */}
+                        <ActionMenu
+                            trigger={<MoreButton label="Mais ações do evento" />}
+                            entries={[{ label: 'Excluir evento', icon: <Trash2 size={14} />, danger: true, disabled: removeMutation.isPending, onSelect: handleDelete }]}
+                        />
                     </>
                 ) : undefined
             }
@@ -182,18 +186,21 @@ export default function EventDetail() {
                 {event.location && <span><strong>Local:</strong> {event.location}</span>}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                     <strong>Status:</strong>
-                    <Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge>
-                    {canManageEvent && (
-                        <Select
+                    {/* Um controle só: quem pode alterar vê a etiqueta como seletor; os demais, só a etiqueta. */}
+                    {canManageEvent ? (
+                        <PillSelect
+                            $tone={STATUS_TONE[event.status]}
+                            aria-label="Status do evento"
                             value={event.status}
                             onChange={(e) => statusMutation.mutate(e.target.value as EventStatus)}
                             disabled={statusMutation.isPending}
-                            style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem' }}
                         >
                             {EVENT_STATUS_VALUES.map((status) => (
                                 <option key={status} value={status}>{STATUS_LABEL[status]}</option>
                             ))}
-                        </Select>
+                        </PillSelect>
+                    ) : (
+                        <Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge>
                     )}
                 </span>
                 {isOperation && event.operation?.estimatedAudienceCount != null && (

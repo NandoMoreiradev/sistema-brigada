@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Designation, EventPost, EventShift } from '@/services/events';
-import { buildGroupText, buildPersonText, buildSchedule, coverageState, filterSchedule, layoutLabels, listPeople } from './schedule';
+import { shiftTitle, isRangeName, buildGroupText, buildPersonText, buildSchedule, coverageState, filterSchedule, layoutLabels, listPeople } from './schedule';
 
 // 08:00 em São Paulo (UTC-3) = 11:00Z
 const shift = (id: string, name: string, day: string, startH: number, endH: number): EventShift => ({
@@ -183,5 +183,22 @@ describe('layoutLabels', () => {
     it('devolve na mesma ordem da entrada', () => {
         const out = layoutLabels([{ id: 'z', px: 800, py: 500, w: 100, h: 40 }, { id: 'a', px: 100, py: 100, w: 100, h: 40 }], { width: 1000, height: 600 });
         expect(out.map((o) => o.id)).toEqual(['z', 'a']);
+    });
+});
+
+describe('shiftTitle', () => {
+    it('não repete o horário quando o nome já é o horário (turnos migrados)', () => {
+        expect(isRangeName('08:00–18:00')).toBe(true);
+        expect(isRangeName('Manhã')).toBe(false);
+        expect(shiftTitle('08:00–18:00', '08:00–18:00')).toBe('08:00–18:00');
+        expect(shiftTitle('Manhã', '08:00–12:00')).toBe('Manhã 08:00–12:00');
+        expect(shiftTitle('Manhã', '08:00–12:00', 'paren')).toBe('Manhã (08:00–12:00)');
+    });
+
+    it('o texto do grupo usa o horário uma vez só', () => {
+        const migrated = [{ id: 'm1', name: '08:00–18:00', start: '2026-09-26T11:00:00.000Z', end: '2026-09-26T21:00:00.000Z' }];
+        const text = buildGroupText(event, buildSchedule({ shifts: migrated, posts, designations: [{ ...designations[0], shiftId: 'm1' }] }));
+        expect(text).toContain('*08:00–18:00*');
+        expect(text).not.toContain('08:00–18:00 (08:00–18:00)');
     });
 });

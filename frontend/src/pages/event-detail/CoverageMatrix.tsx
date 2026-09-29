@@ -5,7 +5,7 @@
 
 import styled from 'styled-components';
 import { Plus } from 'lucide-react';
-import type { CoverageState, Schedule } from '@/utils/schedule';
+import { isRangeName, type CoverageState, type Schedule } from '@/utils/schedule';
 
 const TINT: Record<CoverageState, string> = {
     empty: '#fff0e6',
@@ -160,9 +160,15 @@ export function CoverageMatrix({ schedule, canManage, onCellClick }: CoverageMat
                         <tr>
                             {shifts.map(({ day, block }, i) => (
                                 <th key={block.shift.id} className={i === 0 || shifts[i - 1].day.key !== day.key ? 'day-start' : undefined}>
-                                    {block.shift.name}
-                                    <br />
-                                    <span style={{ fontWeight: 500 }}>{block.range}</span>
+                                    {isRangeName(block.shift.name) ? (
+                                        block.range
+                                    ) : (
+                                        <>
+                                            {block.shift.name}
+                                            <br />
+                                            <span style={{ fontWeight: 500 }}>{block.range}</span>
+                                        </>
+                                    )}
                                 </th>
                             ))}
                         </tr>

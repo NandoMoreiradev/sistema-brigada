@@ -4,7 +4,7 @@
 // posto → pessoas) e por PESSOA (só os turnos de cada um). Escolhe-se quais turnos entram; quem
 // recusou nunca entra, e quem ainda não confirmou vem marcado como "pendente".
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Copy, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -19,6 +19,8 @@ interface ExportModalProps {
     event: AppEvent;
     designations: Designation[];
     open: boolean;
+    /** Formato que abre selecionado (vem do item do menu Exportar). */
+    initialMode?: 'group' | 'person';
     onOpenChange: (open: boolean) => void;
     /** Imprime a lista dos turnos escolhidos (o pai monta as folhas). */
     onPrintList: (shiftIds: string[]) => void;
@@ -33,16 +35,20 @@ async function copy(text: string, success: string) {
     }
 }
 
-export function ExportModal({ event, designations, open, onOpenChange, onPrintList }: ExportModalProps) {
+export function ExportModal({ event, designations, open, initialMode = 'group', onOpenChange, onPrintList }: ExportModalProps) {
     const shifts = useMemo(() => event.operation?.shifts ?? [], [event]);
     const posts = useMemo(() => event.operation?.posts ?? [], [event]);
 
-    const [mode, setMode] = useState<'group' | 'person'>('group');
+    const [mode, setMode] = useState<'group' | 'person'>(initialMode);
     const [includePending, setIncludePending] = useState(true);
     const [showRoles, setShowRoles] = useState(true);
     const [showEmptyPosts, setShowEmptyPosts] = useState(false);
     const [shiftIds, setShiftIds] = useState<string[] | null>(null);
     const [personId, setPersonId] = useState('');
+
+    useEffect(() => {
+        if (open) setMode(initialMode);
+    }, [open, initialMode]);
 
     const full = useMemo(
         () => buildSchedule({ shifts, posts, designations, includeStatuses: includePending ? ['PENDING', 'CONFIRMED'] : ['CONFIRMED'] }),
