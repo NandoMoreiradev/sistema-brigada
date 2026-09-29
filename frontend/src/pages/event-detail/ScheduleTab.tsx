@@ -9,8 +9,11 @@ import { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Copy, Printer, Clock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Copy, Printer, Clock, Share2, ChevronDown, User } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ActionMenu, MoreButton } from '@/components/ui/ActionMenu';
+import { Segmented } from '@/components/ui/Segmented';
+import { PillSelect } from '@/components/ui/PillSelect';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Form, FormActions, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
@@ -21,7 +24,7 @@ import { apiErrorMessage } from '@/utils/apiError';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { buildSchedule, filterSchedule, shiftRange, shiftTitle, dayKeyOf, shortDayLabel, type Schedule } from '@/utils/schedule';
-import { FilterChip, ScrollX } from '@/pages/course-detail/styles';
+import { ScrollX } from '@/pages/course-detail/styles';
 import { useEventSchedule } from './useEventSchedule';
 import { CoverageMatrix } from './CoverageMatrix';
 import { ExportModal } from './ExportModal';
@@ -168,6 +171,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     const [editing, setEditing] = useState<Designation | null>(null);
     const [shiftsOpen, setShiftsOpen] = useState(false);
     const [exportOpen, setExportOpen] = useState(false);
+    const [exportMode, setExportMode] = useState<'group' | 'person'>('group');
     const [printIds, setPrintIds] = useState<string[] | null>(null);
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
     const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
@@ -239,9 +243,12 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     };
 
     const shiftById = useMemo(() => new Map(shifts.map((s) => [s.id, s])), [shifts]);
-    const shiftLabel = (d: Designation) => {
+    /** Dia (ex.: "sáb 26/09") e turno ("Manhã 08:00–12:00") para as duas linhas da coluna Turno. */
+    const shiftParts = (d: Designation) => {
         const shift = d.shiftId ? shiftById.get(d.shiftId) : undefined;
-        return shift ? `${shortDayLabel(dayKeyOf(shift.start))} · ${shiftTitle(shift.name, shiftRange(shift))}` : `${d.shiftStart.slice(0, 16).replace('T', ' ')} (sem turno)`;
+        return shift
+            ? { day: shortDayLabel(dayKeyOf(shift.start)), title: shiftTitle(shift.name, shiftRange(shift)) }
+            : { day: d.shiftStart.slice(0, 10).split('-').reverse().join('/'), title: '(sem turno)' };
     };
 
     const listed = useMemo(() => {
@@ -267,25 +274,37 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     return (
         <>
             <Toolbar>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     {canManage && (
-                        <>
-                            <Button onClick={() => openCreate()}><Plus size={16} /> Nova designação</Button>
-                            <Button $variant="secondary" onClick={() => setShiftsOpen(true)}><Clock size={14} /> Turnos ({shifts.length})</Button>
-                        </>
+                        <Button onClick={() => openCreate()}><Plus size={16} /> Nova designação</Button>
                     )}
-                    <FilterChip type="button" $active={view === 'list'} onClick={() => setView('list')}>Lista</FilterChip>
-                    <FilterChip type="button" $active={view === 'coverage'} onClick={() => setView('coverage')}>Cobertura (postos × turnos)</FilterChip>
+                    <Segmented
+                        ariaLabel="Visão da escala"
+                        value={view}
+                        onChange={setView}
+                        options={[{ value: 'list', label: 'Lista' }, { value: 'coverage', label: 'Cobertura' }]}
+                    />
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <Button $variant="secondary" onClick={() => setExportOpen(true)} disabled={!hasDesignations}><Copy size={14} /> Copiar escala</Button>
-                    <Button $variant="secondary" onClick={() => setPrintIds(schedule.days.flatMap((d) => d.shifts.map((s) => s.shift.id)))} disabled={!hasDesignations}><Printer size={14} /> Imprimir</Button>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <ActionMenu
+                        trigger={<Button $variant="secondary" disabled={!hasDesignations}><Share2 size={14} /> Exportar <ChevronDown size={14} /></Button>}
+                        entries={[
+                            { label: 'Copiar para o grupo', icon: <Copy size={14} />, hint: 'escala inteira', onSelect: () => { setExportMode('group'); setExportOpen(true); } },
+                            { label: 'Copiar por pessoa', icon: <User size={14} />, hint: 'só os turnos de cada um', onSelect: () => { setExportMode('person'); setExportOpen(true); } },
+                            { type: 'separator' },
+                            { label: 'Imprimir lista', icon: <Printer size={14} />, onSelect: () => setPrintIds(schedule.days.flatMap((d) => d.shifts.map((s) => s.shift.id))) },
+                        ]}
+                    />
+                    {canManage && (
+                        <Button $variant="ghost" onClick={() => setShiftsOpen(true)} title="Criar e editar os turnos do evento"><Clock size={14} /> Turnos ({shifts.length})</Button>
+                    )}
                 </div>
             </Toolbar>
 
             {shifts.length === 0 && (
-                <div style={{ padding: '0.6rem 0.8rem', marginBottom: '0.75rem', background: '#fff4e6', borderRadius: 8, fontSize: '0.8125rem', color: '#d9480f' }}>
-                    Este evento ainda não tem turnos.{canManage ? ' Crie os turnos (ex.: Manhã e Tarde de cada dia) para poder escalar as pessoas.' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '0.6rem 0.8rem', marginBottom: '0.75rem', background: '#fff4e6', borderRadius: 8, fontSize: '0.8125rem', color: '#d9480f' }}>
+                    <span>Este evento ainda não tem turnos.{canManage ? ' Crie os turnos (ex.: Manhã e Tarde de cada dia) para poder escalar as pessoas.' : ''}</span>
+                    {canManage && <Button $variant="secondary" onClick={() => setShiftsOpen(true)}>Criar turnos</Button>}
                 </div>
             )}
 
@@ -299,18 +318,23 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                 )
             ) : (
                 <>
-                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
-                        <FilterChip type="button" $active={dayFilter === 'all'} onClick={() => setDayFilter('all')}>Todos os dias</FilterChip>
-                        {schedule.days.map((d) => (
-                            <FilterChip key={d.key} type="button" $active={dayFilter === d.key} onClick={() => setDayFilter(d.key)}>{d.label}</FilterChip>
-                        ))}
-                        <span style={{ width: 12 }} />
-                        {(['all', 'PENDING', 'CONFIRMED', 'DECLINED'] as const).map((status) => (
-                            <FilterChip key={status} type="button" $active={statusFilter === status} onClick={() => setStatusFilter(status)}>
-                                {status === 'all' ? 'Todas' : STATUS_LABEL[status]} ({counts[status]})
-                            </FilterChip>
-                        ))}
-                    </div>
+                    {designations.length > 0 && (
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+                            {/* Com um dia só, filtrar por dia não faz sentido: o seletor some. */}
+                            {schedule.days.length > 1 && (
+                                <Select aria-label="Filtrar por dia" value={dayFilter} onChange={(e) => setDayFilter(e.target.value)} style={{ width: 'auto', padding: '0.4rem 0.6rem', fontSize: '0.8125rem' }}>
+                                    <option value="all">Todos os dias</option>
+                                    {schedule.days.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+                                </Select>
+                            )}
+                            <Select aria-label="Filtrar por situação" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | DesignationStatus)} style={{ width: 'auto', padding: '0.4rem 0.6rem', fontSize: '0.8125rem' }}>
+                                <option value="all">Todas as situações ({counts.all})</option>
+                                <option value="PENDING">Pendentes ({counts.PENDING})</option>
+                                <option value="CONFIRMED">Confirmadas ({counts.CONFIRMED})</option>
+                                <option value="DECLINED">Recusadas ({counts.DECLINED})</option>
+                            </Select>
+                        </div>
+                    )}
                     <TableWrapper>
                         <ScrollX>
                             <Table>
@@ -319,51 +343,62 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                                         <Th>Turno</Th>
                                         <Th>Posto</Th>
                                         <Th>Brigadista</Th>
-                                        <Th>Função</Th>
                                         <Th>Equipe</Th>
-                                        <Th>Status</Th>
-                                        <Th>Alterar</Th>
-                                        {canManage && <Th></Th>}
+                                        <Th>Situação</Th>
+                                        {canManage && <Th style={{ width: 1 }} aria-label="Ações"></Th>}
                                     </tr>
                                 </Thead>
                                 <tbody>
-                                    {listed.map((d) => (
-                                        <Tr key={d.id} style={d.status === 'DECLINED' ? { opacity: 0.6 } : undefined}>
-                                            <Td style={{ whiteSpace: 'nowrap' }}>{shiftLabel(d)}</Td>
-                                            <Td>{d.post?.name ?? '—'}</Td>
-                                            <Td><strong>{d.staffMember.user.name}</strong></Td>
-                                            <Td>{d.role}</Td>
-                                            <Td>{d.team ? <Badge $tone="info">{d.team.name}</Badge> : '—'}</Td>
-                                            <Td><Badge $tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge></Td>
-                                            <Td>
-                                                {/* updateStatus só deixa quem tem events:manage OU é o próprio staff alterar. */}
-                                                {canManage || d.staffMember.user.id === user?.id ? (
-                                                    <Select
-                                                        aria-label={`Status de ${d.staffMember.user.name}`}
-                                                        value={d.status}
-                                                        onChange={(e) => statusMutation.mutate({ designationId: d.id, status: e.target.value as DesignationStatus })}
-                                                    >
-                                                        <option value="PENDING">Pendente</option>
-                                                        <option value="CONFIRMED">Confirmada</option>
-                                                        <option value="DECLINED">Recusada</option>
-                                                    </Select>
-                                                ) : '—'}
-                                            </Td>
-                                            {canManage && (
-                                                <Td>
-                                                    <Button $variant="ghost" onClick={() => openEdit(d)} aria-label="Editar designação" title="Editar"><Pencil size={14} /></Button>
-                                                    <Button
-                                                        $variant="ghost"
-                                                        aria-label="Remover designação"
-                                                        title="Remover"
-                                                        onClick={() => { if (window.confirm(`Remover a designação de ${d.staffMember.user.name}?`)) removeMutation.mutate(d.id); }}
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </Button>
+                                    {listed.map((d) => {
+                                        const parts = shiftParts(d);
+                                        return (
+                                            <Tr key={d.id} style={d.status === 'DECLINED' ? { opacity: 0.6 } : undefined}>
+                                                <Td style={{ whiteSpace: 'nowrap' }}>
+                                                    <strong>{parts.day}</strong>
+                                                    <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{parts.title}</div>
                                                 </Td>
-                                            )}
-                                        </Tr>
-                                    ))}
+                                                <Td>{d.post?.name ?? '—'}</Td>
+                                                <Td>
+                                                    <strong>{d.staffMember.user.name}</strong>
+                                                    <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{d.role}</div>
+                                                </Td>
+                                                <Td style={{ whiteSpace: 'nowrap' }}>{d.team ? <Badge $tone="info">{d.team.name}</Badge> : '—'}</Td>
+                                                <Td style={{ whiteSpace: 'nowrap' }}>
+                                                    {/* updateStatus só deixa quem tem events:manage OU é o próprio staff alterar. */}
+                                                    {canManage || d.staffMember.user.id === user?.id ? (
+                                                        <PillSelect
+                                                            $tone={STATUS_TONE[d.status]}
+                                                            aria-label={`Situação de ${d.staffMember.user.name}`}
+                                                            value={d.status}
+                                                            onChange={(e) => statusMutation.mutate({ designationId: d.id, status: e.target.value as DesignationStatus })}
+                                                        >
+                                                            <option value="PENDING">Pendente</option>
+                                                            <option value="CONFIRMED">Confirmada</option>
+                                                            <option value="DECLINED">Recusada</option>
+                                                        </PillSelect>
+                                                    ) : (
+                                                        <Badge $tone={STATUS_TONE[d.status]}>{STATUS_LABEL[d.status]}</Badge>
+                                                    )}
+                                                </Td>
+                                                {canManage && (
+                                                    <Td>
+                                                        <ActionMenu
+                                                            trigger={<MoreButton label={`Ações de ${d.staffMember.user.name}`} />}
+                                                            entries={[
+                                                                { label: 'Editar', icon: <Pencil size={14} />, onSelect: () => openEdit(d) },
+                                                                {
+                                                                    label: 'Remover',
+                                                                    icon: <Trash2 size={14} />,
+                                                                    danger: true,
+                                                                    onSelect: () => { if (window.confirm(`Remover a designação de ${d.staffMember.user.name}?`)) removeMutation.mutate(d.id); },
+                                                                },
+                                                            ]}
+                                                        />
+                                                    </Td>
+                                                )}
+                                            </Tr>
+                                        );
+                                    })}
                                 </tbody>
                             </Table>
                         </ScrollX>
@@ -495,7 +530,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                 <ShiftsManager eventId={eventId} eventStart={event.startDate} eventEnd={event.endDate} shifts={shifts} open={shiftsOpen} onOpenChange={setShiftsOpen} />
             )}
 
-            {event && <ExportModal event={event} designations={designations} open={exportOpen} onOpenChange={setExportOpen} onPrintList={setPrintIds} />}
+            {event && <ExportModal event={event} designations={designations} open={exportOpen} initialMode={exportMode} onOpenChange={setExportOpen} onPrintList={setPrintIds} />}
 
             {printSchedule && event && (
                 <PrintPortal active orientation="portrait" onFinished={() => setPrintIds(null)}>

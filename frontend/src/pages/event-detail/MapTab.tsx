@@ -14,10 +14,11 @@ import styled from 'styled-components';
 import html2canvas from 'html2canvas';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Upload, Download, Printer, X, Clock } from 'lucide-react';
+import { MapPin, Upload, Download, Printer, X, Clock, Share2, ChevronDown, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ActionMenu, MoreButton } from '@/components/ui/ActionMenu';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, HelpText, Form, FormActions, CheckboxField } from '@/components/ui/FormField';
+import { Field, Label, Input, HelpText, Form, FormActions } from '@/components/ui/FormField';
 import { EmptyState } from '@/components/ui/Table';
 import { eventPostsApi, type EventPost } from '@/services/events';
 import { mediaApi } from '@/services/media';
@@ -83,6 +84,9 @@ const PostPopover = styled(Popover.Content)`
     z-index: 200;
 `;
 
+/** Nome de arquivo seguro: sem acentos nem caracteres especiais (alguns navegadores/sistemas os recusam). */
+const slug = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+
 const PRINT_WIDTH = 1040; // ≈ largura útil de uma A4 paisagem com margem de 8 mm (96 dpi)
 const PRINT_MAP_MAX_HEIGHT = 630; // A4 paisagem (≈734 px úteis) menos cabeçalho e rodapé da folha
 const PNG_WIDTH = 1400;
@@ -111,6 +115,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
 
     const canvasRef = useRef<HTMLDivElement>(null);
     const pngRef = useRef<HTMLDivElement>(null);
+    const planInputRef = useRef<HTMLInputElement>(null);
     const draggedRef = useRef(false);
     const { register, handleSubmit, reset } = useForm<{ name: string; capacity: string }>();
 
@@ -220,7 +225,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                 const link = document.createElement('a');
                 const label = png.kind === 'shift' ? findShiftBlock(schedule, png.shiftId)?.shift.name : 'dia';
                 link.href = url;
-                link.download = `mapa-${event?.title ?? 'evento'}-${selectedDay?.key ?? ''}-${label ?? ''}.png`.replace(/\s+/g, '-');
+                link.download = ['mapa', slug(event?.title ?? 'evento'), selectedDay?.key ?? '', slug(label ?? '')].filter(Boolean).join('-') + '.png';
                 link.click();
                 URL.revokeObjectURL(url);
             } catch {
@@ -282,7 +287,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
 
             <Bar>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    {schedule.days.length > 0 && (
+                    {schedule.days.length > 1 && (
                         <Chips role="tablist" aria-label="Dia">
                             {schedule.days.map((d) => (
                                 <FilterChip
@@ -319,35 +324,51 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                     )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     {canManage && (
-                        <>
-                            <Button $variant="secondary" onClick={() => setShiftsOpen(true)}><Clock size={14} /> Turnos</Button>
-                            <Button $variant={isPlacing ? 'primary' : 'secondary'} onClick={() => { setIsPlacing((v) => !v); setPendingPos(null); }}>
-                                <MapPin size={14} /> {isPlacing ? 'Clique na planta para posicionar' : 'Adicionar posto'}
-                            </Button>
-                        </>
+                        <Button $variant={isPlacing ? 'primary' : 'secondary'} onClick={() => { setIsPlacing((v) => !v); setPendingPos(null); }}>
+                            <MapPin size={14} /> {isPlacing ? 'Clique na planta para posicionar' : 'Adicionar posto'}
+                        </Button>
                     )}
-                    <Button $variant="secondary" onClick={() => setPng(effective)} disabled={png !== null}>
-                        <Download size={14} /> {png ? 'Gerando...' : 'Baixar imagem'}
-                    </Button>
-                    <Button $variant="secondary" onClick={openPrint} disabled={shifts.length === 0}>
-                        <Printer size={14} /> Imprimir mapas
-                    </Button>
+                    <ActionMenu
+                        trigger={<Button $variant="secondary"><Share2 size={14} /> Exportar <ChevronDown size={14} /></Button>}
+                        entries={[
+                            { label: png ? 'Gerando imagem…' : 'Baixar imagem (PNG)', icon: <Download size={14} />, hint: 'o que está na tela', disabled: png !== null, onSelect: () => setPng(effective) },
+                            { label: 'Imprimir mapas', icon: <Printer size={14} />, hint: 'uma folha por turno', disabled: shifts.length === 0, onSelect: openPrint },
+                        ]}
+                    />
+                    <ActionMenu
+                        trigger={<Button $variant="ghost"><Eye size={14} /> Exibir <ChevronDown size={14} /></Button>}
+                        entries={[
+                            { type: 'check', label: 'Nomes no mapa', checked: showNames, onCheckedChange: setShowNames },
+                            { type: 'check', label: 'Mostrar funções', checked: showRoles, disabled: !showNames, onCheckedChange: setShowRoles },
+                        ]}
+                    />
                     {canManage && (
-                        <label>
-                            <Button as="span" $variant="ghost"><Upload size={14} /> Trocar planta</Button>
-                            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadMutation.isPending} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); }} />
-                        </label>
+                        <ActionMenu
+                            trigger={<MoreButton label="Mais opções do mapa" />}
+                            entries={[
+                                { label: 'Gerenciar turnos', icon: <Clock size={14} />, onSelect: () => setShiftsOpen(true) },
+                                { label: 'Trocar planta baixa', icon: <Upload size={14} />, onSelect: () => planInputRef.current?.click() },
+                            ]}
+                        />
                     )}
+                    <input
+                        ref={planInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        disabled={uploadMutation.isPending}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); e.target.value = ''; }}
+                    />
                 </div>
             </Bar>
 
-            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.6rem', fontSize: '0.8125rem' }}>
-                <CheckboxField style={{ fontWeight: 500 }}><input type="checkbox" checked={showNames} onChange={(e) => setShowNames(e.target.checked)} /> Nomes no mapa</CheckboxField>
-                <CheckboxField style={{ fontWeight: 500 }}><input type="checkbox" checked={showRoles} onChange={(e) => setShowRoles(e.target.checked)} disabled={!showNames} /> Mostrar funções</CheckboxField>
-                {day && <HelpText>{day.label}: {totalPeople} escalado(s) (sem recusados).</HelpText>}
-                {canManage && posts.length > 0 && !isPlacing && <HelpText>Arraste um posto na planta para reposicioná-lo.</HelpText>}
+            <div style={{ marginBottom: '0.6rem' }}>
+                <HelpText>
+                    {day ? `${day.label}: ${totalPeople} escalado(s), sem contar quem recusou.` : ''}
+                    {canManage && posts.length > 0 && !isPlacing ? ' Arraste um posto na planta para reposicioná-lo.' : ''}
+                </HelpText>
             </div>
 
             <MapSheet
