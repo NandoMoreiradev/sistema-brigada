@@ -15,6 +15,8 @@ import { EventPostsService } from './event-posts.service';
 import { EventPostsController } from './event-posts.controller';
 import { EventShiftsService } from './event-shifts.service';
 import { EventShiftsController } from './event-shifts.controller';
+import { EventFloorPlansService } from './event-floor-plans.service';
+import { EventFloorPlansController } from './event-floor-plans.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UserIntegrationsModule } from '../user-integrations/user-integrations.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -31,6 +33,7 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
         EventFilesController,
         EventPostsController,
         EventShiftsController,
+        EventFloorPlansController,
     ],
     providers: [
         EventsService,
@@ -41,6 +44,7 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
         EventFilesService,
         EventPostsService,
         EventShiftsService,
+        EventFloorPlansService,
     ],
     exports: [EventsService],
 })

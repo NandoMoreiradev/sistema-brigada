@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Designation, EventPost, EventShift } from '@/services/events';
+import type { Designation, EventFloorPlan, EventPost, EventShift } from '@/services/events';
 import { shiftTitle, isRangeName, buildGroupText, buildPersonText, buildSchedule, coverageState, filterSchedule, layoutLabels, listPeople } from './schedule';
 
 // 08:00 em São Paulo (UTC-3) = 11:00Z
@@ -17,8 +17,8 @@ const shifts: EventShift[] = [
 ];
 
 const posts: EventPost[] = [
-    { id: 'pA', name: 'Portão A', capacity: 2, notes: null, posX: 0.2, posY: 0.3 },
-    { id: 'pB', name: 'Palco', capacity: 1, notes: null, posX: 0.7, posY: 0.4 },
+    { id: 'pA', name: 'Portão A', capacity: 2, notes: null, posX: 0.2, posY: 0.3, floorPlanId: null },
+    { id: 'pB', name: 'Palco', capacity: 1, notes: null, posX: 0.7, posY: 0.4, floorPlanId: null },
 ];
 
 const des = (id: string, name: string, shiftId: string, post: EventPost | null, status: Designation['status'] = 'CONFIRMED', team: string | null = null): Designation => ({
@@ -200,5 +200,39 @@ describe('shiftTitle', () => {
         const text = buildGroupText(event, buildSchedule({ shifts: migrated, posts, designations: [{ ...designations[0], shiftId: 'm1' }] }));
         expect(text).toContain('*08:00–18:00*');
         expect(text).not.toContain('08:00–18:00 (08:00–18:00)');
+    });
+});
+
+describe('várias plantas', () => {
+    const plans: EventFloorPlan[] = [
+        { id: 'f1', name: 'Térreo', imageKey: null, imageUrl: 'a.png', order: 0 },
+        { id: 'f2', name: 'Mezanino', imageKey: null, imageUrl: 'b.png', order: 1 },
+    ];
+    const planPosts: EventPost[] = [
+        { ...posts[0], floorPlanId: 'f2' },
+        { ...posts[1], floorPlanId: 'f1' },
+    ];
+    const planDes = [des('1', 'João Silva', 'd1m', planPosts[0]), des('2', 'Pedro Lima', 'd1m', planPosts[1])];
+    const schedule = buildSchedule({ shifts, posts: planPosts, floorPlans: plans, designations: planDes });
+
+    it('agrupa os postos pela ordem das plantas e liga cada slot à sua planta', () => {
+        const slots = schedule.days[0].shifts[0].slots;
+        expect(slots.map((s) => `${s.plan?.name}:${s.post?.name}`)).toEqual(['Térreo:Palco', 'Mezanino:Portão A']);
+    });
+
+    it('o texto do grupo separa por planta', () => {
+        const text = buildGroupText(event, schedule);
+        expect(text.indexOf('_Térreo_')).toBeLessThan(text.indexOf('*Palco*'));
+        expect(text.indexOf('_Mezanino_')).toBeLessThan(text.indexOf('*Portão A*'));
+    });
+
+    it('o texto por pessoa cita a planta', () => {
+        expect(buildPersonText(event, schedule, 'sm_João Silva')).toContain('Portão A (Mezanino)');
+    });
+
+    it('com uma planta só, os textos não mencionam planta', () => {
+        const single = buildSchedule({ shifts, posts: planPosts, floorPlans: [plans[0]], designations: planDes });
+        expect(buildGroupText(event, single)).not.toContain('_Térreo_');
+        expect(buildPersonText(event, single, 'sm_João Silva')).not.toContain('(Térreo)');
     });
 });

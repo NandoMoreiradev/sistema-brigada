@@ -175,15 +175,15 @@ export function CoverageMatrix({ schedule, canManage, onCellClick }: CoverageMat
                     </thead>
                     <tbody>
                         {allRows.map((postId) => {
-                            const label = postId === null ? { name: 'Sem posto', cap: null } : (() => {
+                            const label = postId === null ? { name: 'Sem posto', cap: null, plan: null as string | null } : (() => {
                                 const slot = first.slots.find((s) => s.post?.id === postId)!;
-                                return { name: slot.post!.name, cap: slot.capacity };
+                                return { name: slot.post!.name, cap: slot.capacity, plan: slot.plan?.name ?? null };
                             })();
                             return (
                                 <tr key={postId ?? 'none'}>
                                     <td className="post">
                                         <strong>{label.name}</strong>
-                                        {label.cap != null && <span>precisa de {label.cap}</span>}
+                                        {(label.plan || label.cap != null) && <span>{[label.plan, label.cap != null ? `precisa de ${label.cap}` : null].filter(Boolean).join(' · ')}</span>}
                                     </td>
                                     {shifts.map(({ day, block }, i) => {
                                         const slot = block.slots.find((s) => (s.post?.id ?? null) === postId);

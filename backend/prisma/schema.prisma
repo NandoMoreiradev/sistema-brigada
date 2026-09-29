@@ -512,6 +512,27 @@ model EventOperation {
   posts             EventPost[]
   teams             Team[]
   shifts            EventShift[]
+  floorPlans        EventFloorPlan[]
+}
+
+/// Planta baixa de uma área do evento (Térreo, Mezanino, Área externa...). As plantas funcionam ao
+/// mesmo tempo: cada posto pertence a UMA planta e sua posição (posX/posY) vale naquela imagem.
+/// Até 10 por evento; a partir da segunda o nome é obrigatório (validado no service).
+/// EventOperation.floorPlanKey/floorPlanUrl são o formato antigo (uma planta só) e ficam só como
+/// legado: a migration copia cada uma para uma EventFloorPlan.
+model EventFloorPlan {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  imageKey         String?
+  imageUrl         String
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  posts          EventPost[]
+
+  @@index([eventOperationId])
 }
 
 /// Turno do evento (ex.: "Dia 1 · Manhã · 08:00–12:00"). Os turnos são os MESMOS para todos os postos;
@@ -544,12 +565,16 @@ model EventPost {
   notes            String?  @db.Text
   posX             Float?
   posY             Float?
+  /// Planta onde o posto é plotado (posX/posY são relativos a ela). Nulo = posto ainda sem planta.
+  floorPlanId      String?
   createdAt        DateTime @default(now())
 
-  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  eventOperation EventOperation  @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  floorPlan      EventFloorPlan? @relation(fields: [floorPlanId], references: [id], onDelete: SetNull)
   designations   Designation[]
 
   @@index([eventOperationId])
+  @@index([floorPlanId])
 }
 
 /// Agrupamento nomeado de designações do MESMO evento (decisão do produto: "dupla"/"trio" não é

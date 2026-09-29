@@ -14,13 +14,14 @@ export function useEventSchedule(eventId: string, includeStatuses: DesignationSt
 
     const shifts = useMemo(() => event?.operation?.shifts ?? [], [event]);
     const posts = useMemo(() => event?.operation?.posts ?? [], [event]);
+    const floorPlans = useMemo(() => event?.operation?.floorPlans ?? [], [event]);
     const statusKey = includeStatuses.join(',');
 
     const schedule = useMemo(
-        () => buildSchedule({ shifts, posts, designations: designations ?? [], includeStatuses }),
+        () => buildSchedule({ shifts, posts, floorPlans, designations: designations ?? [], includeStatuses }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [shifts, posts, designations, statusKey],
+        [shifts, posts, floorPlans, designations, statusKey],
     );
 
-    return { event, shifts, posts, designations: designations ?? [], schedule };
+    return { event, shifts, posts, floorPlans, designations: designations ?? [], schedule };
 }

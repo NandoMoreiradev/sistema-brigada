@@ -18,7 +18,8 @@ Para quem monta e acompanha a escala do evento. Vale para eventos de vários dia
 - A tela avisa **lacuna** (nenhum posto coberto entre um turno e o seguinte) e **sobreposição** (passagem de turno). O ideal é os turnos **encostarem** (12:00 → 12:00).
 
 ### 2. Cadastrar os postos (aba **Mapa**)
-- Envie a **planta baixa** (uma só por evento; para trocar depois: **⋯ → Trocar planta baixa**).
+- Envie a **planta baixa**. Se o local tem **várias áreas ou andares funcionando ao mesmo tempo** (térreo, mezanino, externa), cadastre uma planta para cada uma em **⋯ → Plantas do evento** (até 10; a partir da segunda o **nome é obrigatório**). Cada posto pertence a **uma só planta**; se um local precisa aparecer em duas, cadastre dois postos.
+- Com mais de uma planta, aparecem **abas de planta** acima do dia/turno. Um aviso laranja na aba mostra quantos postos estão **sem ninguém** naquele turno. Para levar um posto a outra planta: clique no pino → **Mover para outra planta** (ele volta ao centro: arraste para o lugar certo). Não dá para excluir planta que ainda tem postos.
 - **Adicionar posto** → clique no local da planta → dê o nome e **quantas pessoas o posto precisa**.
 - Arraste o pino para reposicionar. Clique no pino para renomear, ajustar a quantidade ou remover.
 
@@ -36,13 +37,13 @@ Para quem monta e acompanha a escala do evento. Vale para eventos de vários dia
 ### 5. Mapa (aba **Mapa**)
 - Escolha o **dia** e o **turno**: o mapa mostra **só aquele turno**, com os **nomes em cada posto**. **Dia todo** mostra um resumo por turno.
 - O número no pino é "escalados/necessários". **Nomes no mapa** e **Mostrar funções** ligam/desligam os detalhes.
-- **Exportar ▾ → Baixar imagem (PNG)**: o que está na tela, com cabeçalho (dia e turno), legenda e hora em que foi gerado.
-- **Exportar ▾ → Imprimir mapas**: escolha os turnos; sai **uma folha A4 paisagem por turno**.
+- **Exportar ▾ → Baixar imagem (PNG)**: o que está na tela (a planta da aba aberta), com cabeçalho (dia e turno), legenda e hora em que foi gerado.
+- **Exportar ▾ → Imprimir mapas**: escolha os turnos; sai **uma folha A4 paisagem por turno** (e **por planta**, se houver mais de uma: escolha as plantas e os turnos).
 - **Exibir ▾**: liga/desliga *Nomes no mapa* e *Mostrar funções*.
 - Em tela estreita (iPad em pé) o mapa rola na horizontal para os nomes continuarem legíveis.
 
 ### 6. Enviar a escala (aba **Escala → Exportar ▾**)
-- **Copiar para o grupo**: a escala inteira (dia → turno → posto → pessoas), pronta para colar no WhatsApp. Marque quais turnos entram. Opcional: listar postos sem ninguém.
+- **Copiar para o grupo**: a escala inteira (dia → turno → posto → pessoas; com várias plantas, os postos vêm agrupados por planta), pronta para colar no WhatsApp. Marque quais turnos entram. Opcional: listar postos sem ninguém.
 - **Copiar por pessoa**: só os turnos daquela pessoa, com saudação. Escolha a pessoa e copie; **Copiar de todos** junta todos os textos separados por linhas.
 - **Imprimir lista**: uma página por dia, com os turnos e postos.
 - O evento em si: **Editar evento** fica visível; **Excluir evento** fica no menu **⋯** do cabeçalho, com confirmação.

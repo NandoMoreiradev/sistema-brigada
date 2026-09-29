@@ -161,6 +161,8 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     const canManage = hasPermission(user, 'events:manage');
 
     const { event, shifts, posts, designations, schedule } = useEventSchedule(eventId);
+    /** Nome da planta do posto — só quando o evento tem mais de uma. */
+    const planNameOf = (post: { floorPlanId: string | null } | null) => (schedule.plans.length > 1 && post ? (schedule.plans.find((p) => p.id === post.floorPlanId)?.name ?? null) : null);
     const { data: staff } = useQuery({ queryKey: ['staff'], queryFn: () => staffApi.list(), enabled: canManage });
     const activeStaff = (staff ?? []).filter((s) => s.status === 'ACTIVE');
 
@@ -357,7 +359,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                                                     <strong>{parts.day}</strong>
                                                     <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{parts.title}</div>
                                                 </Td>
-                                                <Td>{d.post?.name ?? '—'}</Td>
+                                                <Td>{d.post?.name ?? '—'}{planNameOf(d.post) && <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{planNameOf(d.post)}</div>}</Td>
                                                 <Td>
                                                     <strong>{d.staffMember.user.name}</strong>
                                                     <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{d.role}</div>
@@ -547,7 +549,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                                             <tbody>
                                                 {block.slots.filter((slot) => slot.post || slot.people.length > 0).map((slot) => (
                                                     <tr key={slot.post?.id ?? 'none'}>
-                                                        <th>{slot.post?.name ?? 'Sem posto'}{slot.capacity != null ? ` (${slot.people.length}/${slot.capacity})` : ''}</th>
+                                                        <th>{slot.post?.name ?? 'Sem posto'}{slot.plan ? ` — ${slot.plan.name}` : ''}{slot.capacity != null ? ` (${slot.people.length}/${slot.capacity})` : ''}</th>
                                                         <td>
                                                             {slot.people.length === 0 ? <em>— sem ninguém —</em> : slot.people.map((p, i) => (
                                                                 <span key={p.designationId} className={p.status === 'PENDING' ? 'pending' : undefined}>
