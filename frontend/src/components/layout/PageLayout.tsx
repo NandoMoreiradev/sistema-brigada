@@ -4,6 +4,7 @@
 
 import React from 'react';
 import styled from 'styled-components';
+import { ArrowLeft } from 'lucide-react';
 
 const PageWrapper = styled.div`
     width: 100%;
@@ -59,6 +60,25 @@ const TitleSection = styled.div`
     gap: 0.625rem;
     min-width: 0;
     flex-shrink: 1;
+`;
+
+const BackButton = styled.button`
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid ${({ theme }) => theme.colors.borderLight};
+    border-radius: 7px;
+    color: ${({ theme }) => theme.colors.textMedium};
+    cursor: pointer;
+
+    &:hover {
+        color: ${({ theme }) => theme.colors.textDark};
+        background: ${({ theme }) => theme.colors.pageBackground};
+    }
 `;
 
 const TitleIcon = styled.div`
@@ -121,6 +141,9 @@ interface PageLayoutProps {
     title: string;
     subtitle?: string;
     icon?: React.ReactNode;
+    /** Mostra um botão de voltar (seta) antes do título. */
+    onBack?: () => void;
+    backLabel?: string;
     badge?: React.ReactNode;
     actions?: React.ReactNode;
     headerContent?: React.ReactNode;
@@ -130,13 +153,18 @@ interface PageLayoutProps {
 }
 
 export const PageLayout: React.FC<PageLayoutProps> = ({
-    title, subtitle, icon, badge, actions, headerContent, stickyHeader, children,
+    title, subtitle, icon, onBack, backLabel = 'Voltar', badge, actions, headerContent, stickyHeader, children,
 }) => {
     return (
         <PageWrapper>
             <Header $sticky={stickyHeader}>
                 <HeaderTop>
                     <TitleSection>
+                        {onBack && (
+                            <BackButton type="button" onClick={onBack} aria-label={backLabel} title={backLabel}>
+                                <ArrowLeft size={16} />
+                            </BackButton>
+                        )}
                         {icon && <TitleIcon>{icon}</TitleIcon>}
                         <TitleText>
                             <h1>{title}</h1>

@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import styled from 'styled-components';
-import { ArrowLeft, Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, Eye, Paperclip } from 'lucide-react';
+import { Plus, CalendarClock, Video, ExternalLink, Pencil, Trash2, Eye, Paperclip } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -63,21 +63,6 @@ const TabsTrigger = styled(Tabs.Trigger)`
         color: ${({ theme }) => theme.colors.primary};
         border-bottom-color: ${({ theme }) => theme.colors.primary};
     }
-`;
-
-const BackLink = styled.button`
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: none;
-    border: none;
-    color: ${({ theme }) => theme.colors.textMuted};
-    font-size: 0.8125rem;
-    cursor: pointer;
-    padding: 0;
-    margin-bottom: 0.5rem;
-
-    &:hover { color: ${({ theme }) => theme.colors.textDark}; }
 `;
 
 const InfoRow = styled.div`
@@ -161,8 +146,32 @@ export default function EventDetail() {
     return (
         <PageLayout
             title={event.title}
-            subtitle={formatAppDate(event.startDate, 'dd/MM/yyyy HH:mm')}
+            subtitle={[
+                formatAppDate(event.startDate, 'dd/MM/yyyy HH:mm'),
+                event.location,
+                isOperation && event.operation?.estimatedAudienceCount != null ? `Público estimado: ${event.operation.estimatedAudienceCount.toLocaleString('pt-BR')}` : null,
+            ].filter(Boolean).join(' · ')}
             icon={<CalendarClock size={16} />}
+            onBack={() => navigate('/events')}
+            backLabel="Voltar para eventos"
+            badge={
+                /* Um controle só: quem pode alterar vê a etiqueta como seletor; os demais, só a etiqueta. */
+                canManageEvent ? (
+                    <PillSelect
+                        $tone={STATUS_TONE[event.status]}
+                        aria-label="Status do evento"
+                        value={event.status}
+                        onChange={(e) => statusMutation.mutate(e.target.value as EventStatus)}
+                        disabled={statusMutation.isPending}
+                    >
+                        {EVENT_STATUS_VALUES.map((status) => (
+                            <option key={status} value={status}>{STATUS_LABEL[status]}</option>
+                        ))}
+                    </PillSelect>
+                ) : (
+                    <Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge>
+                )
+            }
             actions={
                 canManageEvent ? (
                     <>
@@ -178,36 +187,6 @@ export default function EventDetail() {
                 ) : undefined
             }
         >
-            <BackLink onClick={() => navigate('/events')}>
-                <ArrowLeft size={14} /> Voltar para eventos
-            </BackLink>
-
-            <InfoRow>
-                {event.location && <span><strong>Local:</strong> {event.location}</span>}
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <strong>Status:</strong>
-                    {/* Um controle só: quem pode alterar vê a etiqueta como seletor; os demais, só a etiqueta. */}
-                    {canManageEvent ? (
-                        <PillSelect
-                            $tone={STATUS_TONE[event.status]}
-                            aria-label="Status do evento"
-                            value={event.status}
-                            onChange={(e) => statusMutation.mutate(e.target.value as EventStatus)}
-                            disabled={statusMutation.isPending}
-                        >
-                            {EVENT_STATUS_VALUES.map((status) => (
-                                <option key={status} value={status}>{STATUS_LABEL[status]}</option>
-                            ))}
-                        </PillSelect>
-                    ) : (
-                        <Badge $tone={STATUS_TONE[event.status]}>{STATUS_LABEL[event.status]}</Badge>
-                    )}
-                </span>
-                {isOperation && event.operation?.estimatedAudienceCount != null && (
-                    <span><strong>Público estimado:</strong> {event.operation.estimatedAudienceCount}</span>
-                )}
-            </InfoRow>
-
             {canManageEvent && <EditEventModal event={event} open={editOpen} onOpenChange={setEditOpen} />}
 
             <Tabs.Root defaultValue={isOperation ? 'designations' : 'meeting'}>
