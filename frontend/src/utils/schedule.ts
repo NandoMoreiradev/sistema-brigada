@@ -39,6 +39,8 @@ export interface ShiftBlock {
     shift: EventShift;
     /** "08:00–12:00" no fuso do app. */
     range: string;
+    /** "Manhã 08:00–12:00" (ou só o horário, se o nome já é o horário). */
+    title: string;
     slots: PostSlot[];
     /** Total de pessoas escaladas neste turno (todos os postos). */
     total: number;
@@ -74,6 +76,17 @@ export function shortDayLabel(dayKey: string): string {
 }
 
 const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/** Turnos criados pela migração têm o próprio horário como nome ("08:00–18:00"). */
+export function isRangeName(name: string): boolean {
+    return /^\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}$/.test(name.trim());
+}
+
+/** "Manhã 08:00–12:00" — ou só "08:00–18:00" quando o nome já é o horário (sem repetir). */
+export function shiftTitle(name: string, range: string, style: 'space' | 'paren' = 'space'): string {
+    if (isRangeName(name)) return range;
+    return style === 'paren' ? `${name} (${range})` : `${name} ${range}`;
+}
 
 export function coverageState(count: number, capacity: number | null): CoverageState {
     if (capacity == null) return count > 0 ? 'open' : 'empty';
@@ -124,7 +137,8 @@ export function buildSchedule({ shifts, posts, designations, includeStatuses = D
                 if (withoutPost.length > 0) {
                     slots.push({ post: null, people: withoutPost, capacity: null, state: 'open' });
                 }
-                return { shift, range: shiftRange(shift), slots, total: inShift.length };
+                const range = shiftRange(shift);
+                return { shift, range, title: shiftTitle(shift.name, range), slots, total: inShift.length };
             }),
     }));
 
@@ -208,7 +222,7 @@ export function buildGroupText(event: EventInfo, schedule: Schedule, options: Te
     for (const day of schedule.days) {
         lines.push('', `*${day.label.toUpperCase()}*`);
         for (const shift of day.shifts) {
-            lines.push('', `*${shift.shift.name} (${shift.range})*`);
+            lines.push('', `*${shiftTitle(shift.shift.name, shift.range, 'paren')}*`);
             const visibleSlots = shift.slots.filter((slot) => slot.people.length > 0 || (options.showEmptyPosts && slot.post));
             if (visibleSlots.length === 0) lines.push('• (ninguém escalado neste turno)');
             for (const slot of visibleSlots) {
@@ -244,7 +258,7 @@ export function buildPersonText(event: EventInfo, schedule: Schedule, staffMembe
             const role = options.showRoles !== false && person.role ? ` (${person.role})` : '';
             const team = person.teamName ? ` — ${person.teamName}` : '';
             const pending = options.markPending !== false && person.status === 'PENDING' ? ' — aguardando sua confirmação' : '';
-            lines.push(`• ${shift.shift.name} (${shift.range}) — ${where}${role}${team}${pending}`);
+            lines.push(`• ${shiftTitle(shift.shift.name, shift.range, 'paren')} — ${where}${role}${team}${pending}`);
         }
     }
     if (mine.length === 0) lines.push('', 'Você não está escalado(a) nos turnos selecionados.');

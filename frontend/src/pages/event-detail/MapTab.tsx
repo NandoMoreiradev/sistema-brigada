@@ -241,7 +241,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
         }
         const day = schedule.days.find((d) => d.shifts.some((s) => s.shift.id === selection.shiftId));
         const block = findShiftBlock(schedule, selection.shiftId);
-        return { dayLabel: day?.label ?? '', shiftLabel: block ? `${block.shift.name} · ${block.range}` : '' };
+        return { dayLabel: day?.label ?? '', shiftLabel: block ? block.title : '' };
     };
 
     const openPrint = () => {
@@ -307,7 +307,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                                     $active={effective?.kind === 'shift' && effective.shiftId === s.shift.id}
                                     onClick={() => setSelection({ kind: 'shift', shiftId: s.shift.id })}
                                 >
-                                    {s.shift.name} {s.range} ({s.total})
+                                    {s.title} ({s.total})
                                 </FilterChip>
                             ))}
                             {day.shifts.length > 1 && (
@@ -433,7 +433,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                                     showNames
                                     width={PRINT_WIDTH}
                                     maxHeight={PRINT_MAP_MAX_HEIGHT}
-                                    header={<SheetHeader eventTitle={event?.title ?? ''} location={event?.location} dayLabel={d.label} shiftLabel={`${s.shift.name} · ${s.range}`} />}
+                                    header={<SheetHeader eventTitle={event?.title ?? ''} location={event?.location} dayLabel={d.label} shiftLabel={s.title} />}
                                     footer={<SheetFooter />}
                                 />
                             </div>

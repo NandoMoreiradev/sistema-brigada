@@ -20,7 +20,7 @@ import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
-import { buildSchedule, filterSchedule, shiftRange, dayKeyOf, shortDayLabel, type Schedule } from '@/utils/schedule';
+import { buildSchedule, filterSchedule, shiftRange, shiftTitle, dayKeyOf, shortDayLabel, type Schedule } from '@/utils/schedule';
 import { FilterChip, ScrollX } from '@/pages/course-detail/styles';
 import { useEventSchedule } from './useEventSchedule';
 import { CoverageMatrix } from './CoverageMatrix';
@@ -241,7 +241,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     const shiftById = useMemo(() => new Map(shifts.map((s) => [s.id, s])), [shifts]);
     const shiftLabel = (d: Designation) => {
         const shift = d.shiftId ? shiftById.get(d.shiftId) : undefined;
-        return shift ? `${shortDayLabel(dayKeyOf(shift.start))} · ${shift.name} ${shiftRange(shift)}` : `${d.shiftStart.slice(0, 16).replace('T', ' ')} (sem turno)`;
+        return shift ? `${shortDayLabel(dayKeyOf(shift.start))} · ${shiftTitle(shift.name, shiftRange(shift))}` : `${d.shiftStart.slice(0, 16).replace('T', ' ')} (sem turno)`;
     };
 
     const listed = useMemo(() => {
@@ -472,7 +472,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                             {!editing?.shiftId && <option value="">Selecione o turno…</option>}
                             {schedule.days.map((day) => (
                                 <optgroup key={day.key} label={day.label}>
-                                    {day.shifts.map(({ shift, range }) => <option key={shift.id} value={shift.id}>{shift.name} {range}</option>)}
+                                    {day.shifts.map(({ shift, title }) => <option key={shift.id} value={shift.id}>{title}</option>)}
                                 </optgroup>
                             ))}
                         </Select>
@@ -507,7 +507,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                                 <h2>{day.label}</h2>
                                 {day.shifts.map((block) => (
                                     <div key={block.shift.id}>
-                                        <h3>{block.shift.name} — {block.range} ({block.total} pessoa{block.total === 1 ? '' : 's'})</h3>
+                                        <h3>{block.title} ({block.total} pessoa{block.total === 1 ? '' : 's'})</h3>
                                         <table>
                                             <tbody>
                                                 {block.slots.filter((slot) => slot.post || slot.people.length > 0).map((slot) => (

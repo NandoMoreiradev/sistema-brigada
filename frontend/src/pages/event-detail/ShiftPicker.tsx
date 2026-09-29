@@ -96,10 +96,10 @@ export function ShiftPicker({ days, value, onChange, showCounts }: ShiftPickerPr
                             {day.label} <span style={{ fontWeight: 500, fontSize: '0.75rem', color: '#6c757d' }}>· dia todo</span>
                         </DayHeader>
                         <Chips>
-                            {day.shifts.map(({ shift, range, total }) => (
+                            {day.shifts.map(({ shift, title, total }) => (
                                 <Chip key={shift.id} $checked={selected.has(shift.id)}>
                                     <input type="checkbox" checked={selected.has(shift.id)} onChange={() => toggle(shift.id)} />
-                                    {shift.name} {range}
+                                    {title}
                                     {showCounts && <small>({total})</small>}
                                 </Chip>
                             ))}
