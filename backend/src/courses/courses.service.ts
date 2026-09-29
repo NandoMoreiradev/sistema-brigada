@@ -16,6 +16,7 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 import { ListCoursesDto } from './dto/list-courses.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
+import { parseAppDateTime } from '../common/datetime';
 
 const courseInclude = {
     event: true,
@@ -35,8 +36,8 @@ export class CoursesService {
                     kind: EventKind.TURMA,
                     title: dto.title,
                     location: dto.location,
-                    startDate: new Date(dto.startDate),
-                    endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+                    startDate: parseAppDateTime(dto.startDate),
+                    endDate: dto.endDate ? parseAppDateTime(dto.endDate) : undefined,
                     createdByUserId,
                 },
             });
@@ -143,15 +144,19 @@ export class CoursesService {
         const { status, ...courseFields } = dto;
 
         return this.prisma.$transaction(async (tx) => {
-            if (status || courseFields.title || courseFields.location || courseFields.startDate || courseFields.endDate) {
+            const eventFields = [status, courseFields.title, courseFields.location, courseFields.startDate, courseFields.endDate];
+            if (eventFields.some((value) => value !== undefined)) {
                 await tx.event.update({
                     where: { id: course.eventId },
                     data: {
                         status,
                         title: courseFields.title,
+                        // `null` limpa o campo (o frontend manda null quando o professor esvazia o input).
                         location: courseFields.location,
-                        startDate: courseFields.startDate ? new Date(courseFields.startDate) : undefined,
-                        endDate: courseFields.endDate ? new Date(courseFields.endDate) : undefined,
+                        // Data "solta" de <input type="date"> = dia no fuso do app, não meia-noite UTC
+                        // (que aparece um dia antes para quem está no Brasil).
+                        startDate: courseFields.startDate ? parseAppDateTime(courseFields.startDate) : undefined,
+                        endDate: courseFields.endDate === null ? null : courseFields.endDate ? parseAppDateTime(courseFields.endDate) : undefined,
                     },
                 });
             }
