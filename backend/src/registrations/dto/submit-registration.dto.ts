@@ -27,6 +27,10 @@ export class SubmitRegistrationDto {
 
     @IsOptional()
     @IsDateString()
+    birthDate?: string;
+
+    @IsOptional()
+    @IsDateString()
     baptismDate?: string;
 
     @IsOptional()

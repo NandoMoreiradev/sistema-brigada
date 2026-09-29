@@ -57,6 +57,7 @@ const registrationListSelect = {
     name: true,
     email: true,
     phone: true,
+    birthDate: true,
     baptismDate: true,
     pioneerStatus: true,
     signedPetitions: true,
@@ -130,6 +131,7 @@ export class RegistrationsService {
                     requestedKind,
                     // Nunca confia no payload do cliente pra decidir quais campos opcionais
                     // valem — só grava o que a academia realmente habilitou no momento do envio.
+                    birthDate: enabledFields.has('birthDate') && dto.birthDate ? new Date(dto.birthDate) : undefined,
                     baptismDate: enabledFields.has('baptismDate') && dto.baptismDate ? new Date(dto.baptismDate) : undefined,
                     pioneerStatus: enabledFields.has('pioneerStatus') ? dto.pioneerStatus : undefined,
                     signedPetitions: enabledFields.has('signedPetitions') ? dto.signedPetitions : undefined,
@@ -186,7 +188,7 @@ export class RegistrationsService {
     /**
      * Cria a conta a partir de uma solicitação e manda o e-mail de acesso. Compartilhado pela
      * aprovação manual e pelo convite dirigido (que já nasce autorizado por quem convidou).
-     * O papel decide o que é criado: aluno ganha perfil de aluno; instrutor fica sem perfil (pronto
+     * Os dados pessoais são gravados para todos os papéis. O papel decide o resto: aluno ganha perfil de aluno; instrutor fica sem perfil (pronto
      * para ser escalado em turmas); equipe fica sem perfil e já é promovida a integrante da equipe.
      */
     private async createAccountFromRequest(
@@ -201,15 +203,15 @@ export class RegistrationsService {
             email: request.email,
             phone: request.phone,
             organizationId,
-            studentProfile:
-                kind === RegistrationKind.STUDENT
-                    ? {
-                          baptismDate: overrides.baptismDate ?? (request.baptismDate ? request.baptismDate.toISOString().slice(0, 10) : undefined),
-                          pioneerStatus: overrides.pioneerStatus ?? request.pioneerStatus ?? undefined,
-                          signedPetitions: overrides.signedPetitions ?? request.signedPetitions,
-                          profession: overrides.profession ?? request.profession ?? undefined,
-                      }
-                    : undefined,
+            // Dados pessoais valem para qualquer papel; o perfil de aluno só existe para aluno.
+            personProfile: {
+                birthDate: overrides.birthDate ?? (request.birthDate ? request.birthDate.toISOString().slice(0, 10) : undefined),
+                baptismDate: overrides.baptismDate ?? (request.baptismDate ? request.baptismDate.toISOString().slice(0, 10) : undefined),
+                pioneerStatus: overrides.pioneerStatus ?? request.pioneerStatus ?? undefined,
+                signedPetitions: overrides.signedPetitions ?? request.signedPetitions,
+                profession: overrides.profession ?? request.profession ?? undefined,
+            },
+            studentProfile: kind === RegistrationKind.STUDENT ? {} : undefined,
         });
 
         if (kind === RegistrationKind.STAFF) {
@@ -441,14 +443,13 @@ export class RegistrationsService {
             kind: invite.kind,
             email: invite.email,
             name: invite.name,
-            enabledFields: invite.kind === RegistrationKind.STUDENT ? invite.organization.publicRegistrationFields : [],
+            enabledFields: invite.organization.publicRegistrationFields,
         };
     }
 
     async submitInvite(token: string, dto: SubmitInviteRegistrationDto) {
         const invite = await this.findUsableInvite(token);
         const enabledFields = new Set(invite.organization.publicRegistrationFields as PublicRegistrationField[]);
-        const isStudent = invite.kind === RegistrationKind.STUDENT;
 
         if (await this.prisma.user.findFirst({ where: { email: { equals: invite.email, mode: 'insensitive' } }, select: { id: true } })) {
             throw new ConflictException('Já existe uma conta com este e-mail. Use "Esqueci minha senha" na tela de login.');
@@ -473,10 +474,11 @@ export class RegistrationsService {
                     phone: dto.phone,
                     requestedKind: invite.kind,
                     inviteId: invite.id,
-                    baptismDate: isStudent && enabledFields.has('baptismDate') && dto.baptismDate ? new Date(dto.baptismDate) : undefined,
-                    pioneerStatus: isStudent && enabledFields.has('pioneerStatus') ? dto.pioneerStatus : undefined,
-                    signedPetitions: isStudent && enabledFields.has('signedPetitions') ? dto.signedPetitions : undefined,
-                    profession: isStudent && enabledFields.has('profession') ? dto.profession : undefined,
+                    birthDate: enabledFields.has('birthDate') && dto.birthDate ? new Date(dto.birthDate) : undefined,
+                    baptismDate: enabledFields.has('baptismDate') && dto.baptismDate ? new Date(dto.baptismDate) : undefined,
+                    pioneerStatus: enabledFields.has('pioneerStatus') ? dto.pioneerStatus : undefined,
+                    signedPetitions: enabledFields.has('signedPetitions') ? dto.signedPetitions : undefined,
+                    profession: enabledFields.has('profession') ? dto.profession : undefined,
                 },
             });
             // O convite é a autorização: quem convidou é registrado como revisor.
