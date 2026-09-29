@@ -1,49 +1,16 @@
 // frontend/src/pages/settings/IntegrationsTab.tsx
 //
-// Aba "Integrações" da central de configurações — conteúdo realocado de
-// Settings.tsx (antes a tela inteira, hoje uma das abas). Sem mudança de
-// comportamento, só de local.
+// Aba "Integrações": conexões da conta pessoal com serviços externos (hoje só Google Calendar).
 
 import { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Calendar, Check, Unlink } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import styled from 'styled-components';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Table';
 import { integrationsApi } from '@/services/integrations';
 import { toast } from '@/utils/toast';
-
-const Card = styled.div`
-    background: ${({ theme }) => theme.colors.white};
-    border-radius: ${({ theme }) => theme.radii.md};
-    border: 1px solid ${({ theme }) => theme.colors.borderLight};
-    padding: 1.25rem;
-    max-width: 480px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-`;
-
-const CardHeader = styled.div`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-`;
-
-const CardTitle = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 600;
-    color: ${({ theme }) => theme.colors.textDark};
-`;
-
-const CardDescription = styled.p`
-    margin: 0;
-    font-size: 0.8125rem;
-    color: ${({ theme }) => theme.colors.textMuted};
-`;
+import { SettingsCard, TabStack, StatusRow, CardSkeleton } from './SettingsParts';
 
 export function IntegrationsTab() {
     const [searchParams] = useSearchParams();
@@ -91,29 +58,36 @@ export function IntegrationsTab() {
         onError: () => toast.error('Não foi possível desconectar.'),
     });
 
+    if (isLoading) return <TabStack><CardSkeleton /></TabStack>;
+
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle><Calendar size={18} /> Google Calendar</CardTitle>
-                {!isLoading && (
+        <TabStack>
+            <SettingsCard
+                icon={<Calendar size={18} />}
+                tone={googleStatus?.connected ? 'success' : 'neutral'}
+                title="Google Calendar"
+                description="Reuniões criadas por você ganham automaticamente um link do Google Meet."
+                aside={
                     <Badge $tone={googleStatus?.connected ? 'success' : 'neutral'}>
                         {googleStatus?.connected ? 'Conectado' : 'Não conectado'}
                     </Badge>
-                )}
-            </CardHeader>
-            <CardDescription>
-                Conecte sua conta Google para que reuniões criadas por você ganhem automaticamente um link do
-                Google Meet.
-            </CardDescription>
-            {googleStatus?.connected ? (
-                <Button $variant="secondary" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending}>
-                    <Unlink size={16} /> {disconnectMutation.isPending ? 'Desconectando...' : 'Desconectar'}
-                </Button>
-            ) : (
-                <Button onClick={() => connectMutation.mutate()} disabled={connectMutation.isPending}>
-                    <Check size={16} /> {connectMutation.isPending ? 'Redirecionando...' : 'Conectar Google Calendar'}
-                </Button>
-            )}
-        </Card>
+                }
+            >
+                <StatusRow>
+                    <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>
+                        {googleStatus?.connected ? 'Sua conta Google está vinculada.' : 'Conecte sua conta Google para ativar.'}
+                    </span>
+                    {googleStatus?.connected ? (
+                        <Button $variant="secondary" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending}>
+                            <Unlink size={16} /> {disconnectMutation.isPending ? 'Desconectando...' : 'Desconectar'}
+                        </Button>
+                    ) : (
+                        <Button onClick={() => connectMutation.mutate()} disabled={connectMutation.isPending}>
+                            <Check size={16} /> {connectMutation.isPending ? 'Redirecionando...' : 'Conectar Google Calendar'}
+                        </Button>
+                    )}
+                </StatusRow>
+            </SettingsCard>
+        </TabStack>
     );
 }

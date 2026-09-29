@@ -8,7 +8,7 @@
 import { GraduationCap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { formatDateOnly } from '@/utils/courseDates';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { meApi, type MyCourse } from '@/services/me';
@@ -44,7 +44,7 @@ function CourseTable({ courses, emptyMessage, onOpen }: { courses: MyCourse[]; e
                     {courses.map((course) => (
                         <Tr key={course.id} onClick={() => onOpen(course.id)} style={{ cursor: 'pointer' }}>
                             <Td>{course.event.title}</Td>
-                            <Td>{format(new Date(course.event.startDate), 'dd/MM/yyyy')}</Td>
+                            <Td>{formatDateOnly(course.event.startDate)}</Td>
                             <Td><Badge $tone={STATUS_TONE[course.event.status]}>{STATUS_LABEL[course.event.status]}</Badge></Td>
                             <Td></Td>
                         </Tr>

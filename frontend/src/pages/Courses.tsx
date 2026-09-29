@@ -6,23 +6,23 @@
 // Course. Detalhe (aulas/matrícula/presença) fica em CourseDetail.tsx.
 
 import { useState } from 'react';
-import { GraduationCap, Plus } from 'lucide-react';
+import { GraduationCap, Plus, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Textarea, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, FieldRow, CheckboxField } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
-import { useAuth } from '@/contexts/AuthContext';
-import { hasPermission } from '@/utils/permissions';
+import { apiErrorMessage } from '@/utils/apiError';
+import { formatDateOnly } from '@/utils/courseDates';
+import { ScrollX, Toolbar, ToolbarGroup, SearchInput, FilterChip, MiniProgress, Muted } from '@/pages/course-detail/styles';
 import type { EventStatus } from '@/types';
 
 const schema = z.object({
@@ -58,17 +58,15 @@ const STATUS_TONE: Record<EventStatus, 'neutral' | 'success' | 'info' | 'danger'
 
 export default function Courses() {
     const [modalOpen, setModalOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState<EventStatus | 'ALL'>('ALL');
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { user } = useAuth();
-    // Esta página já exige `courses:manage` (PermissionRoute), mas escolher instrutor
-    // ao criar turma precisa da lista de pessoas, que é `people:manage` — um cargo com
-    // só `courses:manage` chegaria aqui e levaria um 403 (e o toast do interceptor
-    // global) ao carregar, sem nem tentar usar o formulário.
-    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data, isLoading } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
+    // Lista enxuta (id + nome), aberta a qualquer usuário da escola: escolher instrutor ao criar a
+    // turma não exige acesso ao cadastro de pessoas (`people:manage`).
+    const { data: roster } = useQuery({ queryKey: ['people', 'roster'], queryFn: () => peopleApi.roster() });
 
     const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -101,8 +99,8 @@ export default function Courses() {
             setModalOpen(false);
             navigate(`/courses/${course.id}`);
         },
-        onError: (error: any) => {
-            toast.error(error?.response?.data?.message || 'Não foi possível criar a turma.');
+        onError: (error: unknown) => {
+            toast.error(apiErrorMessage(error, 'Não foi possível criar a turma.'));
         },
     });
 
@@ -124,7 +122,15 @@ export default function Courses() {
     };
 
     const courses = data?.data ?? [];
-    const people = peopleData?.data ?? [];
+    const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const visibleCourses = courses.filter((course) => {
+        if (statusFilter !== 'ALL' && course.event.status !== statusFilter) return false;
+        if (!search.trim()) return true;
+        const haystack = normalize(`${course.event.title} ${course.category ?? ''} ${course.instructors.map((i) => i.user.name).join(' ')}`);
+        return haystack.includes(normalize(search));
+    });
+    const statusCounts = courses.reduce<Record<string, number>>((acc, course) => ({ ...acc, [course.event.status]: (acc[course.event.status] ?? 0) + 1 }), {});
+    const people = roster ?? [];
 
     return (
         <PageLayout
@@ -137,7 +143,32 @@ export default function Courses() {
                 </Button>
             }
         >
+            <Toolbar>
+                <ToolbarGroup>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#6c757d' }} />
+                        <SearchInput
+                            type="search"
+                            placeholder="Buscar turma, categoria ou instrutor"
+                            aria-label="Buscar turma"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            style={{ paddingLeft: 30, minWidth: 280 }}
+                        />
+                    </div>
+                    <FilterChip type="button" $active={statusFilter === 'ALL'} onClick={() => setStatusFilter('ALL')}>
+                        Todas ({courses.length})
+                    </FilterChip>
+                    {(Object.keys(STATUS_LABEL) as EventStatus[]).filter((status) => statusCounts[status]).map((status) => (
+                        <FilterChip key={status} type="button" $active={statusFilter === status} onClick={() => setStatusFilter(status)}>
+                            {STATUS_LABEL[status]} ({statusCounts[status]})
+                        </FilterChip>
+                    ))}
+                </ToolbarGroup>
+            </Toolbar>
+
             <TableWrapper>
+                <ScrollX>
                 <Table>
                     <Thead>
                         <tr>
@@ -151,15 +182,20 @@ export default function Courses() {
                         </tr>
                     </Thead>
                     <tbody>
-                        {courses.map((course) => (
+                        {visibleCourses.map((course) => (
                             <Tr key={course.id} onClick={() => navigate(`/courses/${course.id}`)} style={{ cursor: 'pointer' }}>
-                                <Td>{course.event.title}</Td>
+                                <Td><strong>{course.event.title}</strong></Td>
                                 <Td>{course.category || '—'}</Td>
-                                <Td>{format(new Date(course.event.startDate), 'dd/MM/yyyy')}</Td>
+                                <Td>{formatDateOnly(course.event.startDate)}</Td>
                                 <Td>{course.instructors.map((i) => i.user.name).join(', ') || '—'}</Td>
                                 <Td>
-                                    {course._count.enrollments}
-                                    {course.vacancies ? ` / ${course.vacancies}` : ''}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <span>
+                                            {course._count.enrollments}
+                                            {course.vacancies ? ` / ${course.vacancies}` : ''}
+                                        </span>
+                                        {course.vacancies ? <MiniProgress $percent={(course._count.enrollments / course.vacancies) * 100} /> : null}
+                                    </div>
                                 </Td>
                                 <Td>
                                     <Badge $tone={STATUS_TONE[course.event.status]}>{STATUS_LABEL[course.event.status]}</Badge>
@@ -173,7 +209,13 @@ export default function Courses() {
                         ))}
                     </tbody>
                 </Table>
-                {!isLoading && courses.length === 0 && <EmptyState>Nenhuma turma cadastrada ainda.</EmptyState>}
+                </ScrollX>
+                {!isLoading && courses.length === 0 && <EmptyState>Nenhuma turma cadastrada ainda. Use “Nova turma” para começar.</EmptyState>}
+                {courses.length > 0 && visibleCourses.length === 0 && (
+                    <EmptyState>
+                        Nenhuma turma encontrada com esse filtro.&nbsp;<Muted as="button" type="button" onClick={() => { setSearch(''); setStatusFilter('ALL'); }} style={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Limpar filtros</Muted>
+                    </EmptyState>
+                )}
             </TableWrapper>
 
             <Modal open={modalOpen} onOpenChange={setModalOpen} title="Nova turma" width="560px">
@@ -223,22 +265,20 @@ export default function Courses() {
                         </Field>
                     </FieldRow>
 
-                    <Field>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
-                            <input type="checkbox" {...register('requireAllLessonsWatched')} />
-                            Exigir todas as vídeo-aulas assistidas para emitir o certificado
-                        </label>
-                    </Field>
+                    <CheckboxField>
+                        <input type="checkbox" {...register('requireAllLessonsWatched')} />
+                        Exigir todas as vídeo-aulas assistidas para emitir o certificado
+                    </CheckboxField>
 
                     {courses.length > 0 && (
                         <Field>
                             <Label htmlFor="recommendedRecyclingCourseId">Curso de reciclagem recomendado (opcional)</Label>
-                            <select id="recommendedRecyclingCourseId" {...register('recommendedRecyclingCourseId')} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid #ced4da' }}>
+                            <Select id="recommendedRecyclingCourseId" {...register('recommendedRecyclingCourseId')}>
                                 <option value="">Nenhum</option>
                                 {courses.map((c) => (
                                     <option key={c.id} value={c.id}>{c.event.title}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </Field>
                     )}
 

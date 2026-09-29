@@ -141,6 +141,14 @@ const SmallButton = styled.button`
     }
 `;
 
+/** Aceita variáveis ({{login_link}}), âncoras, mailto:/tel: e URLs com esquema; o resto ganha https://. */
+const normalizeLinkUrl = (raw: string): string => {
+    const value = raw.trim();
+    if (!value) return '';
+    if (value.startsWith('{{') || value.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+    return `https://${value}`;
+};
+
 interface TextToolbarProps {
     props: ExtendedBlockProps;
     style?: BlockStyle;
@@ -161,14 +169,6 @@ export const TextToolbar: React.FC<TextToolbarProps> = ({
         document.execCommand(command, false, value);
     };
 
-    const handleInsertLink = () => {
-        if (linkUrl) {
-            execCommand('createLink', linkUrl);
-            setLinkUrl('');
-            setShowLinkInput(false);
-        }
-    };
-
     // Salva a posição do cursor quando o usuário interage com o texto
     const saveSelection = React.useCallback(() => {
         const selection = window.getSelection();
@@ -185,6 +185,32 @@ export const TextToolbar: React.FC<TextToolbarProps> = ({
             selection?.addRange(savedRangeRef.current);
         }
     }, []);
+
+    const handleInsertLink = () => {
+        const url = normalizeLinkUrl(linkUrl);
+        if (!url) return;
+
+        // O campo de URL rouba o foco (e a seleção) do texto — sem devolver o foco e a
+        // seleção salva antes, o execCommand roda "no vazio" e nada acontece.
+        const editableElement = document.querySelector('[contenteditable="true"]') as HTMLElement | null;
+        if (!editableElement) return;
+
+        editableElement.focus();
+        restoreSelection();
+
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+            execCommand('createLink', url);
+        } else {
+            // Sem texto selecionado, createLink não faz nada: insere a própria URL como texto do link.
+            const label = url.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            execCommand('insertHTML', `<a href="${label.replace(/"/g, '&quot;')}">${label}</a>`);
+        }
+
+        editableElement.dispatchEvent(new Event('input', { bubbles: true }));
+        setLinkUrl('');
+        setShowLinkInput(false);
+    };
 
     const handleInsertTable = () => {
         const editableElement = document.querySelector('[contenteditable="true"]');
@@ -449,6 +475,8 @@ export const TextToolbar: React.FC<TextToolbarProps> = ({
                 <SectionTitle>Links e Variáveis</SectionTitle>
                 <ButtonGrid style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                     <ToolButton
+                        // Guarda a seleção antes de o campo de URL tomar o foco.
+                        onMouseDown={saveSelection}
                         onClick={() => setShowLinkInput(!showLinkInput)}
                         title="Inserir Link"
                         $active={showLinkInput}

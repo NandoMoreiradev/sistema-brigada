@@ -17,34 +17,48 @@ enum Role {
 }
 
 model Organization {
-  id                   String    @id @default(cuid())
-  name                 String
-  subdomain            String?   @unique
-  logoUrl              String?
-  isMatrix             Boolean   @default(false)
-  parentOrganizationId String?
-  groupName            String?
-  enabledModules       String[]  @default([])
+  id                        String    @id @default(cuid())
+  name                      String
+  subdomain                 String?   @unique
+  logoUrl                   String?
+  isMatrix                  Boolean   @default(false)
+  parentOrganizationId      String?
+  groupName                 String?
+  enabledModules            String[]  @default([])
   /// Chave Resend própria da academia. Quando ausente, o envio cai para
   /// RESEND_API_KEY (conta global da plataforma) — ver EmailSenderFactory.
-  resendApiKey         String?
-  emailFromAddress     String?
-  emailFromName        String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  deletedAt            DateTime?
+  resendApiKey              String?
+  emailFromAddress          String?
+  emailFromName             String?
+  /// Autocadastro público (/register/:token) — desativado por padrão, cada academia liga
+  /// explicitamente (ver OrganizationsService). Token não é removido ao desativar, só ao
+  /// regenerar, pra reativar reaproveitar o mesmo link já compartilhado.
+  publicRegistrationEnabled Boolean   @default(false)
+  publicRegistrationToken   String?   @unique
+  /// Subconjunto de PUBLIC_REGISTRATION_FIELD_CATALOG (common/constants) exibido no
+  /// formulário público desta academia — não é form-builder livre, é toggle sobre um
+  /// catálogo fixo de campos de StudentProfile.
+  publicRegistrationFields  String[]  @default([])
+  /// Mesmo catálogo, escolhido separadamente para quem entra como instrutor / equipe (o de cima é o do aluno).
+  publicRegistrationFieldsInstructor String[] @default([])
+  publicRegistrationFieldsStaff      String[] @default([])
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  deletedAt                 DateTime?
 
-  parentOrganization  Organization?            @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
-  childOrganizations  Organization[]           @relation("OrgHierarchy")
-  users               User[]
-  roleAssignments     RoleAssignment[]
-  userAccess          UserOrganizationAccess[]
-  courses             Course[]
-  events              Event[]
-  rooms               Room[]
-  certificateTemplate CertificateTemplate?
-  emailTemplates      EmailTemplate[]
-  communications      Communication[]
+  parentOrganization   Organization?            @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
+  childOrganizations   Organization[]           @relation("OrgHierarchy")
+  users                User[]
+  roleAssignments      RoleAssignment[]
+  userAccess           UserOrganizationAccess[]
+  courses              Course[]
+  events               Event[]
+  rooms                Room[]
+  certificateTemplate  CertificateTemplate?
+  emailTemplates       EmailTemplate[]
+  communications       Communication[]
+  registrationRequests RegistrationRequest[]
+  registrationInvites  RegistrationInvite[]
 
   @@index([parentOrganizationId])
 }
@@ -71,25 +85,32 @@ model User {
   updatedAt              DateTime  @updatedAt
   deletedAt              DateTime?
 
-  organization          Organization?            @relation(fields: [organizationId], references: [id])
-  systemRole            SystemRole?              @relation(fields: [systemRoleId], references: [id])
-  refreshTokens         RefreshToken[]
-  roleAssignments       RoleAssignment[]         @relation("RoleAssignmentToUser")
-  allowedOrganizations  UserOrganizationAccess[]
-  availabilities        UserAvailability[]
-  timeOffs              TimeOff[]
-  studentProfile        StudentProfile?
-  staffMember           StaffMember?
-  instructorAssignments CourseInstructor[]
-  lessonProgress        LessonProgress[]
-  meetingAttendances    MeetingAttendance[]
-  integrations          UserIntegration[]
-  notifications         Notification[]
-  createdEmailTemplates EmailTemplate[]          @relation("EmailTemplateCreator")
-  externalCertifications ExternalCertification[]
-  createdOccurrenceReports OccurrenceReport[]
-  createdCommunications Communication[]          @relation("CommunicationCreator")
-  communicationRecipients CommunicationRecipient[]
+  organization                   Organization?            @relation(fields: [organizationId], references: [id])
+  systemRole                     SystemRole?              @relation(fields: [systemRoleId], references: [id])
+  refreshTokens                  RefreshToken[]
+  roleAssignments                RoleAssignment[]         @relation("RoleAssignmentToUser")
+  allowedOrganizations           UserOrganizationAccess[]
+  availabilities                 UserAvailability[]
+  timeOffs                       TimeOff[]
+  studentProfile                 StudentProfile?
+  staffMember                    StaffMember?
+  instructorAssignments          CourseInstructor[]
+  moduleAssignments              CourseModuleInstructor[]
+  sessionAssignments             ClassSessionInstructor[]
+  classLogs                      ClassLog[]
+  lessonProgress                 LessonProgress[]
+  meetingAttendances             MeetingAttendance[]
+  integrations                   UserIntegration[]
+  notifications                  Notification[]
+  createdEmailTemplates          EmailTemplate[]          @relation("EmailTemplateCreator")
+  externalCertifications         ExternalCertification[]
+  createdOccurrenceReports       OccurrenceReport[]
+  createdCommunications          Communication[]          @relation("CommunicationCreator")
+  communicationRecipients        CommunicationRecipient[]
+  reviewedRegistrationRequests   RegistrationRequest[]    @relation("RegistrationRequestReviewedBy")
+  createdRegistrationInvites     RegistrationInvite[]     @relation("RegistrationInviteCreatedBy")
+  personProfile                  PersonProfile?
+  createdFromRegistrationRequest RegistrationRequest?     @relation("RegistrationRequestCreatedUser")
 
   @@index([organizationId])
 }
@@ -168,25 +189,40 @@ enum PioneerStatus {
   REGULAR
 }
 
-model StudentProfile {
-  id             String    @id @default(cuid())
-  userId         String    @unique
-  organizationId String
-  birthDate      DateTime?
-  gender         String?
-  healthInfo     Json?
-  guardianName   String?
-  guardianPhone  String?
+/// Dados pessoais de QUALQUER pessoa da academia (aluno, instrutor, equipe...). Antes viviam em
+/// StudentProfile, o que impedia instrutor/equipe de ter batismo, nascimento etc.
+model PersonProfile {
+  id              String         @id @default(cuid())
+  userId          String         @unique
+  organizationId  String
+  birthDate       DateTime?
+  gender          String?
   /// Data de batismo
-  baptismDate    DateTime?
+  baptismDate     DateTime?
   /// Ausente = não é pioneiro
-  pioneerStatus  PioneerStatus?
+  pioneerStatus   PioneerStatus?
   /// Nomes das petições assinadas (ex: "Pioneiro regular"); vazio = nenhuma
-  signedPetitions String[] @default([])
+  signedPetitions String[]       @default([])
   /// Profissão ou área de estudo
-  profession     String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  profession      String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+/// Só o que é de aluno (saúde, responsável, matrículas). Dados pessoais ficam em PersonProfile.
+model StudentProfile {
+  id              String         @id @default(cuid())
+  userId          String         @unique
+  organizationId  String
+  healthInfo      Json?
+  guardianName    String?
+  guardianPhone   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
@@ -264,12 +300,17 @@ model ClassSession {
   startTime String   @db.Char(5)
   endTime   String   @db.Char(5)
   roomId    String?
+  /// Assunto/tema da aula do dia (ex.: "Primeiros socorros — RCP"), texto livre.
+  topic     String?
   createdAt DateTime @default(now())
 
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  room        Room?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  room        Room?                    @relation(fields: [roomId], references: [id], onDelete: SetNull)
   attendances Attendance[]
-  classLog    ClassLog?
+  /// Um diário por professor: dois professores na mesma aula não se sobrescrevem.
+  classLogs   ClassLog[]
+  /// Professores escalados nesta aula. Vazio = qualquer instrutor da turma pode lançar chamada/diário.
+  instructors ClassSessionInstructor[]
 
   @@index([courseId])
   @@index([date])
@@ -278,13 +319,31 @@ model ClassSession {
 
 model ClassLog {
   id              String   @id @default(cuid())
-  classSessionId  String   @unique
+  classSessionId  String
   content         String   @db.Text
   createdByUserId String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   classSession ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([classSessionId, createdByUserId])
+  @@index([createdByUserId])
+}
+
+/// Quem leciona a aula presencial do dia. Sempre um CourseInstructor da turma (validado no service).
+model ClassSessionInstructor {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
 }
 
 enum EnrollmentStatus {
@@ -344,10 +403,26 @@ model CourseModule {
   order    Int     @default(0)
   active   Boolean @default(true)
 
-  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lessons CourseLesson[]
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     CourseLesson[]
+  /// Professores responsáveis por este módulo/assunto. Vazio = qualquer instrutor da turma edita as aulas.
+  instructors CourseModuleInstructor[]
 
   @@index([courseId])
+}
+
+/// Responsável(is) por um módulo. Sempre um CourseInstructor da turma (validado no service).
+model CourseModuleInstructor {
+  id        String   @id @default(cuid())
+  moduleId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  module CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, userId])
+  @@index([userId])
 }
 
 model CourseLesson {
@@ -457,6 +532,48 @@ model EventOperation {
   occurrenceReports OccurrenceReport[]
   posts             EventPost[]
   teams             Team[]
+  shifts            EventShift[]
+  floorPlans        EventFloorPlan[]
+}
+
+/// Planta baixa de uma área do evento (Térreo, Mezanino, Área externa...). As plantas funcionam ao
+/// mesmo tempo: cada posto pertence a UMA planta e sua posição (posX/posY) vale naquela imagem.
+/// Até 10 por evento; a partir da segunda o nome é obrigatório (validado no service).
+/// EventOperation.floorPlanKey/floorPlanUrl são o formato antigo (uma planta só) e ficam só como
+/// legado: a migration copia cada uma para uma EventFloorPlan.
+model EventFloorPlan {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  imageKey         String?
+  imageUrl         String
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  posts          EventPost[]
+
+  @@index([eventOperationId])
+}
+
+/// Turno do evento (ex.: "Dia 1 · Manhã · 08:00–12:00"). Os turnos são os MESMOS para todos os postos;
+/// cada pessoa é escalada em um ou mais turnos (manhã num dia, o dia todo em outro...). O "dia" é
+/// derivado do início do turno no fuso do app — não existe tabela de dias.
+/// Designation.shiftStart/shiftEnd continuam gravados (cópia do turno) para "minhas escalas" e para o
+/// conflito de horário entre eventos não dependerem desta tabela.
+model EventShift {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  start            DateTime
+  end              DateTime
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@unique([eventOperationId, start, end])
+  @@index([eventOperationId])
 }
 
 /// Posto de atuação (local físico) dentro do evento — ex.: "Portão A", "Palco", "Enfermaria".
@@ -469,12 +586,16 @@ model EventPost {
   notes            String?  @db.Text
   posX             Float?
   posY             Float?
+  /// Planta onde o posto é plotado (posX/posY são relativos a ela). Nulo = posto ainda sem planta.
+  floorPlanId      String?
   createdAt        DateTime @default(now())
 
-  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  eventOperation EventOperation  @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  floorPlan      EventFloorPlan? @relation(fields: [floorPlanId], references: [id], onDelete: SetNull)
   designations   Designation[]
 
   @@index([eventOperationId])
+  @@index([floorPlanId])
 }
 
 /// Agrupamento nomeado de designações do MESMO evento (decisão do produto: "dupla"/"trio" não é
@@ -510,13 +631,17 @@ model Designation {
   status           DesignationStatus @default(PENDING)
   postId           String?
   teamId           String?
+  /// Turno do evento. shiftStart/shiftEnd acima são a cópia dos horários dele.
+  shiftId          String?
   createdAt        DateTime          @default(now())
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
   staffMember    StaffMember    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
   post           EventPost?     @relation(fields: [postId], references: [id], onDelete: SetNull)
   team           Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  shift          EventShift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
+  @@index([shiftId])
   @@index([eventOperationId])
   @@index([staffMemberId])
   @@index([postId])
@@ -535,8 +660,8 @@ model OccurrenceReport {
   createdByUserId  String
   createdAt        DateTime @default(now())
 
-  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
-  createdBy      User           @relation(fields: [createdByUserId], references: [id])
+  eventOperation EventOperation         @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  createdBy      User                   @relation(fields: [createdByUserId], references: [id])
   files          OccurrenceReportFile[]
 
   @@index([eventOperationId])
@@ -725,6 +850,12 @@ enum EmailTriggerType {
   PASSWORD_RESET
   CERTIFICATE_EXPIRING
   USER_WELCOME
+  CERTIFICATE_ISSUED
+  ENROLLMENT_CONFIRMED
+  DESIGNATION_ASSIGNED
+  REGISTRATION_APPROVED
+  REGISTRATION_REJECTED
+  REGISTRATION_INVITE
 }
 
 /// organizationId = null -> template padrão global (usado quando a academia não tem override).
@@ -750,8 +881,61 @@ model EmailTemplate {
   @@index([trigger])
 }
 
+// ================================= AUTOCADASTRO PÚBLICO =================================
+// Formulário sem login que uma academia compartilha via link (Organization.publicRegistrationToken).
+// A submissão fica pendente até alguém com registrations:manage aprovar (cria User+StudentProfile
+// de verdade, via UsersService.createAccount, e dispara REGISTRATION_APPROVED) ou recusar (só
+// muda o status, sem criar conta nem enviar e-mail).
+
+enum RegistrationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model RegistrationRequest {
+  id               String                    @id @default(cuid())
+  organizationId   String
+  name             String
+  email            String
+  phone            String
+  /// Subconjunto de StudentProfile submetido pela pessoa — só os campos que estavam
+  /// habilitados em Organization.publicRegistrationFields no momento do envio. Guardados
+  /// soltos aqui (não em StudentProfile) porque a conta real só existe após aprovação.
+  birthDate        DateTime?
+  baptismDate      DateTime?
+  pioneerStatus    PioneerStatus?
+  signedPetitions  String[]                  @default([])
+  profession       String?
+  status           RegistrationRequestStatus @default(PENDING)
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  rejectionReason  String?
+  /// Preenchido só quando status = APPROVED.
+  createdUserId    String?                   @unique
+  /// O que a pessoa pediu (link com ?tipo= ou convite) e o que o revisor aprovou de fato. O revisor
+  /// sempre decide: o pedido é só uma sugestão.
+  requestedKind    RegistrationKind          @default(STUDENT)
+  approvedKind     RegistrationKind?
+  /// Resultado do envio do e-mail de acesso (SENT/FAILED) — o envio não bloqueia a aprovação, então
+  /// sem isto uma falha ficava só no log do servidor.
+  accessEmailStatus String?
+  accessEmailAt     DateTime?
+  /// Preenchido quando a solicitação veio de um convite dirigido.
+  inviteId         String?                   @unique
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy   User?        @relation("RegistrationRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdUser  User?        @relation("RegistrationRequestCreatedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+  invite       RegistrationInvite? @relation(fields: [inviteId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+}
+
 // ================================= COMUNICADOS (e-mail avulso) =================================
-// Diferente de EmailTemplate (templates dos 3 gatilhos automáticos acima): Communication é um
+// Diferente de EmailTemplate (templates dos gatilhos automáticos acima): Communication é um
 // e-mail avulso que um admin/cargo delegado (communications:manage) escreve e manda pra um
 // público-alvo da própria academia (todos, alunos, equipe ou pessoas específicas). Reaproveita
 // a mesma infra de renderização/envio (EmailRendererService/MailService), mas não tem o
@@ -868,4 +1052,37 @@ model TimeOff {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, start, end])
+}
+
+/// Papel que a pessoa entra: aluno (com perfil de aluno), instrutor (sem perfil, pronto para ser
+/// escalado em turmas) ou equipe (sem perfil, já promovida a integrante da equipe).
+enum RegistrationKind {
+  STUDENT
+  INSTRUCTOR
+  STAFF
+}
+
+/// Convite dirigido a um e-mail: link único, com validade, que já define o papel. Quem se cadastra
+/// por ele é aprovado na hora (o admin que convidou é quem autoriza).
+model RegistrationInvite {
+  id              String           @id @default(cuid())
+  organizationId  String
+  email           String
+  name            String?
+  kind            RegistrationKind @default(STUDENT)
+  token           String           @unique
+  createdByUserId String?
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  /// SENT/FAILED do último envio do convite por e-mail.
+  emailStatus     String?
+  emailSentAt     DateTime?
+  createdAt       DateTime         @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                @relation("RegistrationInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  request      RegistrationRequest?
+
+  @@index([organizationId, email])
 }

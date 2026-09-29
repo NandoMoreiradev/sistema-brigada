@@ -1,6 +1,6 @@
 # Decisões do projeto — Escola de Treinamento de Brigada e Segurança
 
-> Nome do projeto/produto: **Ignis**. Base de código de referência: `maskotCrmEdu` (CRM/plataforma para escolas, NestJS + Prisma + React).
+> Nome do projeto/produto: **Pronthea** (nome anterior, Ignis, não estava disponível pra registro — trocado em 2026-09-25). Base de código de referência: `maskotCrmEdu` (CRM/plataforma para escolas, NestJS + Prisma + React).
 
 ## Contexto
 
@@ -22,6 +22,7 @@ Codificação iniciada e em andamento. Módulos completos (backend + frontend, v
 - ✅ Permissões granulares — **Fase 1**: catálogo de permissões + cargos (`RoleAssignment`) configuráveis por organização, tela `/roles` (ver decisões 22-24)
 - ✅ Permissões — **Fase 2** (backend, 2026-09-17): `userHasPermission` extraído de `PermissionsGuard` para reuso em services; `AuthService.getProfile` devolve `studentProfile`/`staffMember`/`instructorCourseIds`; endpoints `GET /me/courses`, `/me/enrollments`, `/me/designations`, `/me/certificates`; checagem de posse adicionada em `CourseLessonsService` (create/update de aula), `ClassSessionsService` (diário/presença) e `DesignationsService.updateStatus` — só quem tem a permissão administrativa do módulo (`courses:manage`/`events:manage`) OU é o dono do dado (instrutor da turma, staff da própria designação) passa
 - ✅ Permissões — **Fase 3** (2026-09-17): listagem completa de Turmas/Equipe/Alunos/Certificados agora exige a permissão do módulo (`courses:manage`/`staff:manage`/`people:manage`/`certificates:manage`) tanto no backend (`GET` das listas + posse no detalhe de turma/certificado) quanto no frontend (`PermissionRoute`, nav condicional em `MainLayout`); quem não tem a permissão usa o recorte pessoal em `/my-courses`, `/my-certificates`, `/my-designations`; `/dashboard` deixou de ser placeholder — agora é "role-aware" (cards condicionais por papel acumulado: aluno/instrutor/staff/admin). **Eventos ficou de fora dessa restrição de propósito** — reuniões/assembleias são abertas a toda a organização por design (`meetings.service.ts`: presença é lista aberta, sem roster fixo), então `/events` continua acessível a qualquer autenticado.
+- ✅ Autocadastro público de pessoas (2026-09-25) — link público por academia (opt-in, com token regenerável) onde qualquer um se cadastra sem login; fica `PENDING` até alguém com `registrations:manage` aprovar (cria `User`+`StudentProfile` de verdade e manda e-mail com credenciais, gatilho `REGISTRATION_APPROVED`) ou recusar. Campos opcionais do formulário são configuráveis por academia. Ver seção própria abaixo.
 
 Pendente:
 
@@ -122,6 +123,55 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
   Postgres real (criar academia → e-mail chega → link ativa conta → editor visual salva e
   reflete no próximo envio → chave Resend por-academia realmente isola o envio).
 
+## Autocadastro público de pessoas (2026-09-25)
+
+Pedido: permitir que uma academia receba cadastro de pessoas via link público (sem
+login) e, ao ter o cadastro aprovado, o sistema envia automaticamente um e-mail com os
+dados de acesso, usando um template criado pelo SUPER_ADMIN e reutilizável pela
+academia — reaproveitando 100% a arquitetura de `EmailTemplate` (padrão global +
+override por academia) já existente pros outros 4 gatilhos.
+
+- **Backend**: `Organization.publicRegistrationEnabled`/`publicRegistrationToken`/
+  `publicRegistrationFields` (opt-in por academia — token sobrevive a
+  desativar/reativar, só "gerar novo link" troca). Novo model `RegistrationRequest`
+  (status `PENDING`/`APPROVED`/`REJECTED`, campos opcionais de `StudentProfile`
+  soltos até a aprovação). Novo gatilho `EmailTriggerType.REGISTRATION_APPROVED`
+  (fora de `PLATFORM_TRIGGERS`: sai pelo Resend da própria academia, igual
+  `USER_WELCOME`/`CERTIFICATE_EXPIRING`). Nova permissão `registrations:manage`
+  (dedicada, não `people:manage` — permite delegar a revisão sem dar acesso total a
+  Alunos/Equipe). Novo módulo `registrations/`: controller público
+  (`GET`/`POST /public/registrations/:token`, sem `JwtAuthGuard` — mesmo padrão
+  "público por omissão" de `PublicBadgeController` —, com throttling local de 5/min)
+  e controller admin (`GET`/`PATCH /registrations`, gated por `registrations:manage`).
+  `UsersService.create()` foi refatorado: o miolo de criação de conta (senha
+  aleatória, `User`+`StudentProfile` em transação, link de ativação) virou
+  `createAccount()`, reutilizado tanto pelo cadastro manual (`create()`, dispara
+  `USER_WELCOME`) quanto pela aprovação de autocadastro (`RegistrationsService.approve()`,
+  dispara `REGISTRATION_APPROVED`) — zero duplicação de lógica de criação de conta.
+  Aprovação sempre cria `Role.ORG_USER`+`StudentProfile` (nunca ORG_ADMIN — autocadastro
+  não é caminho de escalação). Submissão pública nunca confia no payload do cliente pra
+  decidir quais campos opcionais gravar: sempre filtra pelo
+  `publicRegistrationFields` da academia no servidor; duplicata de `PENDING` pro
+  mesmo e-mail é ignorada silenciosamente (mesma mensagem de sucesso, não vaza quem
+  já se cadastrou).
+- **Frontend**: nova seção "Autocadastro público" em Configurações → Academia (toggle,
+  checkboxes sobre o catálogo fixo de 4 campos opcionais, link com copiar/regenerar);
+  nova página pública `/register/:token` (form dinâmico pelos campos habilitados,
+  reaproveita os mesmos widgets de `People.tsx` pra pioneiro/petições); nova tela
+  `/registrations` ("Cadastros pendentes", gated por `registrations:manage`, nav item
+  novo em `MainLayout`) com aprovar (modal pré-preenchido, editável antes de confirmar)
+  /recusar (confirmação simples, sem e-mail).
+- **Validado de ponta a ponta contra um Postgres real** (diferente da rodada anterior de
+  e-mail, que não teve banco disponível): migration aplicada e conferida com
+  `prisma migrate diff` (diff vazio = schema bate 100%), seed idempotente (permissão
+  nova + template padrão novo), fluxo HTTP completo via curl (ativar → submeter →
+  campo não habilitado é filtrado → duplicata ignorada → listar → aprovar com override
+  → dupla-aprovação bloqueada (400) → recusar → regenerar token invalida o link antigo)
+  e inspeção visual via Playwright/Chromium (formulário público, impersonação de
+  ORG_ADMIN, seção de configurações, tela de pendentes, modal de aprovação) — sem
+  regressão no `POST /users` original (cadastro manual) após a extração de
+  `createAccount()`.
+
 ## Decisões fechadas
 
 ### Arquitetura geral
@@ -183,6 +233,33 @@ lá mas nunca é importado em lugar nenhum — confirmado por grep).
 34. Novo model `Communication` (+ `CommunicationRecipient`, um registro por pessoa por envio) pra e-mail avulso ("comunicado") que um admin ou cargo delegado escreve e manda pra um público-alvo da própria academia (todos/alunos/equipe/pessoas específicas) — diferente de `EmailTemplate` (templates dos 3 gatilhos automáticos: boas-vindas, redefinição de senha, certificado vencendo), que nunca manda nada por conta própria. Reaproveita 100% a infra de renderização/envio já existente (`EmailRendererService`/`MailService`/`MergeTagService`, `communications/`) e o mesmo construtor visual drag-and-drop (`EmailBuilder`) usado na edição de template. Envio é fire-and-forget em background (mesmo padrão do e-mail de boas-vindas de academia nova) com um pequeno delay sequencial entre destinatários — sem fila/dependência nova, adequado ao porte modesto das organizações deste produto. Tem rastreio de abertura via pixel 1x1 num endpoint público sem autenticação (`GET /public/communications/recipients/:id/open.gif`, mesmo padrão de `PublicBadgeController`) e mostra quem criou o comunicado (nome + data/hora) em toda listagem/detalhe.
 35. Nova permissão granular `communications:manage` no catálogo, cobrindo tanto Modelos de e-mail (`EmailTemplatesController`, que migrou de `@Roles` fixo pra essa permissão) quanto Comunicados — as duas telas moram juntas em "E-mails e comunicados" (`/admin/emails`, abas verticais no mesmo padrão de `Settings.tsx`). `ORG_ADMIN`/`GROUP_ADMIN`/`SUPER_ADMIN` continuam com acesso pleno (bypass já existente em `userHasPermission`); a permissão só abre a porta pra um cargo delegado (ex.: secretaria) sem precisar ser admin.
 
+### Autocadastro público (fechadas em 2026-09-25)
+36. E-mail de credenciais usa gatilho **novo e dedicado** (`REGISTRATION_APPROVED`), não reaproveita `USER_WELCOME` — mensagem de "seu cadastro foi aprovado" é semanticamente diferente de "um admin te cadastrou", mesmo os dois criando conta do mesmo jeito.
+37. Revisão de cadastros pendentes usa permissão **nova e dedicada** (`registrations:manage`), não `people:manage` — permite delegar essa revisão (ex: recepção) sem dar acesso total à tela de Pessoas.
+38. Formulário público tem **campos opcionais configuráveis por academia**: nome/e-mail/telefone sempre obrigatórios; os 4 campos opcionais de `StudentProfile` (batismo/pioneiro/petições/profissão) a academia escolhe quais aparecem, via toggle sobre um catálogo fixo (não é form-builder livre).
+39. Autocadastro é **opt-in por academia**: precisa ativar em Configurações, o que gera um link/token único (regenerável, invalidando o anterior; sobrevive a desativar/reativar). Sem isso, nenhuma academia ganharia o link "de graça" sem decidir usar.
+
+### Turma com vários professores (fechadas em 2026-09-29)
+40. Responsabilidade é **opt-in e retrocompatível**: módulo sem responsável e aula sem professor escalado continuam com a regra antiga (qualquer `CourseInstructor` da turma). Só passa a restringir quando alguém é marcado, então nenhuma turma existente muda de comportamento.
+41. **Responsável por módulo** (`CourseModuleInstructor`) e **professor da aula presencial** (`ClassSessionInstructor`) são sempre subconjunto dos instrutores da turma (validado no service). Quem sai da turma (`removeInstructor`) sai também dessas listas.
+42. Aula presencial ganha `topic` (assunto) e o **diário passa a ser um por professor** (`ClassLog` único por `(aula, autor)`), para dois professores no mesmo dia não se sobrescreverem. Os diários dos colegas aparecem só para leitura.
+43. Excluir vídeo-aula é do admin (`courses:manage`) ou de **responsável explícito** pelo módulo — em módulo sem responsável, qualquer instrutor edita mas não apaga. Criar/excluir módulo e definir responsáveis seguem exclusivos de `courses:manage`.
+44. Lista de presença (`GET .../attendance`) e diários (`classLogs` em `GET .../sessions`) deixaram de ser legíveis por qualquer membro da organização: exigem `courses:manage` ou ser instrutor da turma (e, com escala, um dos escalados). Aluno continua vendo a agenda (assunto/professor), sem diários.
+45. Escolher instrutor (nova turma / editar turma) usa a lista enxuta `GET /users/roster`, sem exigir `people:manage`.
+
+### Escala de eventos com vários dias e turnos (fechadas em 2026-09-29)
+46. **Turno é entidade do evento** (`EventShift`: nome + início + fim), **igual para todos os postos**. O "dia" não é tabela: deriva do início do turno no fuso do app. Turno pode atravessar a meia-noite (Noite 22:00–02:00). Único por `(evento, início, fim)`.
+47. **Designação = pessoa × turno × posto.** Uma pessoa pode estar em turnos diferentes por dia (manhã num dia, dia todo em outro): o lote escala pessoas × turnos de uma vez, uma notificação/e-mail por pessoa. `Designation.shiftStart/shiftEnd` continuam gravados (cópia do turno) — "minhas escalas" e o conflito entre eventos não dependem da tabela de turnos. Migration cria um turno por janela distinta já usada e liga as designações existentes.
+48. **Passagem de turno**: turnos que encostam (12:00/12:00) não conflitam; sobreposição entre turnos é permitida (passagem com sobreposição) mas a mesma pessoa não pode estar em dois turnos sobrepostos (nem dentro do mesmo lote). A tela de turnos avisa lacuna (posto sem cobertura) ou sobreposição entre turnos seguidos do dia.
+49. **Remarcar um turno** propaga o novo horário às designações dele, depois de revalidar o conflito de cada pessoa; **excluir turno** só se não tiver ninguém escalado.
+50. **Quem recusou não conta em nenhuma saída** (mapa, matriz, texto, impressão): antes a recusa ainda ocupava a vaga do posto e saía na escala impressa. Pendente conta, mas vem marcado (`*` / "pendente").
+51. **Um modelo único** (`frontend/src/utils/schedule.ts`: dia → turno → posto → pessoas) alimenta lista, matriz de cobertura, mapa (tela, PNG e impressão) e os dois textos (grupo e por pessoa) — as saídas não divergem entre si. Capacidade continua por posto (não por turno).
+52. **Mapa mostra um turno por vez** (ou o resumo do dia), com os **nomes direto no mapa** (cartões posicionados sem sobreposição por `layoutLabels`). PNG e impressão usam a mesma folha (`MapSheet`) com cabeçalho (dia + turno), legenda e carimbo "gerada em"; impressão = uma folha A4 paisagem por turno.
+53. **Um evento pode ter várias plantas baixas** (`EventFloorPlan`, até **10** por evento). Cada planta é uma área/andar que funciona ao mesmo tempo (térreo, mezanino, externa) — não uma versão da mesma planta. O nome é opcional só na primeira (vira "Planta 1") e **obrigatório da segunda em diante**, único no evento (sem diferenciar maiúsculas); é a aba do mapa e o título da folha.
+54. **Cada posto pertence a uma só planta** (`EventPost.floorPlanId`). Um local que precisa aparecer em duas plantas é cadastrado como dois postos. Mover um posto de planta o recoloca no centro da nova planta (a posição antiga não vale na outra imagem). Uma planta com postos **não pode ser excluída** (409): mova os postos antes.
+55. **Saídas com várias plantas**: impressão = uma folha por **turno e planta** (escolhe-se plantas × turnos; o cabeçalho traz o nome da planta); PNG = a planta da aba aberta (nome da planta no arquivo). Texto do grupo agrupa os postos por planta dentro de cada turno; texto por pessoa cita a planta (`Portão A (Mezanino)`). Com **uma planta só**, nada disso aparece — saídas idênticas às de antes. A aba de cada planta mostra um alerta com quantos postos estão sem ninguém no turno escolhido.
+56. **Migração**: cada evento que já tinha `floorPlanUrl` ganhou uma "Planta 1" e todos os seus postos foram ligados a ela. `EventOperation.floorPlanKey/floorPlanUrl` ficam como legado (não são mais lidos pela tela); o endpoint antigo `PATCH posts/floor-plan` continua funcionando e passa a trocar a imagem da primeira planta.
+
 ### Reaproveitar quase pronto
 | Maskot Edu | Novo projeto | Observação | Status |
 |---|---|---|---|
@@ -218,8 +295,17 @@ WhatsApp/Instagram/Messenger, chatbot de vendas, `EnrollmentCampaign` (é campan
 Com Fases 1-3 de permissões fechadas e o mobile adiado, os candidatos a próximo passo são os itens já registrados como pendência parcial ou em aberto (ver seções abaixo) — falta decidir qual priorizar.
 
 ## Itens menores em aberto (não bloqueiam a codificação)
-- Nome definitivo do projeto/produto: **fechado como Ignis** (2026-09-19). Nomes visíveis no código (títulos, telas de login, `package.json`) já atualizados; pasta local e repositório GitHub seguem com o nome antigo (`sistema-brigada`) até decisão de renomear o repo.
+- Nome definitivo do projeto/produto: fechado como Ignis em 2026-09-19, **renomeado para Pronthea em 2026-09-25** (Ignis não estava disponível pra registro de marca). Nomes visíveis no código (títulos, telas de login, `package.json` dos três apps) já atualizados; pasta local e repositório GitHub seguem com o nome antigo (`sistema-brigada`) até decisão de renomear o repo.
 - Layout de impressão do diploma (além do PDF gerado, algum requisito de gráfica/papel especial?).
 - Terminologia final dos papéis do sistema no schema (`SUPER_ADMIN`, admin de academia, instrutor, aluno, staff/brigadista etc.) — resolver ao desenhar o schema Prisma.
 - Refinar o catálogo de permissões (decisão 24) para granularidade por ação, se a equipe administrativa pedir.
 - ~~Decisão 19 só está parcialmente implementada...~~ **✅ completa em 2026-09-17**: `DesignationsService.create` (`assertHasValidQualification`) agora bloqueia com 409 quando o staff só tem certificado de turma e/ou certificação externa vencidos (sem nenhuma qualificação válida no momento); quem nunca teve nenhuma das duas não é bloqueado. Achado à parte, não corrigido agora por estar fora do pedido: `Certificate.status` nunca é escrito como `EXPIRED` por nenhum job — a checagem de vencimento (aqui e em `notifyExpiringCertificates`) sempre compara `expiresAt` diretamente, então isso não afeta o bloqueio, mas o enum `EXPIRED` fica sem uso real hoje.
+
+### Convites e acesso de novas pessoas (fechadas em 2026-09-30)
+48. **Papel de cadastro** (`RegistrationKind`: aluno, instrutor, equipe) vale para autocadastro e convite. Aluno recebe `StudentProfile`; instrutor fica sem perfil (é escalável em turmas); equipe fica sem perfil e já é promovida a `StaffMember`. Sempre `Role.ORG_USER`. No link público, `?tipo=` é só sugestão: quem revisa confirma o papel.
+49. **Convite dirigido** (`RegistrationInvite`): e-mail + papel, link único de 7 dias (`/convite/:token`), um convite em aberto por e-mail (convidar de novo cancela o anterior). Ao ser preenchido a conta é criada na hora — o convite é a autorização e quem convidou fica como revisor. O convite é "reservado" de forma atômica (`usedAt`) e devolvido se a criação da conta falhar.
+50. **Resultado do e-mail de acesso é gravado** (`accessEmailStatus` SENT/FAILED em `RegistrationRequest`, `emailStatus` em `RegistrationInvite`). Para isso o transacional passou a usar `sendSingleOrThrow`: com `sendSingle` toda falha aparecia como enviada. A aprovação continua não falhando por causa do e-mail.
+51. **Reenviar acesso** (`POST /users/:id/resend-access` e `/registrations/:id/resend-access`) gera novo link de 7 dias e reenvia o e-mail de boas-vindas/aprovação. Link de primeiro acesso passou de 1h para 7 dias; redefinição de senha ("esqueci") segue 1h.
+52. **Recusa avisa a pessoa** por e-mail (`REGISTRATION_REJECTED`, motivo opcional, dá para desmarcar) e cadastro novo notifica no sino admins e quem tem `registrations:manage`; o menu mostra a contagem de pendentes.
+53. **Dados pessoais em `PersonProfile`, para qualquer papel** (nascimento, gênero, batismo, pioneiro, petições, profissão). `StudentProfile` ficou só com o que é de aluno (saúde, responsável, matrículas). A migração copia os dados existentes (mesmo id) antes de remover as colunas antigas. `POST/PATCH /users` aceita `personProfile` além de `studentProfile`; autocadastro e convite gravam os dados pessoais para aluno, instrutor e equipe, e `birthDate` entrou no catálogo de campos do formulário público.
+54. **Campos opcionais do formulário público são por papel**: `publicRegistrationFields` é a lista do aluno; `publicRegistrationFieldsInstructor` e `publicRegistrationFieldsStaff` são as de instrutor e equipe (mesmo catálogo). A migração copia a lista atual para os dois novos, então nenhuma academia muda de comportamento até configurar. O servidor filtra a submissão pela lista do papel pedido (ou do convite); `GET /public/registrations/:token?kind=` devolve os campos daquele papel. Nascimento, batismo etc. continuam sendo gravados em `PersonProfile` para qualquer papel.

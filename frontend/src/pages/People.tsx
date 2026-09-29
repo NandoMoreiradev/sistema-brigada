@@ -104,24 +104,29 @@ export default function People() {
         resolver: (editing ? zodResolver(editSchema) : zodResolver(createSchema)) as Resolver<FormData>,
     });
     const registrationType = watch('registrationType') ?? 'STUDENT';
-    const isStudentRegistration = editing !== null ? Boolean(editing.studentProfile) : registrationType === 'STUDENT';
+    // Uma pessoa pode ser aluna e instrutora ao mesmo tempo: quem não tem perfil de aluno pode ganhá-lo aqui.
+    const [addingStudentProfile, setAddingStudentProfile] = useState(false);
+    const isStudentRegistration = editing !== null ? Boolean(editing.studentProfile) || addingStudentProfile : registrationType === 'STUDENT';
 
     const openCreate = () => {
+        setAddingStudentProfile(false);
         setEditing(null);
         reset(blankForm);
         setModalOpen(true);
     };
 
     const openEdit = (person: OrgPerson) => {
+        setAddingStudentProfile(false);
         setEditing(person);
-        const profile = person.studentProfile;
+        const profile = person.personProfile;
+        const studentProfile = person.studentProfile;
         reset({
             ...blankForm,
             name: person.name,
             phone: person.phone || '',
             birthDate: profile?.birthDate?.slice(0, 10) || '',
-            guardianName: profile?.guardianName || '',
-            guardianPhone: profile?.guardianPhone || '',
+            guardianName: studentProfile?.guardianName || '',
+            guardianPhone: studentProfile?.guardianPhone || '',
             baptismDate: profile?.baptismDate?.slice(0, 10) || '',
             pioneerStatus: profile?.pioneerStatus || '',
             signedPetitions: profile?.signedPetitions?.join(', ') || '',
@@ -151,6 +156,12 @@ export default function People() {
         },
     });
 
+    const resendAccessMutation = useMutation({
+        mutationFn: (id: string) => peopleApi.resendAccess(id),
+        onSuccess: (result) => (result.sent ? toast.success(result.message) : toast.error(result.message)),
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível reenviar o acesso.'),
+    });
+
     const handleResetPassword = () => {
         if (!editing) return;
         if (window.confirm(`Enviar um novo e-mail de redefinição de senha para ${editing.name}?`)) {
@@ -158,33 +169,36 @@ export default function People() {
         }
     };
 
+    /** Dados pessoais do formulário: iguais para qualquer papel. */
+    const personProfileOf = (formData: FormData) => ({
+        birthDate: formData.birthDate || undefined,
+        baptismDate: formData.baptismDate || undefined,
+        pioneerStatus: formData.pioneerStatus || undefined,
+        profession: formData.profession || undefined,
+        signedPetitions: formData.signedPetitions
+            ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
+            : undefined,
+    });
+
+    const studentProfileOf = (formData: FormData) => ({
+        guardianName: formData.guardianName || undefined,
+        guardianPhone: formData.guardianPhone || undefined,
+    });
+
     const onSubmit = (formData: FormData) => {
         if (editing) {
-            // Só reenvia `studentProfile` se a pessoa já era aluna — do
-            // contrário, um objeto sempre-truthy (mesmo com campos vazios)
-            // faria o backend criar um StudentProfile do nada pra quem não
-            // tinha, transformando silenciosamente um instrutor/equipe em
+            // Só envia `studentProfile` se a pessoa já era aluna ou se pediu o perfil de aluno aqui
+            // ("Adicionar perfil de aluno") — do contrário, um objeto sempre-truthy faria o backend
+            // criar um StudentProfile do nada, transformando silenciosamente um instrutor/equipe em
             // "aluno" só por editar nome/telefone.
-            const studentProfile = editing.studentProfile
-                ? {
-                      birthDate: formData.birthDate || undefined,
-                      guardianName: formData.guardianName || undefined,
-                      guardianPhone: formData.guardianPhone || undefined,
-                      baptismDate: formData.baptismDate || undefined,
-                      pioneerStatus: formData.pioneerStatus || undefined,
-                      profession: formData.profession || undefined,
-                      signedPetitions: formData.signedPetitions
-                          ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
-                          : undefined,
-                  }
-                : undefined;
-
+            // Os dados pessoais, ao contrário, valem para todos e sempre vão.
             saveMutation.mutate(
                 {
                     name: formData.name,
                     phone: formData.phone || undefined,
                     isActive: formData.isActive,
-                    studentProfile,
+                    studentProfile: editing.studentProfile || addingStudentProfile ? studentProfileOf(formData) : undefined,
+                    personProfile: personProfileOf(formData),
                 },
                 { onSuccess: () => toast.success('Pessoa atualizada com sucesso.') },
             );
@@ -194,6 +208,7 @@ export default function People() {
                     name: formData.name,
                     email: formData.email!,
                     phone: formData.phone || undefined,
+                    personProfile: personProfileOf(formData),
                 },
                 {
                     onSuccess: () =>
@@ -203,23 +218,13 @@ export default function People() {
                 },
             );
         } else {
-            const studentProfile = {
-                birthDate: formData.birthDate || undefined,
-                guardianName: formData.guardianName || undefined,
-                guardianPhone: formData.guardianPhone || undefined,
-                baptismDate: formData.baptismDate || undefined,
-                pioneerStatus: formData.pioneerStatus || undefined,
-                profession: formData.profession || undefined,
-                signedPetitions: formData.signedPetitions
-                    ? formData.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
-                    : undefined,
-            };
             saveMutation.mutate(
                 {
                     name: formData.name,
                     email: formData.email!,
                     phone: formData.phone || undefined,
-                    studentProfile,
+                    studentProfile: studentProfileOf(formData),
+                    personProfile: personProfileOf(formData),
                 },
                 { onSuccess: () => toast.success('Aluno cadastrado com sucesso. Um e-mail de boas-vindas foi enviado para ele definir a senha.') },
             );
@@ -365,57 +370,62 @@ export default function People() {
                         </CheckboxField>
                     )}
 
-                    {isStudentRegistration && (
-                        <>
-                            <FieldRow>
-                                <Field>
-                                    <Label htmlFor="birthDate">Data de nascimento</Label>
-                                    <Input id="birthDate" type="date" {...register('birthDate')} />
-                                </Field>
-                                <Field>
-                                    <Label htmlFor="guardianName">Nome do responsável</Label>
-                                    <Input id="guardianName" {...register('guardianName')} />
-                                </Field>
-                            </FieldRow>
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="birthDate">Data de nascimento</Label>
+                            <Input id="birthDate" type="date" {...register('birthDate')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="baptismDate">Data de batismo</Label>
+                            <Input id="baptismDate" type="date" {...register('baptismDate')} />
+                        </Field>
+                    </FieldRow>
 
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="pioneerStatus">Pioneiro</Label>
+                            <Select id="pioneerStatus" {...register('pioneerStatus')}>
+                                <option value="">Não é pioneiro</option>
+                                <option value="AUXILIARY">Pioneiro auxiliar</option>
+                                <option value="REGULAR">Pioneiro regular</option>
+                            </Select>
+                        </Field>
+                        <Field>
+                            <Label htmlFor="profession">Profissão ou área de estudo</Label>
+                            <Input id="profession" {...register('profession')} />
+                        </Field>
+                    </FieldRow>
+
+                    <Field>
+                        <Label htmlFor="signedPetitions">Petições assinadas</Label>
+                        <Input id="signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
+                        <HelpText>Separe múltiplas petições por vírgula. Deixe em branco se não houver petição assinada.</HelpText>
+                    </Field>
+
+                    {isStudentRegistration && (
+                        <FieldRow>
+                            <Field>
+                                <Label htmlFor="guardianName">Nome do responsável</Label>
+                                <Input id="guardianName" {...register('guardianName')} />
+                            </Field>
                             <Field>
                                 <Label htmlFor="guardianPhone">Telefone do responsável</Label>
                                 <Input id="guardianPhone" {...register('guardianPhone')} />
                             </Field>
-
-                            <FieldRow>
-                                <Field>
-                                    <Label htmlFor="baptismDate">Data de batismo</Label>
-                                    <Input id="baptismDate" type="date" {...register('baptismDate')} />
-                                </Field>
-                                <Field>
-                                    <Label htmlFor="pioneerStatus">Pioneiro</Label>
-                                    <Select id="pioneerStatus" {...register('pioneerStatus')}>
-                                        <option value="">Não é pioneiro</option>
-                                        <option value="AUXILIARY">Pioneiro auxiliar</option>
-                                        <option value="REGULAR">Pioneiro regular</option>
-                                    </Select>
-                                </Field>
-                            </FieldRow>
-
-                            <Field>
-                                <Label htmlFor="profession">Profissão ou área de estudo</Label>
-                                <Input id="profession" {...register('profession')} />
-                            </Field>
-
-                            <Field>
-                                <Label htmlFor="signedPetitions">Petições assinadas</Label>
-                                <Input id="signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
-                                <HelpText>Separe múltiplas petições por vírgula. Deixe em branco se não houver petição assinada.</HelpText>
-                            </Field>
-                        </>
+                        </FieldRow>
                     )}
 
-                    {editing && !editing.studentProfile && (
-                        <HelpText>
-                            Esta pessoa não tem perfil de aluno. Pra matriculá-la numa turma, primeiro adicione um perfil de aluno — funcionalidade
-                            ainda não disponível nesta tela.
-                        </HelpText>
+                    {editing && !editing.studentProfile && !addingStudentProfile && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', padding: '0.6rem 0.8rem', background: '#f4f6f8', borderRadius: 8 }}>
+                            <HelpText>Esta pessoa não é aluna. Com o perfil de aluno ela pode ser matriculada em turmas, sem deixar de ser instrutora ou da equipe.</HelpText>
+                            <Button type="button" $variant="secondary" onClick={() => setAddingStudentProfile(true)}>Adicionar perfil de aluno</Button>
+                        </div>
+                    )}
+                    {editing && !editing.studentProfile && addingStudentProfile && (
+                        <HelpText>O perfil de aluno será criado ao salvar.</HelpText>
+                    )}
+                    {editing && (editing.instructorAssignments?.length ?? 0) > 0 && (
+                        <HelpText>Instrutor(a) em {editing.instructorAssignments!.length} turma(s). Para vincular a outras turmas, use "Editar turma".</HelpText>
                     )}
 
                     <FormActions style={editing ? { justifyContent: 'space-between' } : undefined}>
@@ -427,6 +437,17 @@ export default function People() {
                                 disabled={resetPasswordMutation.isPending}
                             >
                                 {resetPasswordMutation.isPending ? 'Enviando...' : 'Redefinir senha'}
+                            </Button>
+                        )}
+                        {editing && (
+                            <Button
+                                type="button"
+                                $variant="ghost"
+                                onClick={() => resendAccessMutation.mutate(editing.id)}
+                                disabled={resendAccessMutation.isPending}
+                                title="Reenvia o e-mail de primeiro acesso, com um novo link de 7 dias"
+                            >
+                                {resendAccessMutation.isPending ? 'Enviando...' : 'Reenviar acesso'}
                             </Button>
                         )}
                         <div style={{ display: 'flex', gap: '0.5rem' }}>

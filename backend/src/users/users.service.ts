@@ -14,11 +14,28 @@ import { Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { StudentProfileDto } from './dto/student-profile.dto';
+import { PersonProfileDto } from './dto/person-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
 import { AuthService } from '../auth/auth.service';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
+
+/** Link de primeiro acesso: mais longo que o de "esqueci a senha" (1h) porque a pessoa pode abrir o e-mail dias depois. */
+export const ACTIVATION_TOKEN_TTL = '7d';
+
+/** Converte o DTO de dados pessoais no formato do Prisma (datas em Date). */
+function personProfileData(dto: PersonProfileDto) {
+    return {
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+        gender: dto.gender,
+        baptismDate: dto.baptismDate ? new Date(dto.baptismDate) : undefined,
+        pioneerStatus: dto.pioneerStatus,
+        signedPetitions: dto.signedPetitions,
+        profession: dto.profession,
+    };
+}
 
 const userListSelect = {
     id: true,
@@ -31,6 +48,7 @@ const userListSelect = {
     createdAt: true,
     directPermissions: true,
     studentProfile: true,
+    personProfile: true,
     staffMember: { select: { id: true, status: true } },
     instructorAssignments: { select: { courseId: true } },
     roleAssignments: { select: { id: true, name: true } },
@@ -45,13 +63,28 @@ export class UsersService {
         private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
 
-    async create(dto: CreateUserDto, organizationId: string) {
-        const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    /**
+     * Miolo de criação de conta reutilizado por `create()` (cadastro manual pela tela de
+     * Alunos) e por `RegistrationsService.approve()` (aprovação de autocadastro público) —
+     * cria User+StudentProfile e gera o link de ativação, mas não manda e-mail nenhum: cada
+     * chamador dispara o gatilho transacional certo (USER_WELCOME vs REGISTRATION_APPROVED)
+     * com o link retornado aqui.
+     */
+    async createAccount(input: {
+        name: string;
+        email: string;
+        phone?: string;
+        organizationId: string;
+        role?: Role;
+        studentProfile?: StudentProfileDto;
+        personProfile?: PersonProfileDto;
+    }) {
+        const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
         if (existing) {
             throw new ConflictException('Já existe um usuário cadastrado com este e-mail.');
         }
 
-        const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+        const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: input.organizationId } });
 
         // Senha aleatória, nunca exposta em lugar nenhum — a pessoa define a própria
         // senha pelo link de ativação do e-mail de boas-vindas (mesmo padrão do
@@ -61,45 +94,58 @@ export class UsersService {
         const user = await this.prisma.$transaction(async (tx) => {
             const user = await tx.user.create({
                 data: {
-                    name: dto.name,
-                    email: dto.email,
+                    name: input.name,
+                    email: input.email,
                     password: hashedPassword,
-                    phone: dto.phone,
-                    role: dto.role ?? Role.ORG_USER,
-                    organizationId,
+                    phone: input.phone,
+                    role: input.role ?? Role.ORG_USER,
+                    organizationId: input.organizationId,
                 },
             });
 
-            if (dto.studentProfile) {
+            if (input.studentProfile) {
                 await tx.studentProfile.create({
                     data: {
                         userId: user.id,
-                        organizationId,
-                        birthDate: dto.studentProfile.birthDate ? new Date(dto.studentProfile.birthDate) : undefined,
-                        gender: dto.studentProfile.gender,
-                        healthInfo: dto.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
-                        guardianName: dto.studentProfile.guardianName,
-                        guardianPhone: dto.studentProfile.guardianPhone,
-                        baptismDate: dto.studentProfile.baptismDate ? new Date(dto.studentProfile.baptismDate) : undefined,
-                        pioneerStatus: dto.studentProfile.pioneerStatus,
-                        signedPetitions: dto.studentProfile.signedPetitions,
-                        profession: dto.studentProfile.profession,
+                        organizationId: input.organizationId,
+                        healthInfo: input.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
+                        guardianName: input.studentProfile.guardianName,
+                        guardianPhone: input.studentProfile.guardianPhone,
                     },
                 });
+            }
+
+            if (input.personProfile) {
+                await tx.personProfile.create({ data: { userId: user.id, organizationId: input.organizationId, ...personProfileData(input.personProfile) } });
             }
 
             return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userListSelect });
         });
 
+        const activationToken = this.authService.createPasswordResetToken(user.id, ACTIVATION_TOKEN_TTL);
+        const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
+
+        return { user, organizationName: organization.name, activationLink };
+    }
+
+    async create(dto: CreateUserDto, organizationId: string) {
+        const { user, organizationName, activationLink } = await this.createAccount({
+            name: dto.name,
+            email: dto.email,
+            phone: dto.phone,
+            organizationId,
+            role: dto.role,
+            studentProfile: dto.studentProfile,
+            personProfile: dto.personProfile,
+        });
+
         // Fora da transação e sem `await` — o e-mail não pode impedir nem atrasar a
         // resposta de criação da pessoa (ex: Resend fora do ar/lento).
         // TransactionalEmailService já captura e loga qualquer falha internamente.
-        const activationToken = this.authService.createPasswordResetToken(user.id);
-        const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
         void this.transactionalEmailService.sendUserWelcomeEmail(
             { name: user.name, email: user.email },
             organizationId,
-            organization.name,
+            organizationName,
             activationLink,
         );
 
@@ -181,8 +227,40 @@ export class UsersService {
         return { message: 'E-mail de redefinição de senha enviado.' };
     }
 
+    /**
+     * Reenvia o e-mail de primeiro acesso (novo link de 7 dias). Diferente de `sendPasswordReset`
+     * (que manda o e-mail de "redefinição"), usa o e-mail de boas-vindas/aprovação, com o mesmo
+     * texto que a pessoa deveria ter recebido — e devolve se o envio realmente saiu, porque o
+     * envio inicial falha em silêncio.
+     */
+    async resendAccess(id: string, organizationId: string): Promise<{ sent: boolean; message: string }> {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { organization: true } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+        if (!user.isActive) {
+            throw new BadRequestException('Esta pessoa está inativa — reative-a antes de reenviar o acesso.');
+        }
+
+        const token = this.authService.createPasswordResetToken(user.id, ACTIVATION_TOKEN_TTL);
+        const link = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+        const organizationName = user.organization?.name ?? '';
+
+        const fromRegistration = await this.prisma.registrationRequest.findFirst({ where: { createdUserId: user.id }, select: { id: true } });
+        const sent = fromRegistration
+            ? await this.transactionalEmailService.sendRegistrationApprovedEmail({ name: user.name, email: user.email }, organizationId, organizationName, link)
+            : await this.transactionalEmailService.sendUserWelcomeEmail({ name: user.name, email: user.email }, organizationId, organizationName, link);
+
+        return {
+            sent,
+            message: sent
+                ? `E-mail de acesso reenviado para ${user.email}.`
+                : 'Não foi possível enviar o e-mail. Confira a configuração de e-mail da academia (Minha Conta › Academia › E-mail).',
+        };
+    }
+
     async update(id: string, organizationId: string, dto: UpdateUserDto) {
-        const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { studentProfile: true } });
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { studentProfile: true, personProfile: true } });
         if (!user) {
             throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
         }
@@ -199,21 +277,24 @@ export class UsersService {
 
             if (dto.studentProfile) {
                 const profileData = {
-                    birthDate: dto.studentProfile.birthDate ? new Date(dto.studentProfile.birthDate) : undefined,
-                    gender: dto.studentProfile.gender,
                     healthInfo: dto.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
                     guardianName: dto.studentProfile.guardianName,
                     guardianPhone: dto.studentProfile.guardianPhone,
-                    baptismDate: dto.studentProfile.baptismDate ? new Date(dto.studentProfile.baptismDate) : undefined,
-                    pioneerStatus: dto.studentProfile.pioneerStatus,
-                    signedPetitions: dto.studentProfile.signedPetitions,
-                    profession: dto.studentProfile.profession,
                 };
 
                 if (user.studentProfile) {
                     await tx.studentProfile.update({ where: { userId: id }, data: profileData });
                 } else {
                     await tx.studentProfile.create({ data: { userId: id, organizationId, ...profileData } });
+                }
+            }
+
+            if (dto.personProfile) {
+                const profileData = personProfileData(dto.personProfile);
+                if (user.personProfile) {
+                    await tx.personProfile.update({ where: { userId: id }, data: profileData });
+                } else {
+                    await tx.personProfile.create({ data: { userId: id, organizationId, ...profileData } });
                 }
             }
 

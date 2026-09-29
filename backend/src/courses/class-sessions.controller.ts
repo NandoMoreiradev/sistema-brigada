@@ -48,8 +48,12 @@ export class ClassSessionsController {
 
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Param('courseId') courseId: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.classSessionsService.findAll(courseId, this.requireOrganizationId(organizationId));
+    findAll(
+        @Param('courseId') courseId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.classSessionsService.findAll(courseId, this.requireOrganizationId(organizationId), user);
     }
 
     @Patch(':sessionId')
@@ -91,8 +95,9 @@ export class ClassSessionsController {
         @Param('courseId') courseId: string,
         @Param('sessionId') sessionId: string,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.classSessionsService.getAttendanceRoster(courseId, this.requireOrganizationId(organizationId), sessionId);
+        return this.classSessionsService.getAttendanceRoster(courseId, this.requireOrganizationId(organizationId), sessionId, user);
     }
 
     @Put(':sessionId/attendance')

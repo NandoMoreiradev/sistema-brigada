@@ -38,13 +38,13 @@ export class TransactionalEmailService {
         trigger: EmailTriggerType,
         variables: MergeTagContext,
         organizationId: string | null,
-    ): Promise<void> {
+    ): Promise<boolean> {
         try {
             const template = await this.emailTemplatesService.findTemplateByTrigger(organizationId, trigger);
 
             if (!template) {
                 this.logger.error(`Nenhum template de e-mail encontrado para o gatilho ${trigger} (academia: ${organizationId ?? 'global'}).`);
-                return;
+                return false;
             }
 
             const finalSubject = this.mergeTagService.process(template.subject, variables);
@@ -61,7 +61,7 @@ export class TransactionalEmailService {
                 senderIdentity: isPlatformTrigger ? 'platform' : 'organization',
             });
 
-            await this.mailService.sendSingle({
+            await this.mailService.sendSingleOrThrow({
                 organizationId: finalOrganizationId,
                 to: recipientEmail,
                 subject: finalSubject,
@@ -69,8 +69,10 @@ export class TransactionalEmailService {
             });
 
             this.logger.log(`E-mail transacional (gatilho: ${trigger}) enviado para ${recipientEmail}.`);
+            return true;
         } catch (error) {
             this.logger.error(`Falha ao orquestrar e-mail transacional (gatilho: ${trigger}) para ${recipientEmail}.`, (error as Error).stack);
+            return false;
         }
     }
 
@@ -137,7 +139,7 @@ export class TransactionalEmailService {
         organizationId: string,
         organizationName: string,
         activationLink: string,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const context: MergeTagContext = {
             organization: { name: organizationName },
             organization_name: organizationName,
@@ -146,6 +148,129 @@ export class TransactionalEmailService {
             login_link: activationLink,
         };
 
-        await this.sendEmailByTrigger(user.email, EmailTriggerType.USER_WELCOME, context, organizationId);
+        return this.sendEmailByTrigger(user.email, EmailTriggerType.USER_WELCOME, context, organizationId);
+    }
+
+    /**
+     * Credenciais de acesso pra quem teve o autocadastro público (registrations/) aprovado
+     * por um staff da academia — gatilho próprio (não USER_WELCOME) porque a mensagem faz
+     * sentido ser diferente do "boas-vindas" de quando um admin cadastra alguém manualmente.
+     * Mesma regra de remetente de USER_WELCOME: sai pelo Resend da própria academia.
+     */
+    async sendRegistrationApprovedEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        activationLink: string,
+    ): Promise<boolean> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            login_link: activationLink,
+        };
+
+        return this.sendEmailByTrigger(user.email, EmailTriggerType.REGISTRATION_APPROVED, context, organizationId);
+    }
+
+    /** Cadastro recusado — avisa a pessoa (com o motivo, se houver). Sai pelo Resend da academia. */
+    async sendRegistrationRejectedEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        reason?: string | null,
+    ): Promise<boolean> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            rejection_reason: reason?.trim() || '',
+        };
+
+        return this.sendEmailByTrigger(user.email, EmailTriggerType.REGISTRATION_REJECTED, context, organizationId);
+    }
+
+    /** Convite dirigido: link único do cadastro, já com o papel escolhido por quem convidou. */
+    async sendRegistrationInviteEmail(
+        invitee: { name?: string | null; email: string },
+        organizationId: string,
+        organizationName: string,
+        kindLabel: string,
+        inviteLink: string,
+    ): Promise<boolean> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: invitee.name ?? '', email: invitee.email },
+            user_name: invitee.name ?? '',
+            invite_link: inviteLink,
+            invite_kind: kindLabel,
+        };
+
+        return this.sendEmailByTrigger(invitee.email, EmailTriggerType.REGISTRATION_INVITE, context, organizationId);
+    }
+
+    /** Certificado emitido — sai pelo Resend da academia, como CERTIFICATE_EXPIRING. */
+    async sendCertificateIssuedEmail(
+        student: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        courseName: string,
+        link: string,
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: student.name, email: student.email },
+            user_name: student.name,
+            student: { name: student.name },
+            student_name: student.name,
+            course: { name: courseName },
+            certificate: { link },
+        };
+
+        await this.sendEmailByTrigger(student.email, EmailTriggerType.CERTIFICATE_ISSUED, context, organizationId);
+    }
+
+    /** Matrícula confirmada em uma turma. */
+    async sendEnrollmentConfirmedEmail(
+        student: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        course: { name: string; startDate: string; location: string; link: string },
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: student.name, email: student.email },
+            user_name: student.name,
+            student: { name: student.name },
+            student_name: student.name,
+            course,
+        };
+
+        await this.sendEmailByTrigger(student.email, EmailTriggerType.ENROLLMENT_CONFIRMED, context, organizationId);
+    }
+
+    /** Pessoa escalada (designada) para um evento. */
+    async sendDesignationAssignedEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        event: { name: string; date: string; location: string; link: string },
+        role: string,
+    ): Promise<void> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            event,
+            designation: { role },
+        };
+
+        await this.sendEmailByTrigger(user.email, EmailTriggerType.DESIGNATION_ASSIGNED, context, organizationId);
     }
 }

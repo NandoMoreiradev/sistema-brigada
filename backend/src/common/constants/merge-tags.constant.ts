@@ -2,7 +2,7 @@
 //
 // Catálogo de merge tags disponíveis nos templates de e-mail (ver EmailTemplatesService.
 // getAvailableMergeTags e o construtor visual no frontend). Trimado de maskotCrmEdu/
-// backend/src/constants/merge-tags.constant.ts para só as tags que os 3 gatilhos deste
+// backend/src/constants/merge-tags.constant.ts para só as tags que os gatilhos deste
 // produto usam — sem lead/visit/checkout/assinatura/pesquisa NPS.
 
 export interface MergeTag {
@@ -37,7 +37,20 @@ export const MERGE_TAGS: MergeTagGroup[] = [
         label: 'Aluno / Turma',
         tags: [
             { value: '{{student.name}}', label: 'Nome do aluno', description: 'Usado no e-mail de vencimento de certificado.' },
-            { value: '{{course.name}}', label: 'Nome da turma', description: 'Usado no e-mail de vencimento de certificado.' },
+            { value: '{{course.name}}', label: 'Nome da turma', description: 'Usado nos e-mails de certificado e de matrícula.' },
+            { value: '{{course.startDate}}', label: 'Início da turma', description: 'Data de início da turma. Usado no e-mail de matrícula confirmada.' },
+            { value: '{{course.location}}', label: 'Local da turma', description: 'Local da turma. Usado no e-mail de matrícula confirmada.' },
+            { value: '{{course.link}}', label: 'Link da turma', description: 'Link para a turma. Usado no e-mail de matrícula confirmada.' },
+        ],
+    },
+    {
+        label: 'Evento / Escala',
+        tags: [
+            { value: '{{event.name}}', label: 'Nome do evento', description: 'Usado no e-mail de nova designação.' },
+            { value: '{{event.date}}', label: 'Data e hora do evento', description: 'Usado no e-mail de nova designação.' },
+            { value: '{{event.location}}', label: 'Local do evento', description: 'Usado no e-mail de nova designação.' },
+            { value: '{{event.link}}', label: 'Link do evento', description: 'Link para confirmar ou recusar a escala. Usado no e-mail de nova designação.' },
+            { value: '{{designation.role}}', label: 'Função na escala', description: 'Função atribuída à pessoa. Usado no e-mail de nova designação.' },
         ],
     },
     {
@@ -49,6 +62,21 @@ export const MERGE_TAGS: MergeTagGroup[] = [
                 description: 'Usado no e-mail de boas-vindas do administrador de academia.',
             },
             {
+                value: '{{invite_link}}',
+                label: 'Link do convite',
+                description: 'Usado no e-mail de convite para se cadastrar na academia.',
+            },
+            {
+                value: '{{invite_kind}}',
+                label: 'Papel do convite',
+                description: 'Aluno, instrutor ou equipe — o papel com que a pessoa foi convidada.',
+            },
+            {
+                value: '{{rejection_reason}}',
+                label: 'Motivo da recusa',
+                description: 'Motivo informado por quem recusou o cadastro (pode estar vazio).',
+            },
+            {
                 value: '{{password_reset_link}}',
                 label: 'Link de redefinição de senha',
                 description: 'Usado no e-mail de "esqueci minha senha".',
@@ -56,7 +84,7 @@ export const MERGE_TAGS: MergeTagGroup[] = [
             {
                 value: '{{certificate.link}}',
                 label: 'Link do certificado',
-                description: 'Usado no e-mail de vencimento de certificado.',
+                description: 'Usado nos e-mails de certificado emitido e de vencimento de certificado.',
             },
             {
                 value: '{{certificate.expiresAt}}',

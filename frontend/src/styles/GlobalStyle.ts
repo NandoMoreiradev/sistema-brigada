@@ -60,20 +60,24 @@ export const GlobalStyle = createGlobalStyle`
         animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
 
-    /* Usado por DesignationsTab (EventDetail.tsx) pra imprimir só a escala,
-       sem o resto do layout (nav, abas, botões) — o conteúdo real fica num
-       portal anexado direto ao body, ver #print-schedule-portal. */
-    #print-schedule-portal {
+    /* Impressão de escala/mapas (pages/event-detail/PrintPortal.tsx): imprime só o conteúdo do
+       portal, sem o resto do layout (nav, abas, botões). O portal fica anexado direto ao body e só
+       aparece na impressão quando body.is-printing está ativo. */
+    #print-portal {
         display: none;
     }
 
     @media print {
-        body.printing-schedule > #root {
+        body.is-printing > #root {
             display: none !important;
         }
 
-        body.printing-schedule #print-schedule-portal {
+        body.is-printing #print-portal {
             display: block !important;
+        }
+
+        body.is-printing {
+            background: #fff !important;
         }
     }
 `;

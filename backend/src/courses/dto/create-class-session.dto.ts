@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, Matches } from 'class-validator';
+import { IsString, IsOptional, IsDateString, Matches, IsArray, MaxLength } from 'class-validator';
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -15,4 +15,16 @@ export class CreateClassSessionDto {
     @IsString()
     @IsOptional()
     roomId?: string;
+
+    /** Assunto/tema da aula do dia. */
+    @IsString()
+    @IsOptional()
+    @MaxLength(200, { message: 'O assunto não pode exceder 200 caracteres.' })
+    topic?: string;
+
+    /** Professores escalados (todos precisam ser instrutores da turma). Vazio = qualquer instrutor da turma. */
+    @IsArray()
+    @IsString({ each: true })
+    @IsOptional()
+    instructorIds?: string[];
 }

@@ -30,4 +30,9 @@ export class CreateEventPostDto {
     @Max(1)
     @IsOptional()
     posY?: number;
+
+    /** Planta onde o posto é plotado. Sem isso e com uma única planta no evento, usa essa planta. */
+    @IsString()
+    @IsOptional()
+    floorPlanId?: string;
 }

@@ -39,6 +39,7 @@ export default function ResetPassword() {
     const navigate = useNavigate();
     const token = searchParams.get('token');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [expired, setExpired] = useState(false);
 
     const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -62,11 +63,25 @@ export default function ResetPassword() {
             toast.success('Senha redefinida com sucesso. Faça login com a nova senha.');
             navigate('/login', { replace: true });
         } catch (error: any) {
-            toast.error(error?.response?.data?.message || 'Token de redefinição inválido ou expirado.');
+            // Token inválido/vencido: em vez de só um aviso que some, oferece pedir outro link.
+            // (Outros 400, como senha fora da política, seguem como aviso.)
+            if (/token/i.test(String(error?.response?.data?.message ?? ''))) setExpired(true);
+            else toast.error(error?.response?.data?.message || 'Não foi possível redefinir a senha.');
         } finally {
             setIsSubmitting(false);
         }
     };
+
+    if (expired) {
+        return (
+            <AuthLayout title="Link vencido" subtitle="Este link de acesso expirou ou já foi usado">
+                <Form>
+                    <HelpText>Sem problema: peça um novo link com o seu e-mail e você recebe outro na hora.</HelpText>
+                    <AuthLink to="/forgot-password" style={{ alignSelf: 'center' }}>Pedir um novo link</AuthLink>
+                </Form>
+            </AuthLayout>
+        );
+    }
 
     return (
         <AuthLayout title="Nova senha" subtitle="Escolha uma nova senha para sua conta">

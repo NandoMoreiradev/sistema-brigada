@@ -65,13 +65,14 @@ export class CourseLessonsController {
     }
 
     @Delete(':lessonId')
-    @RequirePermission('courses:manage')
+    @Roles(...ALL_ORG_ROLES)
     remove(
         @Param('courseId') courseId: string,
         @Param('lessonId') lessonId: string,
         @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
     ) {
-        return this.courseLessonsService.remove(courseId, this.requireOrganizationId(organizationId), lessonId);
+        return this.courseLessonsService.remove(courseId, this.requireOrganizationId(organizationId), lessonId, user);
     }
 
     @Put(':lessonId/progress')

@@ -6,6 +6,7 @@ import type {
     Course,
     Room,
     ClassSession,
+    ClassLogEntry,
     Enrollment,
     AttendanceRosterEntry,
     AttendanceStatus,
@@ -32,9 +33,13 @@ export interface CreateCourseInput {
     instructorUserIds?: string[];
 }
 
-export interface UpdateCourseInput extends Partial<CreateCourseInput> {
-    status?: EventStatus;
-}
+/**
+ * Na edição, `null` limpa o campo no backend (ex.: tirar a validade do certificado ou o limite
+ * de vagas); `undefined` deixa como está.
+ */
+export type UpdateCourseInput = {
+    [K in Exclude<keyof CreateCourseInput, 'instructorUserIds'>]?: CreateCourseInput[K] | null;
+} & { status?: EventStatus };
 
 export const coursesApi = {
     list: async (search?: string) => {
@@ -77,20 +82,35 @@ export const roomsApi = {
     },
 };
 
+export interface SessionInput {
+    date: string;
+    startTime: string;
+    endTime: string;
+    roomId?: string;
+    /** Assunto da aula; string vazia limpa. */
+    topic?: string;
+    /** Professores escalados (subconjunto dos instrutores da turma); lista vazia = qualquer instrutor. */
+    instructorIds?: string[];
+}
+
 export const classSessionsApi = {
     list: async (courseId: string) => {
         const { data } = await api.get<ClassSession[]>(`/courses/${courseId}/sessions`);
         return data;
     },
-    create: async (courseId: string, input: { date: string; startTime: string; endTime: string; roomId?: string }) => {
+    create: async (courseId: string, input: SessionInput) => {
         const { data } = await api.post<ClassSession>(`/courses/${courseId}/sessions`, input);
+        return data;
+    },
+    update: async (courseId: string, sessionId: string, input: Partial<SessionInput>) => {
+        const { data } = await api.patch<ClassSession>(`/courses/${courseId}/sessions/${sessionId}`, input);
         return data;
     },
     remove: async (courseId: string, sessionId: string) => {
         await api.delete(`/courses/${courseId}/sessions/${sessionId}`);
     },
     upsertLog: async (courseId: string, sessionId: string, content: string) => {
-        const { data } = await api.put(`/courses/${courseId}/sessions/${sessionId}/log`, { content });
+        const { data } = await api.put<ClassLogEntry>(`/courses/${courseId}/sessions/${sessionId}/log`, { content });
         return data;
     },
     getAttendance: async (courseId: string, sessionId: string) => {
@@ -122,6 +142,11 @@ export interface CourseLesson {
     progress: Array<{ completed: boolean }>;
 }
 
+export interface ModuleInstructor {
+    userId: string;
+    user: { id: string; name: string };
+}
+
 export interface CourseLessonInput {
     moduleId: string;
     title: string;
@@ -136,6 +161,8 @@ export interface CourseModuleWithLessons {
     courseId: string;
     title: string;
     order: number;
+    /** Professores responsáveis. Vazio = qualquer instrutor da turma edita as aulas do módulo. */
+    instructors: ModuleInstructor[];
     lessons: CourseLesson[];
 }
 
@@ -146,6 +173,10 @@ export const courseModulesApi = {
     },
     create: async (courseId: string, input: { title: string; order?: number }) => {
         const { data } = await api.post<CourseModuleWithLessons>(`/courses/${courseId}/modules`, input);
+        return data;
+    },
+    setInstructors: async (courseId: string, moduleId: string, userIds: string[]) => {
+        const { data } = await api.put<{ instructors: ModuleInstructor[] }>(`/courses/${courseId}/modules/${moduleId}/instructors`, { userIds });
         return data;
     },
     remove: async (courseId: string, moduleId: string) => {

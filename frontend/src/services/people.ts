@@ -5,10 +5,14 @@ import { api } from './api';
 import type { OrgPerson, Paginated, PioneerStatus } from '@/types';
 
 export interface StudentProfileInput {
-    birthDate?: string;
-    gender?: string;
     guardianName?: string;
     guardianPhone?: string;
+}
+
+/** Dados pessoais: valem para qualquer papel (aluno, instrutor, equipe). */
+export interface PersonProfileInput {
+    birthDate?: string;
+    gender?: string;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];
@@ -21,6 +25,7 @@ export interface CreatePersonInput {
     phone?: string;
     role?: 'ORG_ADMIN' | 'ORG_USER';
     studentProfile?: StudentProfileInput;
+    personProfile?: PersonProfileInput;
 }
 
 export interface UpdatePersonInput {
@@ -28,6 +33,7 @@ export interface UpdatePersonInput {
     phone?: string;
     isActive?: boolean;
     studentProfile?: StudentProfileInput;
+    personProfile?: PersonProfileInput;
 }
 
 /**
@@ -81,6 +87,10 @@ export const peopleApi = {
     },
     sendPasswordReset: async (id: string) => {
         const { data } = await api.post<{ message: string }>(`/users/${id}/send-password-reset`);
+        return data;
+    },
+    resendAccess: async (id: string) => {
+        const { data } = await api.post<{ sent: boolean; message: string }>(`/users/${id}/resend-access`);
         return data;
     },
     addExternalCertification: async (userId: string, input: CreateExternalCertificationInput) => {

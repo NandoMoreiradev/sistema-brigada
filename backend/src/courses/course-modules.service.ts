@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCourseModuleDto } from './dto/create-course-module.dto';
 import { UpdateCourseModuleDto } from './dto/update-course-module.dto';
+import { assertAreCourseInstructors, INSTRUCTOR_USER_SELECT } from './course-instructors.util';
 
 @Injectable()
 export class CourseModulesService {
@@ -26,6 +27,7 @@ export class CourseModulesService {
         return this.prisma.courseModule.findMany({
             where: { courseId },
             include: {
+                instructors: { include: { user: INSTRUCTOR_USER_SELECT } },
                 lessons: {
                     where: { active: true },
                     orderBy: { order: 'asc' },
@@ -48,6 +50,18 @@ export class CourseModulesService {
     async update(courseId: string, organizationId: string, moduleId: string, dto: UpdateCourseModuleDto) {
         await this.requireModule(courseId, organizationId, moduleId);
         return this.prisma.courseModule.update({ where: { id: moduleId }, data: dto });
+    }
+
+    /** Define quem é responsável pelo módulo. Lista vazia libera o módulo para qualquer instrutor da turma. */
+    async setInstructors(courseId: string, organizationId: string, moduleId: string, userIds: string[]) {
+        await this.requireModule(courseId, organizationId, moduleId);
+        const validIds = await assertAreCourseInstructors(this.prisma, courseId, userIds);
+
+        return this.prisma.courseModule.update({
+            where: { id: moduleId },
+            data: { instructors: { deleteMany: {}, create: validIds.map((userId) => ({ userId })) } },
+            include: { instructors: { include: { user: INSTRUCTOR_USER_SELECT } } },
+        });
     }
 
     async remove(courseId: string, organizationId: string, moduleId: string) {

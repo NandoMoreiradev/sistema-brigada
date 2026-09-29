@@ -75,7 +75,7 @@ export class OrganizationsService {
         // Fora da transação e sem `await` — o e-mail não pode impedir nem atrasar a resposta
         // de criação da academia (ex: Resend fora do ar/lento). TransactionalEmailService já
         // captura e loga qualquer falha de envio internamente, sem propagar exceção.
-        const activationToken = this.authService.createPasswordResetToken(admin.id);
+        const activationToken = this.authService.createPasswordResetToken(admin.id, '7d');
         const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
         void this.transactionalEmailService.sendOrganizationAdminWelcomeEmail(
             { name: admin.name, email: admin.email, organizationId: organization.id },
@@ -129,18 +129,39 @@ export class OrganizationsService {
     }
 
     async update(id: string, dto: UpdateOrganizationDto) {
-        await this.findOne(id);
+        const existing = await this.findOne(id);
 
         if (dto.subdomain) {
-            const existing = await this.prisma.organization.findFirst({
+            const duplicate = await this.prisma.organization.findFirst({
                 where: { subdomain: dto.subdomain, NOT: { id } },
             });
-            if (existing) {
+            if (duplicate) {
                 throw new ConflictException('Já existe uma academia cadastrada com este subdomínio.');
             }
         }
 
-        const updated = await this.prisma.organization.update({ where: { id }, data: dto });
+        const data: Prisma.OrganizationUpdateInput = { ...dto };
+        // Ativar pela primeira vez gera o token do link público; reativar depois de
+        // desativar reaproveita o mesmo (só "Gerar novo link" troca, ver
+        // regeneratePublicRegistrationToken).
+        if (dto.publicRegistrationEnabled === true && !existing.publicRegistrationToken) {
+            data.publicRegistrationToken = crypto.randomUUID();
+        }
+
+        const updated = await this.prisma.organization.update({ where: { id }, data });
+        return this.maskResendKey(updated);
+    }
+
+    async regeneratePublicRegistrationToken(id: string) {
+        const organization = await this.findOne(id);
+        if (!organization.publicRegistrationEnabled) {
+            throw new BadRequestException('Ative o autocadastro público antes de gerar um link.');
+        }
+
+        const updated = await this.prisma.organization.update({
+            where: { id },
+            data: { publicRegistrationToken: crypto.randomUUID() },
+        });
         return this.maskResendKey(updated);
     }
 
@@ -182,8 +203,8 @@ export class OrganizationsService {
             await this.mailService.sendSingleOrThrow({
                 organizationId: id,
                 to,
-                subject: 'E-mail de teste — configuração de envio (Ignis)',
-                html: '<p>Se você recebeu este e-mail, a configuração de envio da sua academia no Ignis está funcionando corretamente.</p>',
+                subject: 'E-mail de teste — configuração de envio (Pronthea)',
+                html: '<p>Se você recebeu este e-mail, a configuração de envio da sua academia no Pronthea está funcionando corretamente.</p>',
             });
         } catch (error) {
             throw new BadRequestException(`Não foi possível enviar o e-mail de teste: ${(error as Error).message}`);

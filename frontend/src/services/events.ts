@@ -14,11 +14,34 @@ export interface EventPost {
     notes: string | null;
     posX: number | null;
     posY: number | null;
+    /** Planta em que o posto está posicionado (`null` = ainda sem planta). */
+    floorPlanId: string | null;
 }
+
+/** Planta baixa de uma área/andar do evento (até 10 por evento). */
+export interface EventFloorPlan {
+    id: string;
+    name: string;
+    imageKey: string | null;
+    imageUrl: string;
+    order: number;
+    _count?: { posts: number };
+}
+
+export const MAX_FLOOR_PLANS = 10;
 
 export interface Team {
     id: string;
     name: string;
+}
+
+/** Turno do evento (iguais para todos os postos). O "dia" é derivado do início, no fuso do app. */
+export interface EventShift {
+    id: string;
+    name: string;
+    start: string;
+    end: string;
+    _count?: { designations: number };
 }
 
 export interface EventOperation {
@@ -28,6 +51,8 @@ export interface EventOperation {
     floorPlanKey: string | null;
     floorPlanUrl: string | null;
     posts: EventPost[];
+    shifts: EventShift[];
+    floorPlans: EventFloorPlan[];
     _count: { designations: number; occurrenceReports: number };
 }
 
@@ -91,6 +116,8 @@ export interface Designation {
     shiftStart: string;
     shiftEnd: string;
     status: DesignationStatus;
+    shiftId: string | null;
+    shift: EventShift | null;
     staffMember: { id: string; user: { id: string; name: string; email: string } };
     post: EventPost | null;
     team: Team | null;
@@ -101,17 +128,17 @@ export const designationsApi = {
         const { data } = await api.get<Designation[]>(`/events/${eventId}/designations`);
         return data;
     },
-    create: async (eventId: string, input: { staffMemberId: string; role: string; shiftStart: string; shiftEnd: string; postId?: string }) => {
+    create: async (eventId: string, input: { staffMemberId: string; role: string; shiftId: string; postId?: string }) => {
         const { data } = await api.post<Designation>(`/events/${eventId}/designations`, input);
         return data;
     },
+    /** Escala várias pessoas em um ou mais turnos de uma vez (pessoas × turnos). */
     createBulk: async (
         eventId: string,
         input: {
             staffMemberIds: string[];
             role: string;
-            shiftStart: string;
-            shiftEnd: string;
+            shiftIds: string[];
             postId?: string;
             asTeam?: boolean;
             teamName?: string;
@@ -123,7 +150,7 @@ export const designationsApi = {
     update: async (
         eventId: string,
         designationId: string,
-        input: Partial<{ staffMemberId: string; role: string; shiftStart: string; shiftEnd: string; postId: string }>,
+        input: Partial<{ staffMemberId: string; role: string; shiftId: string; postId: string | null }>,
     ) => {
         const { data } = await api.patch<Designation>(`/events/${eventId}/designations/${designationId}`, input);
         return data;
@@ -137,16 +164,70 @@ export const designationsApi = {
     },
 };
 
+export interface ShiftTemplate {
+    name: string;
+    /** HH:mm */
+    startTime: string;
+    /** HH:mm — fim <= início significa que termina no dia seguinte. */
+    endTime: string;
+}
+
+export const eventShiftsApi = {
+    list: async (eventId: string) => {
+        const { data } = await api.get<EventShift[]>(`/events/${eventId}/shifts`);
+        return data;
+    },
+    create: async (eventId: string, input: { name: string; start: string; end: string }) => {
+        const { data } = await api.post<EventShift>(`/events/${eventId}/shifts`, input);
+        return data;
+    },
+    /** Repete cada modelo de turno em cada dia (yyyy-MM-dd). Turnos que já existem são ignorados. */
+    createBulk: async (eventId: string, input: { days: string[]; shifts: ShiftTemplate[] }) => {
+        const { data } = await api.post<{ created: number; skipped: number; shifts: EventShift[] }>(`/events/${eventId}/shifts/bulk`, input);
+        return data;
+    },
+    update: async (eventId: string, shiftId: string, input: Partial<{ name: string; start: string; end: string }>) => {
+        const { data } = await api.patch<EventShift>(`/events/${eventId}/shifts/${shiftId}`, input);
+        return data;
+    },
+    remove: async (eventId: string, shiftId: string) => {
+        await api.delete(`/events/${eventId}/shifts/${shiftId}`);
+    },
+};
+
+export const eventFloorPlansApi = {
+    list: async (eventId: string) => {
+        const { data } = await api.get<EventFloorPlan[]>(`/events/${eventId}/floor-plans`);
+        return data;
+    },
+    /** O nome é obrigatório a partir da segunda planta (a primeira vira "Planta 1"). */
+    create: async (eventId: string, input: { name?: string; imageKey?: string; imageUrl: string }) => {
+        const { data } = await api.post<EventFloorPlan>(`/events/${eventId}/floor-plans`, input);
+        return data;
+    },
+    update: async (eventId: string, planId: string, input: Partial<{ name: string; imageKey: string; imageUrl: string }>) => {
+        const { data } = await api.patch<EventFloorPlan>(`/events/${eventId}/floor-plans/${planId}`, input);
+        return data;
+    },
+    reorder: async (eventId: string, ids: string[]) => {
+        const { data } = await api.put<EventFloorPlan[]>(`/events/${eventId}/floor-plans/order`, { ids });
+        return data;
+    },
+    remove: async (eventId: string, planId: string) => {
+        await api.delete(`/events/${eventId}/floor-plans/${planId}`);
+    },
+};
+
 export const eventPostsApi = {
     list: async (eventId: string) => {
         const { data } = await api.get<EventPost[]>(`/events/${eventId}/posts`);
         return data;
     },
-    create: async (eventId: string, input: { name: string; capacity?: number; notes?: string; posX?: number; posY?: number }) => {
+    create: async (eventId: string, input: { name: string; capacity?: number; notes?: string; posX?: number; posY?: number; floorPlanId?: string }) => {
         const { data } = await api.post<EventPost>(`/events/${eventId}/posts`, input);
         return data;
     },
-    update: async (eventId: string, postId: string, input: Partial<{ name: string; capacity: number; notes: string; posX: number; posY: number }>) => {
+    update: async (eventId: string, postId: string, input: Partial<{ name: string; capacity: number; notes: string; posX: number; posY: number; floorPlanId: string }>) => {
         const { data } = await api.patch<EventPost>(`/events/${eventId}/posts/${postId}`, input);
         return data;
     },
