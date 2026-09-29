@@ -5,6 +5,10 @@ export const TableWrapper = styled.div`
     border-radius: ${({ theme }) => theme.radii.md};
     border: 1px solid ${({ theme }) => theme.colors.borderLight};
     overflow: hidden;
+    /* Dentro do PageLayout (flex em coluna com min-height: 0), o overflow
+       hidden zera o min-height automático e o wrapper encolhia até caber na
+       tela, cortando as linhas em vez de rolar a página. */
+    flex-shrink: 0;
 `;
 
 export const Table = styled.table`
