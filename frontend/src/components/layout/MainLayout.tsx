@@ -7,6 +7,8 @@
 
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { registrationsApi } from '@/services/registrations';
 import styled from 'styled-components';
 import {
     LayoutDashboard,
@@ -98,6 +100,18 @@ const Nav = styled.nav`
     gap: 0.2rem;
     flex: 1;
     overflow-y: auto;
+`;
+
+const CountBadge = styled.span`
+    margin-left: auto;
+    min-width: 1.25rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: #e03131;
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-align: center;
 `;
 
 const NavItem = styled(NavLink)`
@@ -330,6 +344,14 @@ export function MainLayout({ children }: { children: ReactNode }) {
     // troca de propósito — reuniões/assembleias são abertas a toda a
     // organização por design (ver meetings.service.ts), não só a quem
     // administra.
+    const canReviewRegistrations = !isSuperAdmin && hasPermission(user, 'registrations:manage');
+    const { data: pendingRegistrations } = useQuery({
+        queryKey: ['registrations', 'pending-count'],
+        queryFn: () => registrationsApi.pendingCount(),
+        enabled: canReviewRegistrations,
+        refetchInterval: 60_000,
+    });
+
     const navItems = isSuperAdmin
         ? []
         : [
@@ -342,7 +364,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
                   ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
                   : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
               ...(hasPermission(user, 'people:manage') ? [{ to: '/people', label: 'Pessoas', icon: Users }] : []),
-              ...(hasPermission(user, 'registrations:manage') ? [{ to: '/registrations', label: 'Cadastros pendentes', icon: UserPlus }] : []),
+              ...(hasPermission(user, 'registrations:manage') ? [{ to: '/registrations', label: 'Cadastros', icon: UserPlus, badge: pendingRegistrations }] : []),
               hasPermission(user, 'certificates:manage')
                   ? { to: '/certificates', label: 'Certificados', icon: Award }
                   : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
@@ -360,10 +382,11 @@ export function MainLayout({ children }: { children: ReactNode }) {
                 </Brand>
 
                 <Nav>
-                    {navItems.map(({ to, label, icon: Icon }) => (
+                    {navItems.map(({ to, label, icon: Icon, badge }: { to: string; label: string; icon: typeof UserPlus; badge?: number }) => (
                         <NavItem key={to} to={to}>
                             <Icon size={18} />
                             {label}
+                            {!!badge && <CountBadge aria-label={`${badge} pendente(s)`}>{badge > 99 ? '99+' : badge}</CountBadge>}
                         </NavItem>
                     ))}
 

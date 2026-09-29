@@ -12,6 +12,7 @@ import { Field, Label, Input, Form, HelpText } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { FilterChip } from '@/pages/course-detail/styles';
 import { toast } from '@/utils/toast';
+import { KIND_LABEL, KIND_ORDER, KIND_QUERY } from '@/utils/registrationKinds';
 import { SettingsCard, TabStack, SaveFooter, CardSkeleton, SwitchRow, SwitchInput, DangerZone, useReportDirty } from './SettingsParts';
 import { useMyOrganization } from './useMyOrganization';
 
@@ -28,6 +29,14 @@ const LinkRow = styled.div`
     display: flex;
     gap: 0.5rem;
     align-items: center;
+`;
+
+const KindTag = styled.span`
+    flex: none;
+    width: 4.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: ${({ theme }) => theme.colors.textMedium};
 `;
 
 const Chips = styled.div`
@@ -61,10 +70,9 @@ export function OrganizationRegistrationTab() {
 
     const toggleField = (value: string) => setFields((prev) => (prev.includes(value) ? prev.filter((f) => f !== value) : [...prev, value]));
 
-    const copyLink = async () => {
-        if (!link) return;
+    const copyLink = async (value: string) => {
         try {
-            await navigator.clipboard.writeText(link);
+            await navigator.clipboard.writeText(value);
             toast.success('Link copiado.');
         } catch {
             toast.error('Não foi possível copiar o link.');
@@ -108,14 +116,26 @@ export function OrganizationRegistrationTab() {
                             </Field>
 
                             <Field>
-                                <Label>Link para compartilhar</Label>
+                                <Label>Links para compartilhar</Label>
                                 {link ? (
-                                    <LinkRow>
-                                        <Input readOnly value={link} onFocus={(e) => e.target.select()} />
-                                        <Button type="button" $variant="secondary" onClick={copyLink} aria-label="Copiar link"><Copy size={16} /></Button>
-                                    </LinkRow>
+                                    <>
+                                        {KIND_ORDER.map((kind) => {
+                                            const kindLink = kind === 'STUDENT' ? link : `${link}?tipo=${KIND_QUERY[kind]}`;
+                                            return (
+                                                <LinkRow key={kind}>
+                                                    <KindTag>{KIND_LABEL[kind]}</KindTag>
+                                                    <Input readOnly value={kindLink} onFocus={(e) => e.target.select()} />
+                                                    <Button type="button" $variant="secondary" onClick={() => copyLink(kindLink)} aria-label={`Copiar link de ${KIND_LABEL[kind]}`}><Copy size={16} /></Button>
+                                                </LinkRow>
+                                            );
+                                        })}
+                                        <HelpText>
+                                            O tipo do link é só uma sugestão: quem revisa confirma o papel de cada pessoa. Para convidar
+                                            alguém já com o papel definido, use "Convidar pessoa" na tela de Cadastros.
+                                        </HelpText>
+                                    </>
                                 ) : (
-                                    <HelpText>O link é gerado quando você salva com o cadastro público ativado.</HelpText>
+                                    <HelpText>Os links são gerados quando você salva com o cadastro público ativado.</HelpText>
                                 )}
                             </Field>
                         </>

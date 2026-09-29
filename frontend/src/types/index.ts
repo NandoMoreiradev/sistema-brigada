@@ -42,6 +42,29 @@ export interface RegistrationRequest {
     rejectionReason?: string | null;
     createdAt: string;
     reviewedBy?: { id: string; name: string } | null;
+    requestedKind: RegistrationKind;
+    approvedKind?: RegistrationKind | null;
+    /** Resultado do envio do e-mail de acesso na aprovação. */
+    accessEmailStatus?: 'SENT' | 'FAILED' | null;
+    accessEmailAt?: string | null;
+    inviteId?: string | null;
+    createdUserId?: string | null;
+}
+
+/** Papel com que a pessoa entra: aluno (com perfil), instrutor (sem perfil, escalável em turmas) ou equipe. */
+export type RegistrationKind = 'STUDENT' | 'INSTRUCTOR' | 'STAFF';
+
+export interface RegistrationInvite {
+    id: string;
+    email: string;
+    name?: string | null;
+    kind: RegistrationKind;
+    status: 'PENDING' | 'USED' | 'EXPIRED' | 'REVOKED';
+    expiresAt: string;
+    emailStatus?: 'SENT' | 'FAILED' | null;
+    emailSentAt?: string | null;
+    createdAt: string;
+    createdBy?: { id: string; name: string } | null;
 }
 
 export interface User {

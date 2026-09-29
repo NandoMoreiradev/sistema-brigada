@@ -50,6 +50,7 @@ export function Router() {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/badge/:token" element={<BadgePage />} />
             <Route path="/register/:token" element={<RegistrationFormPage />} />
+            <Route path="/convite/:token" element={<RegistrationFormPage mode="invite" />} />
 
             {/* Privadas — qualquer autenticado */}
             <Route element={<ProtectedRoute />}>

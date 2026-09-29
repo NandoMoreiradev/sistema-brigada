@@ -15,7 +15,9 @@ export type EmailTriggerType =
     | 'REGISTRATION_APPROVED'
     | 'CERTIFICATE_ISSUED'
     | 'ENROLLMENT_CONFIRMED'
-    | 'DESIGNATION_ASSIGNED';
+    | 'DESIGNATION_ASSIGNED'
+    | 'REGISTRATION_REJECTED'
+    | 'REGISTRATION_INVITE';
 
 export interface EmailTemplate {
     id: string;

@@ -83,6 +83,10 @@ export const peopleApi = {
         const { data } = await api.post<{ message: string }>(`/users/${id}/send-password-reset`);
         return data;
     },
+    resendAccess: async (id: string) => {
+        const { data } = await api.post<{ sent: boolean; message: string }>(`/users/${id}/resend-access`);
+        return data;
+    },
     addExternalCertification: async (userId: string, input: CreateExternalCertificationInput) => {
         const { data } = await api.post<ExternalCertification>(`/users/${userId}/external-certifications`, input);
         return data;
