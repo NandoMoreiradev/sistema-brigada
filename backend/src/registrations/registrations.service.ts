@@ -11,7 +11,6 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, RegistrationKind, RegistrationRequestStatus } from '@prisma/client';
 import { UsersService } from '../users/users.service';
-import { StaffService } from '../staff/staff.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { SubmitRegistrationDto } from './dto/submit-registration.dto';
@@ -88,7 +87,6 @@ export class RegistrationsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly usersService: UsersService,
-        private readonly staffService: StaffService,
         private readonly notificationsService: NotificationsService,
         private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
@@ -219,11 +217,9 @@ export class RegistrationsService {
                 profession: overrides.profession ?? request.profession ?? undefined,
             },
             studentProfile: kind === RegistrationKind.STUDENT ? {} : undefined,
+            // A promoção nasce junto com a conta (mesma transação) — ver UsersService.createAccount.
+            staff: kind === RegistrationKind.STAFF ? { approvedByUserId: reviewerId } : undefined,
         });
-
-        if (kind === RegistrationKind.STAFF) {
-            await this.staffService.promote(user.id, organizationId, reviewerId ?? user.id);
-        }
 
         await this.prisma.registrationRequest.update({
             where: { id: request.id },

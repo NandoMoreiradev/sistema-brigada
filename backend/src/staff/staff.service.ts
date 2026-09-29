@@ -9,6 +9,7 @@
 // este papel — por isso só aparece aqui de leitura, via `user.externalCertifications`.
 
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { StaffStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const staffInclude = {
@@ -28,7 +29,15 @@ export class StaffService {
 
         const existing = await this.prisma.staffMember.findUnique({ where: { userId } });
         if (existing) {
-            throw new ConflictException('Este usuário já faz parte da equipe de atuação.');
+            if (existing.status === StaffStatus.ACTIVE) {
+                throw new ConflictException('Este usuário já faz parte da equipe de atuação.');
+            }
+            // Promover de novo quem foi desativado é uma reativação (o registro é único por usuário).
+            await this.prisma.staffMember.update({
+                where: { id: existing.id },
+                data: { status: StaffStatus.ACTIVE, approvedByUserId, approvedAt: new Date() },
+            });
+            return this.findOne(existing.id, organizationId);
         }
 
         const staffMember = await this.prisma.staffMember.create({

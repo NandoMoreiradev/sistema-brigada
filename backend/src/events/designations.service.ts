@@ -20,7 +20,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
 import { UpdateDesignationDto } from './dto/update-designation.dto';
-import { DesignationStatus, CertificateStatus, Prisma } from '@prisma/client';
+import { DesignationStatus, CertificateStatus, Prisma, StaffStatus } from '@prisma/client';
 import { formatAppDateTime } from '../common/datetime';
 import { findConflictingDesignation, windowsOverlap } from './designation-conflicts.util';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
@@ -218,6 +218,7 @@ export class DesignationsService {
         shiftStart: Date,
         shiftEnd: Date,
         excludeDesignationId?: string,
+        requireActive = true,
     ) {
         const staffMember = await this.prisma.staffMember.findFirst({
             where: { id: staffMemberId, organizationId },
@@ -227,6 +228,11 @@ export class DesignationsService {
         });
         if (!staffMember) {
             throw new NotFoundException(`Membro de equipe (ID ${staffMemberId}) não pertence a esta organização.`);
+        }
+        // O filtro de inativos da tela de escala é só conveniência: sem esta checagem uma chamada
+        // direta à API escalaria quem foi desativado.
+        if (requireActive && staffMember.status !== StaffStatus.ACTIVE) {
+            throw new ConflictException(`${staffMember.user.name} está inativo(a) na equipe. Reative o membro antes de escalar.`);
         }
 
         // Mesmo brigadista não pode estar escalado em dois turnos que se
@@ -358,7 +364,10 @@ export class DesignationsService {
         }
 
         const staffMemberId = dto.staffMemberId ?? designation.staffMemberId;
-        const staffMember = await this.validateStaffAvailability(staffMemberId, organizationId, shiftStart, shiftEnd, designationId);
+        // Só exige membro ativo ao trocar a pessoa: ajustar turno/posto de quem já estava escalado
+        // e foi desativado depois não deve ficar bloqueado.
+        const isChangingStaffMember = staffMemberId !== designation.staffMemberId;
+        const staffMember = await this.validateStaffAvailability(staffMemberId, organizationId, shiftStart, shiftEnd, designationId, isChangingStaffMember);
         await this.assertHasValidQualification(staffMember);
 
         return this.prisma.designation.update({
