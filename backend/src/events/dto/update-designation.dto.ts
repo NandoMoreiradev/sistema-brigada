@@ -2,7 +2,7 @@
 // Edição de uma designação já criada — mesmos campos de CreateDesignationDto,
 // mas todos opcionais (PATCH parcial).
 
-import { IsString, IsNotEmpty, IsDateString, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class UpdateDesignationDto {
     @IsString()
@@ -16,16 +16,14 @@ export class UpdateDesignationDto {
     @IsOptional()
     role?: string;
 
-    @IsDateString()
+    /** Move a pessoa para outro turno do evento. */
+    @IsString()
+    @IsNotEmpty()
     @IsOptional()
-    shiftStart?: string;
+    shiftId?: string;
 
-    @IsDateString()
-    @IsOptional()
-    shiftEnd?: string;
-
-    /** Posto de atuação (EventPost) onde essa pessoa vai ficar nesse turno. */
+    /** Posto de atuação (EventPost). `null` tira a pessoa do posto. */
     @IsString()
     @IsOptional()
-    postId?: string;
+    postId?: string | null;
 }

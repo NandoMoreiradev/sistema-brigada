@@ -511,6 +511,27 @@ model EventOperation {
   occurrenceReports OccurrenceReport[]
   posts             EventPost[]
   teams             Team[]
+  shifts            EventShift[]
+}
+
+/// Turno do evento (ex.: "Dia 1 · Manhã · 08:00–12:00"). Os turnos são os MESMOS para todos os postos;
+/// cada pessoa é escalada em um ou mais turnos (manhã num dia, o dia todo em outro...). O "dia" é
+/// derivado do início do turno no fuso do app — não existe tabela de dias.
+/// Designation.shiftStart/shiftEnd continuam gravados (cópia do turno) para "minhas escalas" e para o
+/// conflito de horário entre eventos não dependerem desta tabela.
+model EventShift {
+  id               String   @id @default(cuid())
+  eventOperationId String
+  name             String
+  start            DateTime
+  end              DateTime
+  createdAt        DateTime @default(now())
+
+  eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
+  designations   Designation[]
+
+  @@unique([eventOperationId, start, end])
+  @@index([eventOperationId])
 }
 
 /// Posto de atuação (local físico) dentro do evento — ex.: "Portão A", "Palco", "Enfermaria".
@@ -564,13 +585,17 @@ model Designation {
   status           DesignationStatus @default(PENDING)
   postId           String?
   teamId           String?
+  /// Turno do evento. shiftStart/shiftEnd acima são a cópia dos horários dele.
+  shiftId          String?
   createdAt        DateTime          @default(now())
 
   eventOperation EventOperation @relation(fields: [eventOperationId], references: [id], onDelete: Cascade)
   staffMember    StaffMember    @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
   post           EventPost?     @relation(fields: [postId], references: [id], onDelete: SetNull)
   team           Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  shift          EventShift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
+  @@index([shiftId])
   @@index([eventOperationId])
   @@index([staffMemberId])
   @@index([postId])
