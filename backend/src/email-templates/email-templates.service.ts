@@ -300,6 +300,9 @@ export class EmailTemplatesService {
             certificate: { expiresAt: '15/03/2026', link: 'https://exemplo.com/certificates' },
             login_link: 'https://exemplo.com/reset-password?token=teste',
             password_reset_link: 'https://exemplo.com/reset-password?token=teste',
+            invite_link: 'https://exemplo.com/convite/teste',
+            invite_kind: 'Aluno',
+            rejection_reason: 'Documentação incompleta.',
         };
     }
 

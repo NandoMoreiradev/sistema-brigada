@@ -33,12 +33,25 @@ export class TransactionalEmailService {
         private readonly mergeTagService: MergeTagService,
     ) {}
 
+    /**
+     * `login_link` (boas-vindas/aprovação) e `password_reset_link` (esqueci a senha) são
+     * a mesma URL — `/reset-password?token=...` — e o editor oferece as duas tags em
+     * qualquer template. Sem este alias, usar a "errada" pro gatilho renderizava vazio e
+     * o e-mail chegava sem o link (ex: {{password_reset_link}} no template de boas-vindas).
+     */
+    private withLinkAliases(variables: MergeTagContext): MergeTagContext {
+        const link = variables.login_link || variables.password_reset_link;
+        if (!link) return variables;
+        return { ...variables, login_link: variables.login_link || link, password_reset_link: variables.password_reset_link || link };
+    }
+
     private async sendEmailByTrigger(
         recipientEmail: string,
         trigger: EmailTriggerType,
-        variables: MergeTagContext,
+        rawVariables: MergeTagContext,
         organizationId: string | null,
     ): Promise<boolean> {
+        const variables = this.withLinkAliases(rawVariables);
         try {
             const template = await this.emailTemplatesService.findTemplateByTrigger(organizationId, trigger);
 
