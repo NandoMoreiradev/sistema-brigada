@@ -104,15 +104,19 @@ export default function People() {
         resolver: (editing ? zodResolver(editSchema) : zodResolver(createSchema)) as Resolver<FormData>,
     });
     const registrationType = watch('registrationType') ?? 'STUDENT';
-    const isStudentRegistration = editing !== null ? Boolean(editing.studentProfile) : registrationType === 'STUDENT';
+    // Uma pessoa pode ser aluna e instrutora ao mesmo tempo: quem não tem perfil de aluno pode ganhá-lo aqui.
+    const [addingStudentProfile, setAddingStudentProfile] = useState(false);
+    const isStudentRegistration = editing !== null ? Boolean(editing.studentProfile) || addingStudentProfile : registrationType === 'STUDENT';
 
     const openCreate = () => {
+        setAddingStudentProfile(false);
         setEditing(null);
         reset(blankForm);
         setModalOpen(true);
     };
 
     const openEdit = (person: OrgPerson) => {
+        setAddingStudentProfile(false);
         setEditing(person);
         const profile = person.personProfile;
         const studentProfile = person.studentProfile;
@@ -183,16 +187,17 @@ export default function People() {
 
     const onSubmit = (formData: FormData) => {
         if (editing) {
-            // Só reenvia `studentProfile` se a pessoa já era aluna — do contrário, um objeto
-            // sempre-truthy faria o backend criar um StudentProfile do nada, transformando
-            // silenciosamente um instrutor/equipe em "aluno" só por editar nome/telefone.
+            // Só envia `studentProfile` se a pessoa já era aluna ou se pediu o perfil de aluno aqui
+            // ("Adicionar perfil de aluno") — do contrário, um objeto sempre-truthy faria o backend
+            // criar um StudentProfile do nada, transformando silenciosamente um instrutor/equipe em
+            // "aluno" só por editar nome/telefone.
             // Os dados pessoais, ao contrário, valem para todos e sempre vão.
             saveMutation.mutate(
                 {
                     name: formData.name,
                     phone: formData.phone || undefined,
                     isActive: formData.isActive,
-                    studentProfile: editing.studentProfile ? studentProfileOf(formData) : undefined,
+                    studentProfile: editing.studentProfile || addingStudentProfile ? studentProfileOf(formData) : undefined,
                     personProfile: personProfileOf(formData),
                 },
                 { onSuccess: () => toast.success('Pessoa atualizada com sucesso.') },
@@ -410,11 +415,17 @@ export default function People() {
                         </FieldRow>
                     )}
 
-                    {editing && !editing.studentProfile && (
-                        <HelpText>
-                            Esta pessoa não tem perfil de aluno. Pra matriculá-la numa turma, primeiro adicione um perfil de aluno — funcionalidade
-                            ainda não disponível nesta tela.
-                        </HelpText>
+                    {editing && !editing.studentProfile && !addingStudentProfile && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', padding: '0.6rem 0.8rem', background: '#f4f6f8', borderRadius: 8 }}>
+                            <HelpText>Esta pessoa não é aluna. Com o perfil de aluno ela pode ser matriculada em turmas, sem deixar de ser instrutora ou da equipe.</HelpText>
+                            <Button type="button" $variant="secondary" onClick={() => setAddingStudentProfile(true)}>Adicionar perfil de aluno</Button>
+                        </div>
+                    )}
+                    {editing && !editing.studentProfile && addingStudentProfile && (
+                        <HelpText>O perfil de aluno será criado ao salvar.</HelpText>
+                    )}
+                    {editing && (editing.instructorAssignments?.length ?? 0) > 0 && (
+                        <HelpText>Instrutor(a) em {editing.instructorAssignments!.length} turma(s). Para vincular a outras turmas, use "Editar turma".</HelpText>
                     )}
 
                     <FormActions style={editing ? { justifyContent: 'space-between' } : undefined}>
