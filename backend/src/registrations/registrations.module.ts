@@ -5,7 +5,6 @@ import { RegistrationsPublicController } from './registrations-public.controller
 import { RegistrationsAdminController } from './registrations-admin.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { UsersModule } from '../users/users.module';
-import { StaffModule } from '../staff/staff.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TransactionalEmailModule } from '../transactional-email/transactional-email.module';
 
@@ -13,7 +12,6 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
     imports: [
         PrismaModule,
         UsersModule,
-        StaffModule,
         NotificationsModule,
         TransactionalEmailModule,
         // Escopo local, igual auth.module.ts — não há ThrottlerGuard global neste projeto.

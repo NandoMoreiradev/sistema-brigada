@@ -78,6 +78,9 @@ export class UsersService {
         role?: Role;
         studentProfile?: StudentProfileDto;
         personProfile?: PersonProfileDto;
+        /** Promove a pessoa à equipe de atuação na mesma transação da criação da conta. */
+        /** Sem revisor (`null`), a própria pessoa consta como quem aprovou. */
+        staff?: { approvedByUserId: string | null };
     }) {
         const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
         if (existing) {
@@ -117,6 +120,14 @@ export class UsersService {
 
             if (input.personProfile) {
                 await tx.personProfile.create({ data: { userId: user.id, organizationId: input.organizationId, ...personProfileData(input.personProfile) } });
+            }
+
+            // Na mesma transação: se a promoção falhasse depois da conta criada, sobraria um usuário
+            // sem papel e o e-mail já estaria ocupado para uma nova tentativa.
+            if (input.staff) {
+                await tx.staffMember.create({
+                    data: { userId: user.id, organizationId: input.organizationId, approvedByUserId: input.staff.approvedByUserId ?? user.id },
+                });
             }
 
             return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userListSelect });
