@@ -17,8 +17,9 @@ import { SettingsCard, TabStack, SaveFooter, CardSkeleton, SwitchRow, SwitchInpu
 import { useMyOrganization } from './useMyOrganization';
 
 // Mesmo catálogo fixo de backend/src/common/constants/public-registration-fields.constant.ts
-// (não é form-builder livre — só toggle sobre esses 4 campos).
+// (não é form-builder livre — só toggle sobre esses campos, que valem para qualquer papel).
 const PUBLIC_REGISTRATION_FIELDS: { value: string; label: string }[] = [
+    { value: 'birthDate', label: 'Data de nascimento' },
     { value: 'baptismDate', label: 'Data de batismo' },
     { value: 'pioneerStatus', label: 'Situação de pioneiro' },
     { value: 'signedPetitions', label: 'Petições assinadas' },

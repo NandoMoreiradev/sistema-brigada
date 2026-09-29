@@ -19,6 +19,7 @@ export interface SubmitRegistrationInput {
     phone: string;
     /** Sugestão do link (?tipo=): quem revisa decide o papel final. */
     requestedKind?: RegistrationKind;
+    birthDate?: string;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];
@@ -47,6 +48,7 @@ export const registrationsPublicApi = {
 
 export interface ApproveRegistrationInput {
     kind?: RegistrationKind;
+    birthDate?: string;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];

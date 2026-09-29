@@ -55,6 +55,7 @@ const INVITE_STATUS_TONE: Record<RegistrationInvite['status'], 'warning' | 'succ
 };
 
 const approveSchema = z.object({
+    birthDate: z.string().optional(),
     baptismDate: z.string().optional(),
     pioneerStatus: z.enum(['', 'AUXILIARY', 'REGULAR']).optional(),
     signedPetitions: z.string().optional(),
@@ -103,7 +104,7 @@ export default function Registrations() {
 
     const { register, handleSubmit, reset } = useForm<ApproveFormData>({
         resolver: zodResolver(approveSchema),
-        defaultValues: { baptismDate: '', pioneerStatus: '', signedPetitions: '', profession: '' },
+        defaultValues: { birthDate: '', baptismDate: '', pioneerStatus: '', signedPetitions: '', profession: '' },
     });
     const inviteForm = useForm<InviteFormData>({ resolver: zodResolver(inviteSchema), defaultValues: { email: '', name: '' } });
 
@@ -115,6 +116,7 @@ export default function Registrations() {
         setApproving(request);
         setApproveKind(request.requestedKind ?? 'STUDENT');
         reset({
+            birthDate: request.birthDate ? request.birthDate.slice(0, 10) : '',
             baptismDate: request.baptismDate ? request.baptismDate.slice(0, 10) : '',
             pioneerStatus: request.pioneerStatus ?? '',
             signedPetitions: request.signedPetitions.join(', '),
@@ -126,16 +128,14 @@ export default function Registrations() {
         mutationFn: ({ id, data }: { id: string; data: ApproveFormData }) =>
             registrationsApi.approve(id, {
                 kind: approveKind,
-                ...(approveKind === 'STUDENT'
-                    ? {
-                          baptismDate: data.baptismDate || undefined,
-                          pioneerStatus: data.pioneerStatus || undefined,
-                          signedPetitions: data.signedPetitions
-                              ? data.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
-                              : undefined,
-                          profession: data.profession || undefined,
-                      }
-                    : {}),
+                // Dados pessoais valem para qualquer papel (aluno, instrutor ou equipe).
+                birthDate: data.birthDate || undefined,
+                baptismDate: data.baptismDate || undefined,
+                pioneerStatus: data.pioneerStatus || undefined,
+                signedPetitions: data.signedPetitions
+                    ? data.signedPetitions.split(',').map((item) => item.trim()).filter(Boolean)
+                    : undefined,
+                profession: data.profession || undefined,
             }),
         onSuccess: (approved) => {
             if (approved.accessEmailStatus === 'FAILED') {
@@ -363,34 +363,36 @@ export default function Registrations() {
                         </HelpText>
                     </Field>
 
-                    {approveKind === 'STUDENT' && (
-                        <>
-                            <HelpText>Complete ou ajuste os dados antes de aprovar — a conta é criada com o que estiver aqui.</HelpText>
-                            <FieldRow>
-                                <Field>
-                                    <Label htmlFor="approve-baptismDate">Data de batismo</Label>
-                                    <Input id="approve-baptismDate" type="date" {...register('baptismDate')} />
-                                </Field>
-                                <Field>
-                                    <Label htmlFor="approve-pioneerStatus">Pioneiro</Label>
-                                    <Select id="approve-pioneerStatus" {...register('pioneerStatus')}>
-                                        <option value="">Não é pioneiro</option>
-                                        <option value="AUXILIARY">Pioneiro auxiliar</option>
-                                        <option value="REGULAR">Pioneiro regular</option>
-                                    </Select>
-                                </Field>
-                            </FieldRow>
-                            <Field>
-                                <Label htmlFor="approve-profession">Profissão ou área de estudo</Label>
-                                <Input id="approve-profession" {...register('profession')} />
-                            </Field>
-                            <Field>
-                                <Label htmlFor="approve-signedPetitions">Petições assinadas</Label>
-                                <Input id="approve-signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
-                                <HelpText>Separe múltiplas petições por vírgula.</HelpText>
-                            </Field>
-                        </>
-                    )}
+                    <HelpText>Complete ou ajuste os dados antes de aprovar — a conta é criada com o que estiver aqui.</HelpText>
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="approve-birthDate">Data de nascimento</Label>
+                            <Input id="approve-birthDate" type="date" {...register('birthDate')} />
+                        </Field>
+                        <Field>
+                            <Label htmlFor="approve-baptismDate">Data de batismo</Label>
+                            <Input id="approve-baptismDate" type="date" {...register('baptismDate')} />
+                        </Field>
+                    </FieldRow>
+                    <FieldRow>
+                        <Field>
+                            <Label htmlFor="approve-pioneerStatus">Pioneiro</Label>
+                            <Select id="approve-pioneerStatus" {...register('pioneerStatus')}>
+                                <option value="">Não é pioneiro</option>
+                                <option value="AUXILIARY">Pioneiro auxiliar</option>
+                                <option value="REGULAR">Pioneiro regular</option>
+                            </Select>
+                        </Field>
+                        <Field>
+                            <Label htmlFor="approve-profession">Profissão ou área de estudo</Label>
+                            <Input id="approve-profession" {...register('profession')} />
+                        </Field>
+                    </FieldRow>
+                    <Field>
+                        <Label htmlFor="approve-signedPetitions">Petições assinadas</Label>
+                        <Input id="approve-signedPetitions" placeholder="Ex: Pioneiro regular, Emissário" {...register('signedPetitions')} />
+                        <HelpText>Separe múltiplas petições por vírgula.</HelpText>
+                    </Field>
 
                     <HelpText>A pessoa recebe um e-mail com o link para definir a senha (vale 7 dias).</HelpText>
                     <FormActions>
