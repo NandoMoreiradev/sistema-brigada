@@ -14,23 +14,24 @@ import styled from 'styled-components';
 import html2canvas from 'html2canvas';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Upload, Download, Printer, X, Clock, Share2, ChevronDown, Eye } from 'lucide-react';
+import { MapPin, Upload, Download, Printer, X, Clock, Share2, ChevronDown, Eye, Layers, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ActionMenu, MoreButton } from '@/components/ui/ActionMenu';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, HelpText, Form, FormActions } from '@/components/ui/FormField';
 import { EmptyState } from '@/components/ui/Table';
-import { eventPostsApi, type EventPost } from '@/services/events';
+import { eventFloorPlansApi, eventPostsApi, type EventFloorPlan, type EventPost } from '@/services/events';
 import { mediaApi } from '@/services/media';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
-import { allShiftIds, type Schedule } from '@/utils/schedule';
+import { allShiftIds, hasMultiplePlans, type Schedule } from '@/utils/schedule';
 import { FilterChip } from '@/pages/course-detail/styles';
 import { useEventSchedule } from './useEventSchedule';
 import { MapSheet, type MapPinData } from './MapSheet';
 import { SheetHeader, SheetFooter } from './SheetParts';
 import { ShiftPicker } from './ShiftPicker';
 import { ShiftsManager } from './ShiftsManager';
+import { FloorPlansManager } from './FloorPlansManager';
 import { PrintPortal } from './PrintPortal';
 import { waitForImages } from '@/utils/dom';
 import { buildPins, findShiftBlock, type MapSelection } from './mapPins';
@@ -99,7 +100,7 @@ function currentShiftId(schedule: Schedule): string | null {
 
 export function MapTab({ eventId, canManage }: { eventId: string; canManage: boolean }) {
     const queryClient = useQueryClient();
-    const { event, shifts, posts, schedule } = useEventSchedule(eventId);
+    const { event, shifts, posts, floorPlans, schedule } = useEventSchedule(eventId);
 
     const [selection, setSelection] = useState<MapSelection | null>(null);
     const [showNames, setShowNames] = useState(true);
@@ -110,16 +111,21 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
     const [shiftsOpen, setShiftsOpen] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
     const [printIds, setPrintIds] = useState<string[]>([]);
+    const [printPlanIds, setPrintPlanIds] = useState<string[]>([]);
     const [printing, setPrinting] = useState(false);
-    const [png, setPng] = useState<MapSelection | null>(null);
+    const [png, setPng] = useState<{ selection: MapSelection | null; plan: EventFloorPlan } | null>(null);
+    const [planId, setPlanId] = useState<string | null>(null);
+    const [plansOpen, setPlansOpen] = useState(false);
 
     const canvasRef = useRef<HTMLDivElement>(null);
     const pngRef = useRef<HTMLDivElement>(null);
-    const planInputRef = useRef<HTMLInputElement>(null);
     const draggedRef = useRef(false);
     const { register, handleSubmit, reset } = useForm<{ name: string; capacity: string }>();
 
-    const floorPlanUrl = event?.operation?.floorPlanUrl;
+    const multiPlan = hasMultiplePlans(schedule);
+    const currentPlan = floorPlans.find((p) => p.id === planId) ?? floorPlans[0] ?? null;
+    /** Postos de uma planta. Com uma planta só, postos antigos sem planta ainda aparecem nela. */
+    const postsOf = (plan: EventFloorPlan) => posts.filter((p) => p.floorPlanId === plan.id || (floorPlans.length === 1 && p.floorPlanId == null));
 
     const effective: MapSelection | null = useMemo(() => {
         if (selection) {
@@ -136,21 +142,31 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
         return schedule.days.find((d) => d.shifts.some((s) => s.shift.id === effective.shiftId));
     }, [effective, schedule]);
 
-    const pins = useMemo(() => buildPins(posts, schedule, effective, { showRoles }), [posts, schedule, effective, showRoles]);
+    const pins = useMemo(
+        () => buildPins(currentPlan ? postsOf(currentPlan) : [], schedule, effective, { showRoles }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [posts, floorPlans, currentPlan?.id, schedule, effective, showRoles],
+    );
+    /** Postos sem ninguém no turno escolhido, por planta: aparece na aba para não esconder um buraco em outra planta. */
+    const emptyByPlan = useMemo(
+        () => Object.fromEntries(floorPlans.map((plan) => [plan.id, buildPins(postsOf(plan), schedule, effective, { showRoles: false }).filter((pin) => pin.state === 'empty').length])),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [posts, floorPlans, schedule, effective],
+    );
 
     const invalidateEvent = () => queryClient.invalidateQueries({ queryKey: ['events', eventId] });
 
     const uploadMutation = useMutation({
         mutationFn: async (file: File) => {
             const { storageKey, fileUrl } = await mediaApi.upload(file, 'event-floor-plan');
-            return eventPostsApi.setFloorPlan(eventId, { floorPlanKey: storageKey, floorPlanUrl: fileUrl });
+            return eventFloorPlansApi.create(eventId, { imageKey: storageKey, imageUrl: fileUrl });
         },
-        onSuccess: () => { toast.success('Planta baixa atualizada.'); invalidateEvent(); },
+        onSuccess: () => { toast.success('Planta baixa enviada.'); invalidateEvent(); },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível enviar a planta baixa.')),
     });
 
     const createPostMutation = useMutation({
-        mutationFn: (input: { name: string; capacity?: number; posX: number; posY: number }) => eventPostsApi.create(eventId, input),
+        mutationFn: (input: { name: string; capacity?: number; posX: number; posY: number; floorPlanId: string }) => eventPostsApi.create(eventId, input),
         onSuccess: () => { toast.success('Posto adicionado.'); invalidateEvent(); setPendingPos(null); setIsPlacing(false); },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível criar o posto.')),
     });
@@ -223,9 +239,9 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                 if (!blob) throw new Error('sem imagem');
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
-                const label = png.kind === 'shift' ? findShiftBlock(schedule, png.shiftId)?.shift.name : 'dia';
+                const label = png.selection?.kind === 'shift' ? findShiftBlock(schedule, png.selection.shiftId)?.shift.name : 'dia';
                 link.href = url;
-                link.download = ['mapa', slug(event?.title ?? 'evento'), selectedDay?.key ?? '', slug(label ?? '')].filter(Boolean).join('-') + '.png';
+                link.download = ['mapa', slug(event?.title ?? 'evento'), multiPlan ? slug(png.plan.name) : '', selectedDay?.key ?? '', slug(label ?? '')].filter(Boolean).join('-') + '.png';
                 link.click();
                 URL.revokeObjectURL(url);
             } catch {
@@ -251,16 +267,19 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
 
     const openPrint = () => {
         setPrintIds(allShiftIds(schedule));
+        setPrintPlanIds(floorPlans.map((p) => p.id));
         setPrintOpen(true);
     };
 
     const printSchedule = useMemo<Schedule>(
-        () => ({ days: schedule.days.map((d) => ({ ...d, shifts: d.shifts.filter((s) => printIds.includes(s.shift.id)) })).filter((d) => d.shifts.length > 0) }),
+        () => ({ plans: schedule.plans, days: schedule.days.map((d) => ({ ...d, shifts: d.shifts.filter((s) => printIds.includes(s.shift.id)) })).filter((d) => d.shifts.length > 0) }),
         [schedule, printIds],
     );
+    const printPlans = floorPlans.filter((p) => printPlanIds.includes(p.id));
+    const printSheets = printIds.length * printPlans.length;
 
     /* -------------------------------------------- render -------------------------------------------- */
-    if (!floorPlanUrl) {
+    if (!currentPlan) {
         return canManage ? (
             <UploadBox>
                 <Upload size={24} />
@@ -273,6 +292,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
     }
 
     const day = selectedDay;
+    const floorPlanUrl = currentPlan.imageUrl;
     const totalPeople = day?.shifts.reduce((sum, s) => sum + s.total, 0) ?? 0;
 
     return (
@@ -287,6 +307,21 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
 
             <Bar>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {multiPlan && (
+                        <Chips role="tablist" aria-label="Planta">
+                            {floorPlans.map((plan) => (
+                                <FilterChip key={plan.id} type="button" role="tab" $active={currentPlan.id === plan.id} onClick={() => { setPlanId(plan.id); setPendingPos(null); }}>
+                                    <Layers size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
+                                    {plan.name}
+                                    {emptyByPlan[plan.id] > 0 && (
+                                        <span title={`${emptyByPlan[plan.id]} posto(s) sem ninguém neste turno`} style={{ marginLeft: 6, color: '#d9480f', fontWeight: 700 }}>
+                                            <AlertTriangle size={12} style={{ verticalAlign: -1 }} /> {emptyByPlan[plan.id]}
+                                        </span>
+                                    )}
+                                </FilterChip>
+                            ))}
+                        </Chips>
+                    )}
                     {schedule.days.length > 1 && (
                         <Chips role="tablist" aria-label="Dia">
                             {schedule.days.map((d) => (
@@ -333,8 +368,8 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                     <ActionMenu
                         trigger={<Button $variant="secondary"><Share2 size={14} /> Exportar <ChevronDown size={14} /></Button>}
                         entries={[
-                            { label: png ? 'Gerando imagem…' : 'Baixar imagem (PNG)', icon: <Download size={14} />, hint: 'o que está na tela', disabled: png !== null, onSelect: () => setPng(effective) },
-                            { label: 'Imprimir mapas', icon: <Printer size={14} />, hint: 'uma folha por turno', disabled: shifts.length === 0, onSelect: openPrint },
+                            { label: png ? 'Gerando imagem…' : 'Baixar imagem (PNG)', icon: <Download size={14} />, hint: 'o que está na tela', disabled: png !== null, onSelect: () => setPng({ selection: effective, plan: currentPlan }) },
+                            { label: 'Imprimir mapas', icon: <Printer size={14} />, hint: multiPlan ? 'uma folha por turno e planta' : 'uma folha por turno', disabled: shifts.length === 0, onSelect: openPrint },
                         ]}
                     />
                     <ActionMenu
@@ -349,18 +384,10 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                             trigger={<MoreButton label="Mais opções do mapa" />}
                             entries={[
                                 { label: 'Gerenciar turnos', icon: <Clock size={14} />, onSelect: () => setShiftsOpen(true) },
-                                { label: 'Trocar planta baixa', icon: <Upload size={14} />, onSelect: () => planInputRef.current?.click() },
+                                { label: multiPlan ? 'Gerenciar plantas' : 'Plantas do evento', icon: <Layers size={14} />, hint: `${floorPlans.length}/10`, onSelect: () => setPlansOpen(true) },
                             ]}
                         />
                     )}
-                    <input
-                        ref={planInputRef}
-                        type="file"
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                        disabled={uploadMutation.isPending}
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); e.target.value = ''; }}
-                    />
                 </div>
             </Bar>
 
@@ -390,6 +417,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                                 <PostDetails
                                     pin={pin}
                                     post={posts.find((p) => p.id === pin.id)}
+                                    plans={floorPlans}
                                     canManage={canManage}
                                     onChanged={invalidateEvent}
                                     eventId={eventId}
@@ -403,11 +431,11 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
             {posts.length === 0 && <EmptyState>Nenhum posto cadastrado ainda{canManage ? ' — clique em "Adicionar posto" e depois na planta.' : '.'}</EmptyState>}
 
             {/* Novo posto */}
-            <Modal open={pendingPos !== null} onOpenChange={(open) => { if (!open) setPendingPos(null); }} title="Novo posto de atuação">
+            <Modal open={pendingPos !== null} onOpenChange={(open) => { if (!open) setPendingPos(null); }} title={multiPlan ? `Novo posto — ${currentPlan.name}` : 'Novo posto de atuação'}>
                 <Form
                     onSubmit={handleSubmit((data) => {
                         if (!pendingPos) return;
-                        createPostMutation.mutate({ name: data.name, capacity: data.capacity ? Number(data.capacity) : undefined, posX: pendingPos.x, posY: pendingPos.y });
+                        createPostMutation.mutate({ name: data.name, capacity: data.capacity ? Number(data.capacity) : undefined, posX: pendingPos.x, posY: pendingPos.y, floorPlanId: currentPlan.id });
                         reset();
                     })}
                 >
@@ -427,6 +455,16 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                 </Form>
             </Modal>
 
+            {canManage && (
+                <FloorPlansManager
+                    eventId={eventId}
+                    plans={floorPlans}
+                    open={plansOpen}
+                    onOpenChange={setPlansOpen}
+                    onChanged={invalidateEvent}
+                />
+            )}
+
             {canManage && event && (
                 <ShiftsManager eventId={eventId} eventStart={event.startDate} eventEnd={event.endDate} shifts={shifts} open={shiftsOpen} onOpenChange={setShiftsOpen} />
             )}
@@ -434,32 +472,49 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
             {/* Escolher o que imprimir */}
             <Modal open={printOpen} onOpenChange={setPrintOpen} title="Imprimir mapas" width="560px">
                 <Form onSubmit={(e) => { e.preventDefault(); setPrintOpen(false); setPrinting(true); }}>
-                    <HelpText>Uma folha (A4 paisagem) por turno, com o mapa e os nomes de cada posto. Cada folha traz o dia, o turno e a hora em que foi gerada.</HelpText>
+                    <HelpText>
+                        Uma folha (A4 paisagem) por turno{multiPlan ? ' e por planta' : ''}, com o mapa e os nomes de cada posto. Cada folha traz o dia, o turno{multiPlan ? ', a planta' : ''} e a hora em que foi gerada.
+                    </HelpText>
+                    {multiPlan && (
+                        <Chips aria-label="Plantas a imprimir">
+                            {floorPlans.map((plan) => (
+                                <FilterChip
+                                    key={plan.id}
+                                    type="button"
+                                    $active={printPlanIds.includes(plan.id)}
+                                    onClick={() => setPrintPlanIds((ids) => (ids.includes(plan.id) ? ids.filter((id) => id !== plan.id) : [...ids, plan.id]))}
+                                >
+                                    {plan.name}
+                                </FilterChip>
+                            ))}
+                        </Chips>
+                    )}
                     <ShiftPicker days={schedule.days} value={printIds} onChange={setPrintIds} showCounts />
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setPrintOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={printIds.length === 0}>Imprimir {printIds.length} folha(s)</Button>
+                        <Button type="submit" disabled={printSheets === 0}>Imprimir {printSheets} folha(s)</Button>
                     </FormActions>
                 </Form>
             </Modal>
 
             {printing && (
                 <PrintPortal active={printing} onFinished={() => setPrinting(false)}>
-                    {printSchedule.days.flatMap((d) =>
-                        d.shifts.map((s, index, arr) => (
-                            <div key={s.shift.id} style={{ width: PRINT_WIDTH, pageBreakAfter: 'always', breakAfter: 'page', ...(index === arr.length - 1 && d === printSchedule.days[printSchedule.days.length - 1] ? { pageBreakAfter: 'auto', breakAfter: 'auto' } : {}) }}>
+                    {(() => {
+                        const sheets = printSchedule.days.flatMap((d) => d.shifts.flatMap((s) => printPlans.map((plan) => ({ d, s, plan }))));
+                        return sheets.map(({ d, s, plan }, index) => (
+                            <div key={`${s.shift.id}-${plan.id}`} style={{ width: PRINT_WIDTH, pageBreakAfter: index === sheets.length - 1 ? 'auto' : 'always', breakAfter: index === sheets.length - 1 ? 'auto' : 'page' }}>
                                 <MapSheet
-                                    imageUrl={floorPlanUrl}
-                                    pins={buildPins(posts, schedule, { kind: 'shift', shiftId: s.shift.id }, { showRoles })}
+                                    imageUrl={plan.imageUrl}
+                                    pins={buildPins(postsOf(plan), schedule, { kind: 'shift', shiftId: s.shift.id }, { showRoles })}
                                     showNames
                                     width={PRINT_WIDTH}
                                     maxHeight={PRINT_MAP_MAX_HEIGHT}
-                                    header={<SheetHeader eventTitle={event?.title ?? ''} location={event?.location} dayLabel={d.label} shiftLabel={s.title} />}
+                                    header={<SheetHeader eventTitle={event?.title ?? ''} location={event?.location} dayLabel={d.label} shiftLabel={s.title} planName={multiPlan ? plan.name : null} />}
                                     footer={<SheetFooter />}
                                 />
                             </div>
-                        )),
-                    )}
+                        ));
+                    })()}
                 </PrintPortal>
             )}
 
@@ -468,11 +523,11 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                 createPortal(
                     <div ref={pngRef} style={{ position: 'fixed', left: -20000, top: 0, width: PNG_WIDTH, background: '#fff', padding: 16, boxSizing: 'content-box' }}>
                         <MapSheet
-                            imageUrl={floorPlanUrl}
-                            pins={buildPins(posts, schedule, png, { showRoles })}
+                            imageUrl={png.plan.imageUrl}
+                            pins={buildPins(postsOf(png.plan), schedule, png.selection, { showRoles })}
                             showNames={showNames}
                             width={PNG_WIDTH}
-                            header={<SheetHeader eventTitle={event?.title ?? ''} location={event?.location} {...sheetTitle(png)} />}
+                            header={<SheetHeader eventTitle={event?.title ?? ''} location={event?.location} {...sheetTitle(png.selection)} planName={multiPlan ? png.plan.name : null} />}
                             footer={<SheetFooter />}
                         />
                     </div>,
@@ -485,12 +540,13 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
 interface PostDetailsProps {
     pin: MapPinData;
     post?: EventPost;
+    plans: EventFloorPlan[];
     canManage: boolean;
     eventId: string;
     onChanged: () => void;
 }
 
-function PostDetails({ pin, post, canManage, eventId, onChanged }: PostDetailsProps) {
+function PostDetails({ pin, post, plans, canManage, eventId, onChanged }: PostDetailsProps) {
     const [name, setName] = useState(post?.name ?? pin.name);
     const [capacity, setCapacity] = useState(post?.capacity ? String(post.capacity) : '');
 
@@ -498,6 +554,12 @@ function PostDetails({ pin, post, canManage, eventId, onChanged }: PostDetailsPr
         mutationFn: () => eventPostsApi.update(eventId, pin.id, { name: name.trim(), capacity: capacity ? Number(capacity) : undefined }),
         onSuccess: () => { toast.success('Posto atualizado.'); onChanged(); },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível atualizar o posto.')),
+    });
+
+    const moveMutation = useMutation({
+        mutationFn: (floorPlanId: string) => eventPostsApi.update(eventId, pin.id, { floorPlanId }),
+        onSuccess: () => { toast.success('Posto movido. Ele apareceu no centro da outra planta: arraste para o lugar certo.'); onChanged(); },
+        onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível mover o posto.')),
     });
 
     const removeMutation = useMutation({
@@ -538,6 +600,20 @@ function PostDetails({ pin, post, canManage, eventId, onChanged }: PostDetailsPr
                     <Button type="button" $variant="secondary" disabled={!name.trim() || updateMutation.isPending} onClick={() => updateMutation.mutate()}>
                         Salvar posto
                     </Button>
+                    {plans.length > 1 && (
+                        <select
+                            aria-label="Mover para outra planta"
+                            value=""
+                            disabled={moveMutation.isPending}
+                            onChange={(e) => { if (e.target.value) moveMutation.mutate(e.target.value); }}
+                            style={{ padding: '0.3rem 0.5rem', fontSize: '0.8125rem' }}
+                        >
+                            <option value="">Mover para outra planta…</option>
+                            {plans.filter((p) => p.id !== post?.floorPlanId).map((p) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             )}
         </div>

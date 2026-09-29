@@ -28,6 +28,15 @@ const Header = styled.div`
         color: #495057;
     }
 
+    .plan {
+        display: inline-block;
+        margin-top: 2px;
+        padding: 1px 8px;
+        border: 1.5px solid #000;
+        border-radius: 999px;
+        font-size: 13px;
+    }
+
     .shift {
         font-size: 15px;
         font-weight: 700;
@@ -69,9 +78,11 @@ interface SheetHeaderProps {
     dayLabel: string;
     /** "Manhã · 08:00–12:00" (ou "Todos os turnos") */
     shiftLabel: string;
+    /** Nome da planta (só quando o evento tem mais de uma). */
+    planName?: string | null;
 }
 
-export function SheetHeader({ eventTitle, location, dayLabel, shiftLabel }: SheetHeaderProps) {
+export function SheetHeader({ eventTitle, location, dayLabel, shiftLabel, planName }: SheetHeaderProps) {
     return (
         <Header>
             <div>
@@ -82,6 +93,12 @@ export function SheetHeader({ eventTitle, location, dayLabel, shiftLabel }: Shee
                 {dayLabel}
                 <br />
                 {shiftLabel}
+                {planName && (
+                    <>
+                        <br />
+                        <span className="plan">{planName}</span>
+                    </>
+                )}
             </div>
         </Header>
     );

@@ -38,6 +38,7 @@ async function copy(text: string, success: string) {
 export function ExportModal({ event, designations, open, initialMode = 'group', onOpenChange, onPrintList }: ExportModalProps) {
     const shifts = useMemo(() => event.operation?.shifts ?? [], [event]);
     const posts = useMemo(() => event.operation?.posts ?? [], [event]);
+    const floorPlans = useMemo(() => event.operation?.floorPlans ?? [], [event]);
 
     const [mode, setMode] = useState<'group' | 'person'>(initialMode);
     const [includePending, setIncludePending] = useState(true);
@@ -51,8 +52,8 @@ export function ExportModal({ event, designations, open, initialMode = 'group', 
     }, [open, initialMode]);
 
     const full = useMemo(
-        () => buildSchedule({ shifts, posts, designations, includeStatuses: includePending ? ['PENDING', 'CONFIRMED'] : ['CONFIRMED'] }),
-        [shifts, posts, designations, includePending],
+        () => buildSchedule({ shifts, posts, floorPlans, designations, includeStatuses: includePending ? ['PENDING', 'CONFIRMED'] : ['CONFIRMED'] }),
+        [shifts, posts, floorPlans, designations, includePending],
     );
     const selectedIds = shiftIds ?? allShiftIds(full);
     const schedule = useMemo(() => filterSchedule(full, new Set(selectedIds)), [full, selectedIds]);

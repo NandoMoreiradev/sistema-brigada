@@ -8,7 +8,7 @@
 // Funções puras (sem React/DOM) para poderem ser testadas.
 
 import { format } from 'date-fns';
-import type { Designation, DesignationStatus, EventPost, EventShift } from '@/services/events';
+import type { Designation, DesignationStatus, EventFloorPlan, EventPost, EventShift } from '@/services/events';
 import { formatAppDate } from '@/utils/datetime';
 
 /** Quem conta na escala por padrão: quem recusou libera a vaga e não aparece em nenhuma saída. */
@@ -30,6 +30,8 @@ export type CoverageState = 'empty' | 'partial' | 'full' | 'over' | 'open';
 export interface PostSlot {
     /** `null` = pessoas escaladas sem posto. */
     post: EventPost | null;
+    /** Planta do posto; só preenchida quando o evento tem mais de uma (senão os textos ficam como antes). */
+    plan: EventFloorPlan | null;
     people: Assignment[];
     capacity: number | null;
     state: CoverageState;
@@ -58,6 +60,13 @@ export interface DayBlock {
 
 export interface Schedule {
     days: DayBlock[];
+    /** Plantas do evento, em ordem. Com 2 ou mais, textos e folhas passam a indicar a planta. */
+    plans: EventFloorPlan[];
+}
+
+/** Só faz sentido falar em "planta" nas saídas quando há mais de uma. */
+export function hasMultiplePlans(schedule: Pick<Schedule, 'plans'>): boolean {
+    return schedule.plans.length > 1;
 }
 
 export function dayKeyOf(iso: string): string {
@@ -111,10 +120,20 @@ interface BuildInput {
     shifts: EventShift[];
     posts: EventPost[];
     designations: Designation[];
+    floorPlans?: EventFloorPlan[];
     includeStatuses?: DesignationStatus[];
 }
 
-export function buildSchedule({ shifts, posts, designations, includeStatuses = DEFAULT_STATUSES }: BuildInput): Schedule {
+export function buildSchedule({ shifts, posts: rawPosts, designations, floorPlans = [], includeStatuses = DEFAULT_STATUSES }: BuildInput): Schedule {
+    const plans = [...floorPlans].sort((a, b) => a.order - b.order);
+    const multi = plans.length > 1;
+    const planOf = (post: EventPost) => (multi ? (plans.find((p) => p.id === post.floorPlanId) ?? null) : null);
+    // Com várias plantas os postos saem agrupados por planta (na ordem das abas); dentro dela, na ordem original.
+    const planRank = (post: EventPost) => {
+        const i = plans.findIndex((p) => p.id === post.floorPlanId);
+        return i === -1 ? plans.length : i;
+    };
+    const posts = multi ? [...rawPosts].sort((a, b) => planRank(a) - planRank(b)) : rawPosts;
     const allowed = new Set(includeStatuses);
     const active = designations.filter((d) => allowed.has(d.status));
 
@@ -131,23 +150,24 @@ export function buildSchedule({ shifts, posts, designations, includeStatuses = D
                 const inShift = active.filter((d) => d.shiftId === shift.id);
                 const slots: PostSlot[] = posts.map((post) => {
                     const people = inShift.filter((d) => d.post?.id === post.id).map(toAssignment);
-                    return { post, people, capacity: post.capacity, state: coverageState(people.length, post.capacity) };
+                    return { post, plan: planOf(post), people, capacity: post.capacity, state: coverageState(people.length, post.capacity) };
                 });
                 const withoutPost = inShift.filter((d) => !d.post).map(toAssignment);
                 if (withoutPost.length > 0) {
-                    slots.push({ post: null, people: withoutPost, capacity: null, state: 'open' });
+                    slots.push({ post: null, plan: null, people: withoutPost, capacity: null, state: 'open' });
                 }
                 const range = shiftRange(shift);
                 return { shift, range, title: shiftTitle(shift.name, range), slots, total: inShift.length };
             }),
     }));
 
-    return { days };
+    return { days, plans };
 }
 
 /** Mantém só os turnos escolhidos (e só os dias que sobram). */
 export function filterSchedule(schedule: Schedule, shiftIds: ReadonlySet<string>): Schedule {
     return {
+        plans: schedule.plans,
         days: schedule.days
             .map((day) => ({ ...day, shifts: day.shifts.filter((s) => shiftIds.has(s.shift.id)) }))
             .filter((day) => day.shifts.length > 0),
@@ -225,7 +245,16 @@ export function buildGroupText(event: EventInfo, schedule: Schedule, options: Te
             lines.push('', `*${shiftTitle(shift.shift.name, shift.range, 'paren')}*`);
             const visibleSlots = shift.slots.filter((slot) => slot.people.length > 0 || (options.showEmptyPosts && slot.post));
             if (visibleSlots.length === 0) lines.push('• (ninguém escalado neste turno)');
+            const multi = hasMultiplePlans(schedule);
+            let currentPlan: string | null | undefined;
             for (const slot of visibleSlots) {
+                if (multi) {
+                    const planName = slot.plan?.name ?? null;
+                    if (planName !== currentPlan) {
+                        lines.push(`_${planName ?? 'Sem planta'}_`);
+                        currentPlan = planName;
+                    }
+                }
                 const name = slot.post ? slot.post.name : 'Sem posto';
                 const need = slot.capacity != null ? ` [${slot.people.length}/${slot.capacity}]` : '';
                 lines.push(slot.people.length > 0 ? `• *${name}*${need}: ${peopleLine(slot.people, options)}` : `• *${name}*${need}: — sem ninguém —`);
@@ -254,7 +283,8 @@ export function buildPersonText(event: EventInfo, schedule: Schedule, staffMembe
     for (const { day, items } of mine) {
         lines.push('', `*${day.label}*`);
         for (const { shift, slot, person } of items) {
-            const where = slot.post ? slot.post.name : 'posto a definir';
+            const planLabel = slot.plan && hasMultiplePlans(schedule) ? ` (${slot.plan.name})` : '';
+            const where = slot.post ? `${slot.post.name}${planLabel}` : 'posto a definir';
             const role = options.showRoles !== false && person.role ? ` (${person.role})` : '';
             const team = person.teamName ? ` — ${person.teamName}` : '';
             const pending = options.markPending !== false && person.status === 'PENDING' ? ' — aguardando sua confirmação' : '';
