@@ -24,15 +24,19 @@ export interface Organization {
     publicRegistrationToken?: string | null;
     /** Subconjunto de PublicRegistrationField exibido no form público desta academia. */
     publicRegistrationFields: string[];
+    /** Mesmo catálogo, escolhido à parte para instrutor e equipe (o de cima é o do aluno). */
+    publicRegistrationFieldsInstructor: string[];
+    publicRegistrationFieldsStaff: string[];
 }
 
-export type PublicRegistrationField = 'baptismDate' | 'pioneerStatus' | 'signedPetitions' | 'profession';
+export type PublicRegistrationField = 'birthDate' | 'baptismDate' | 'pioneerStatus' | 'signedPetitions' | 'profession';
 
 export interface RegistrationRequest {
     id: string;
     name: string;
     email: string;
     phone: string;
+    birthDate?: string | null;
     baptismDate?: string | null;
     pioneerStatus?: PioneerStatus | null;
     signedPetitions: string[];
@@ -97,13 +101,20 @@ export interface User {
 
 export type PioneerStatus = 'AUXILIARY' | 'REGULAR';
 
+/** Só o que é de aluno. Dados pessoais (nascimento, batismo...) ficam em PersonProfile. */
 export interface StudentProfile {
+    id: string;
+    userId: string;
+    guardianName?: string | null;
+    guardianPhone?: string | null;
+}
+
+/** Dados pessoais de qualquer pessoa da academia, com ou sem perfil de aluno. */
+export interface PersonProfile {
     id: string;
     userId: string;
     birthDate?: string | null;
     gender?: string | null;
-    guardianName?: string | null;
-    guardianPhone?: string | null;
     baptismDate?: string | null;
     pioneerStatus?: PioneerStatus | null;
     signedPetitions?: string[];
@@ -120,6 +131,7 @@ export interface OrgPerson {
     isActive: boolean;
     createdAt: string;
     studentProfile?: StudentProfile | null;
+    personProfile?: PersonProfile | null;
     staffMember?: { id: string; status: string } | null;
     instructorAssignments?: { courseId: string }[];
     roleAssignments?: { id: string; name: string }[];

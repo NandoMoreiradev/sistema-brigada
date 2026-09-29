@@ -40,6 +40,10 @@ export function TemplatesTab() {
     const [modalOpen, setModalOpen] = useState(false);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    // Mesma fonte que src/services/api.ts usa pro header x-active-organization-id: com academia
+    // ativa o padrão global é só leitura (vira override via "Personalizar"); sem ela (SUPER_ADMIN
+    // na visão da plataforma) o global é editado direto.
+    const activeOrganizationId = localStorage.getItem('@BrigadaApp:activeOrganizationId');
 
     const { data, isLoading } = useQuery({
         queryKey: ['email-templates'],
@@ -89,6 +93,18 @@ export function TemplatesTab() {
         },
     });
 
+    const customizeMutation = useMutation({
+        mutationFn: (id: string) => emailTemplatesApi.customize(id),
+        onSuccess: (template) => {
+            toast.success('Template personalizado criado a partir do padrão.');
+            queryClient.invalidateQueries({ queryKey: ['email-templates'] });
+            navigate(`/admin/email-templates/${template.id}/edit`);
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Não foi possível personalizar o template.');
+        },
+    });
+
     const onSubmit = (formData: FormData) => createMutation.mutate(formData);
 
     const templates = data?.data ?? [];
@@ -123,17 +139,30 @@ export function TemplatesTab() {
                                     </Badge>
                                 </Td>
                                 <Td>
-                                    <Button $variant="ghost" onClick={() => navigate(`/admin/email-templates/${template.id}/edit`)}>
-                                        Editar
-                                    </Button>
+                                    {!template.organizationId && activeOrganizationId ? (
+                                        <Button
+                                            $variant="ghost"
+                                            disabled={customizeMutation.isPending || !template.trigger}
+                                            onClick={() => customizeMutation.mutate(template.id)}
+                                        >
+                                            Personalizar
+                                        </Button>
+                                    ) : (
+                                        <Button $variant="ghost" onClick={() => navigate(`/admin/email-templates/${template.id}/edit`)}>
+                                            Editar
+                                        </Button>
+                                    )}
                                     {template.organizationId && (
                                         <Button
                                             $variant="ghost"
                                             onClick={() => {
-                                                if (confirm(`Remover o template "${template.name}"?`)) removeMutation.mutate(template.id);
+                                                const message = template.trigger
+                                                    ? `Restaurar o padrão global para "${template.name}"? A versão personalizada da academia será removida.`
+                                                    : `Remover o template "${template.name}"?`;
+                                                if (confirm(message)) removeMutation.mutate(template.id);
                                             }}
                                         >
-                                            Remover
+                                            {template.trigger ? 'Restaurar padrão' : 'Remover'}
                                         </Button>
                                     )}
                                 </Td>

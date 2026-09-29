@@ -15,6 +15,7 @@ import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { StudentProfileDto } from './dto/student-profile.dto';
+import { PersonProfileDto } from './dto/person-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
@@ -23,6 +24,18 @@ import { TransactionalEmailService } from '../transactional-email/transactional-
 
 /** Link de primeiro acesso: mais longo que o de "esqueci a senha" (1h) porque a pessoa pode abrir o e-mail dias depois. */
 export const ACTIVATION_TOKEN_TTL = '7d';
+
+/** Converte o DTO de dados pessoais no formato do Prisma (datas em Date). */
+function personProfileData(dto: PersonProfileDto) {
+    return {
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+        gender: dto.gender,
+        baptismDate: dto.baptismDate ? new Date(dto.baptismDate) : undefined,
+        pioneerStatus: dto.pioneerStatus,
+        signedPetitions: dto.signedPetitions,
+        profession: dto.profession,
+    };
+}
 
 const userListSelect = {
     id: true,
@@ -35,6 +48,7 @@ const userListSelect = {
     createdAt: true,
     directPermissions: true,
     studentProfile: true,
+    personProfile: true,
     staffMember: { select: { id: true, status: true } },
     instructorAssignments: { select: { courseId: true } },
     roleAssignments: { select: { id: true, name: true } },
@@ -63,6 +77,7 @@ export class UsersService {
         organizationId: string;
         role?: Role;
         studentProfile?: StudentProfileDto;
+        personProfile?: PersonProfileDto;
     }) {
         const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
         if (existing) {
@@ -93,17 +108,15 @@ export class UsersService {
                     data: {
                         userId: user.id,
                         organizationId: input.organizationId,
-                        birthDate: input.studentProfile.birthDate ? new Date(input.studentProfile.birthDate) : undefined,
-                        gender: input.studentProfile.gender,
                         healthInfo: input.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
                         guardianName: input.studentProfile.guardianName,
                         guardianPhone: input.studentProfile.guardianPhone,
-                        baptismDate: input.studentProfile.baptismDate ? new Date(input.studentProfile.baptismDate) : undefined,
-                        pioneerStatus: input.studentProfile.pioneerStatus,
-                        signedPetitions: input.studentProfile.signedPetitions,
-                        profession: input.studentProfile.profession,
                     },
                 });
+            }
+
+            if (input.personProfile) {
+                await tx.personProfile.create({ data: { userId: user.id, organizationId: input.organizationId, ...personProfileData(input.personProfile) } });
             }
 
             return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userListSelect });
@@ -123,6 +136,7 @@ export class UsersService {
             organizationId,
             role: dto.role,
             studentProfile: dto.studentProfile,
+            personProfile: dto.personProfile,
         });
 
         // Fora da transação e sem `await` — o e-mail não pode impedir nem atrasar a
@@ -246,7 +260,7 @@ export class UsersService {
     }
 
     async update(id: string, organizationId: string, dto: UpdateUserDto) {
-        const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { studentProfile: true } });
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { studentProfile: true, personProfile: true } });
         if (!user) {
             throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
         }
@@ -263,21 +277,24 @@ export class UsersService {
 
             if (dto.studentProfile) {
                 const profileData = {
-                    birthDate: dto.studentProfile.birthDate ? new Date(dto.studentProfile.birthDate) : undefined,
-                    gender: dto.studentProfile.gender,
                     healthInfo: dto.studentProfile.healthInfo as Prisma.InputJsonValue | undefined,
                     guardianName: dto.studentProfile.guardianName,
                     guardianPhone: dto.studentProfile.guardianPhone,
-                    baptismDate: dto.studentProfile.baptismDate ? new Date(dto.studentProfile.baptismDate) : undefined,
-                    pioneerStatus: dto.studentProfile.pioneerStatus,
-                    signedPetitions: dto.studentProfile.signedPetitions,
-                    profession: dto.studentProfile.profession,
                 };
 
                 if (user.studentProfile) {
                     await tx.studentProfile.update({ where: { userId: id }, data: profileData });
                 } else {
                     await tx.studentProfile.create({ data: { userId: id, organizationId, ...profileData } });
+                }
+            }
+
+            if (dto.personProfile) {
+                const profileData = personProfileData(dto.personProfile);
+                if (user.personProfile) {
+                    await tx.personProfile.update({ where: { userId: id }, data: profileData });
+                } else {
+                    await tx.personProfile.create({ data: { userId: id, organizationId, ...profileData } });
                 }
             }
 

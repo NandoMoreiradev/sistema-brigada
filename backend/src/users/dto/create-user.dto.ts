@@ -15,6 +15,7 @@ import { IsString, IsNotEmpty, IsOptional, IsEmail, IsIn, ValidateNested } from 
 import { Type } from 'class-transformer';
 import { Role } from '@prisma/client';
 import { StudentProfileDto } from './student-profile.dto';
+import { PersonProfileDto } from './person-profile.dto';
 
 const ASSIGNABLE_ROLES = [Role.ORG_ADMIN, Role.ORG_USER] as const;
 
@@ -38,4 +39,10 @@ export class CreateUserDto {
     @ValidateNested()
     @Type(() => StudentProfileDto)
     studentProfile?: StudentProfileDto;
+
+    /** Dados pessoais (nascimento, batismo...): valem para qualquer papel, com ou sem perfil de aluno. */
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => PersonProfileDto)
+    personProfile?: PersonProfileDto;
 }

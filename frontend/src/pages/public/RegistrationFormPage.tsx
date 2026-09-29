@@ -66,6 +66,7 @@ const OrgName = styled.p`
 `;
 
 const schema = z.object({
+    birthDate: z.string().optional(),
     name: z.string().min(1, 'Informe seu nome'),
     email: z.string().email('E-mail inválido'),
     phone: z.string().min(1, 'Informe seu telefone'),
@@ -90,25 +91,25 @@ export default function RegistrationFormPage({ mode = 'link' }: { mode?: 'link' 
 
     const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
-        defaultValues: { name: '', email: '', phone: '', baptismDate: '', pioneerStatus: '', signedPetitions: '', profession: '' },
+        defaultValues: { name: '', email: '', phone: '', birthDate: '', baptismDate: '', pioneerStatus: '', signedPetitions: '', profession: '' },
     });
 
     useEffect(() => {
         if (!token) return;
-        const load = isInvite ? registrationsPublicApi.getInviteForm(token) : registrationsPublicApi.getForm(token);
+        const load = isInvite ? registrationsPublicApi.getInviteForm(token) : registrationsPublicApi.getForm(token, kindFromQuery(searchParams.get('tipo')));
         load
             .then((loaded) => {
                 setForm(loaded);
                 const invite = loaded as Partial<PublicInviteForm>;
-                if (isInvite && invite.email) reset({ name: invite.name ?? '', email: invite.email, phone: '', baptismDate: '', pioneerStatus: '', signedPetitions: '', profession: '' });
+                if (isInvite && invite.email) reset({ name: invite.name ?? '', email: invite.email, phone: '', birthDate: '', baptismDate: '', pioneerStatus: '', signedPetitions: '', profession: '' });
             })
             .catch((err) => setError(err?.response?.data?.message || (isInvite ? 'Convite inválido ou vencido.' : 'Link de cadastro inválido ou desativado.')))
             .finally(() => setIsLoading(false));
-    }, [token, isInvite, reset]);
+    }, [token, isInvite, reset, searchParams]);
 
-    // Papel: do convite, ou sugerido pelo `?tipo=` do link. Só aluno tem os campos de perfil de aluno.
+    // Papel: do convite, ou sugerido pelo `?tipo=` do link. Os campos opcionais (dados pessoais) valem para todos.
     const kind = isInvite ? (form?.kind ?? 'STUDENT') : kindFromQuery(searchParams.get('tipo'));
-    const enabledFields = new Set(kind === 'STUDENT' ? (form?.enabledFields ?? []) : []);
+    const enabledFields = new Set(form?.enabledFields ?? []);
 
     const onSubmit = async (data: FormData) => {
         if (!token) return;
@@ -118,6 +119,7 @@ export default function RegistrationFormPage({ mode = 'link' }: { mode?: 'link' 
             const payload = {
                 name: data.name,
                 phone: data.phone,
+                birthDate: enabledFields.has('birthDate') && data.birthDate ? data.birthDate : undefined,
                 baptismDate: enabledFields.has('baptismDate') && data.baptismDate ? data.baptismDate : undefined,
                 pioneerStatus: enabledFields.has('pioneerStatus') && data.pioneerStatus ? data.pioneerStatus : undefined,
                 signedPetitions: enabledFields.has('signedPetitions') && data.signedPetitions
@@ -203,6 +205,13 @@ export default function RegistrationFormPage({ mode = 'link' }: { mode?: 'link' 
                         <Input id="reg-phone" {...register('phone')} />
                         {errors.phone && <ErrorText>{errors.phone.message}</ErrorText>}
                     </Field>
+
+                    {enabledFields.has('birthDate') && (
+                        <Field>
+                            <Label htmlFor="reg-birthDate">Data de nascimento</Label>
+                            <Input id="reg-birthDate" type="date" {...register('birthDate')} />
+                        </Field>
+                    )}
 
                     {(enabledFields.has('baptismDate') || enabledFields.has('pioneerStatus')) && (
                         <FieldRow>

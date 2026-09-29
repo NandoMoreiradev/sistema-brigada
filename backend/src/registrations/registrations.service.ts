@@ -20,7 +20,13 @@ import { RejectRegistrationDto } from './dto/reject-registration.dto';
 import { ListRegistrationsQueryDto } from './dto/list-registrations-query.dto';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { SubmitInviteRegistrationDto } from './dto/submit-invite-registration.dto';
-import { PublicRegistrationField } from '../common/constants/public-registration-fields.constant';
+import { PublicRegistrationField, registrationFieldsFor } from '../common/constants/public-registration-fields.constant';
+
+const organizationFieldsSelect = {
+    publicRegistrationFields: true,
+    publicRegistrationFieldsInstructor: true,
+    publicRegistrationFieldsStaff: true,
+} as const;
 
 /** Convite dirigido vale 7 dias (renovável por "Reenviar"). */
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -57,6 +63,7 @@ const registrationListSelect = {
     name: true,
     email: true,
     phone: true,
+    birthDate: true,
     baptismDate: true,
     pioneerStatus: true,
     signedPetitions: true,
@@ -90,7 +97,7 @@ export class RegistrationsService {
     private async findOrganizationByToken(token: string) {
         const organization = await this.prisma.organization.findFirst({
             where: { publicRegistrationToken: token, publicRegistrationEnabled: true },
-            select: { id: true, name: true, logoUrl: true, publicRegistrationFields: true },
+            select: { id: true, name: true, logoUrl: true, ...organizationFieldsSelect },
         });
         if (!organization) {
             throw new NotFoundException('Link de cadastro inválido ou desativado.');
@@ -98,18 +105,20 @@ export class RegistrationsService {
         return organization;
     }
 
-    async getPublicFormConfig(token: string) {
+    async getPublicFormConfig(token: string, kind: RegistrationKind = RegistrationKind.STUDENT) {
         const organization = await this.findOrganizationByToken(token);
         return {
             organizationName: organization.name,
             organizationLogoUrl: organization.logoUrl,
-            enabledFields: organization.publicRegistrationFields,
+            enabledFields: registrationFieldsFor(organization, kind),
         };
     }
 
     async submitPublic(token: string, dto: SubmitRegistrationDto) {
         const organization = await this.findOrganizationByToken(token);
-        const enabledFields = new Set(organization.publicRegistrationFields as PublicRegistrationField[]);
+        // Os campos aceitos dependem do papel pedido: cada papel tem a sua lista na academia.
+        const requestedKind = dto.requestedKind ?? RegistrationKind.STUDENT;
+        const enabledFields = new Set<PublicRegistrationField>(registrationFieldsFor(organization, requestedKind));
 
         // Duplicata de pending pro mesmo e-mail: ignora silenciosamente (mesma mensagem de
         // sucesso) em vez de erro — não vaza pra quem preenche o form se aquele e-mail já
@@ -120,7 +129,6 @@ export class RegistrationsService {
         });
 
         if (!duplicate) {
-            const requestedKind = dto.requestedKind ?? RegistrationKind.STUDENT;
             await this.prisma.registrationRequest.create({
                 data: {
                     organizationId: organization.id,
@@ -130,6 +138,7 @@ export class RegistrationsService {
                     requestedKind,
                     // Nunca confia no payload do cliente pra decidir quais campos opcionais
                     // valem — só grava o que a academia realmente habilitou no momento do envio.
+                    birthDate: enabledFields.has('birthDate') && dto.birthDate ? new Date(dto.birthDate) : undefined,
                     baptismDate: enabledFields.has('baptismDate') && dto.baptismDate ? new Date(dto.baptismDate) : undefined,
                     pioneerStatus: enabledFields.has('pioneerStatus') ? dto.pioneerStatus : undefined,
                     signedPetitions: enabledFields.has('signedPetitions') ? dto.signedPetitions : undefined,
@@ -186,7 +195,7 @@ export class RegistrationsService {
     /**
      * Cria a conta a partir de uma solicitação e manda o e-mail de acesso. Compartilhado pela
      * aprovação manual e pelo convite dirigido (que já nasce autorizado por quem convidou).
-     * O papel decide o que é criado: aluno ganha perfil de aluno; instrutor fica sem perfil (pronto
+     * Os dados pessoais são gravados para todos os papéis. O papel decide o resto: aluno ganha perfil de aluno; instrutor fica sem perfil (pronto
      * para ser escalado em turmas); equipe fica sem perfil e já é promovida a integrante da equipe.
      */
     private async createAccountFromRequest(
@@ -201,15 +210,15 @@ export class RegistrationsService {
             email: request.email,
             phone: request.phone,
             organizationId,
-            studentProfile:
-                kind === RegistrationKind.STUDENT
-                    ? {
-                          baptismDate: overrides.baptismDate ?? (request.baptismDate ? request.baptismDate.toISOString().slice(0, 10) : undefined),
-                          pioneerStatus: overrides.pioneerStatus ?? request.pioneerStatus ?? undefined,
-                          signedPetitions: overrides.signedPetitions ?? request.signedPetitions,
-                          profession: overrides.profession ?? request.profession ?? undefined,
-                      }
-                    : undefined,
+            // Dados pessoais valem para qualquer papel; o perfil de aluno só existe para aluno.
+            personProfile: {
+                birthDate: overrides.birthDate ?? (request.birthDate ? request.birthDate.toISOString().slice(0, 10) : undefined),
+                baptismDate: overrides.baptismDate ?? (request.baptismDate ? request.baptismDate.toISOString().slice(0, 10) : undefined),
+                pioneerStatus: overrides.pioneerStatus ?? request.pioneerStatus ?? undefined,
+                signedPetitions: overrides.signedPetitions ?? request.signedPetitions,
+                profession: overrides.profession ?? request.profession ?? undefined,
+            },
+            studentProfile: kind === RegistrationKind.STUDENT ? {} : undefined,
         });
 
         if (kind === RegistrationKind.STAFF) {
@@ -425,7 +434,7 @@ export class RegistrationsService {
     private async findUsableInvite(token: string) {
         const invite = await this.prisma.registrationInvite.findFirst({
             where: { token, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
-            include: { organization: { select: { id: true, name: true, logoUrl: true, publicRegistrationFields: true } } },
+            include: { organization: { select: { id: true, name: true, logoUrl: true, ...organizationFieldsSelect } } },
         });
         if (!invite) {
             throw new NotFoundException('Convite inválido, vencido ou já utilizado. Peça um novo convite à academia.');
@@ -441,14 +450,13 @@ export class RegistrationsService {
             kind: invite.kind,
             email: invite.email,
             name: invite.name,
-            enabledFields: invite.kind === RegistrationKind.STUDENT ? invite.organization.publicRegistrationFields : [],
+            enabledFields: registrationFieldsFor(invite.organization, invite.kind),
         };
     }
 
     async submitInvite(token: string, dto: SubmitInviteRegistrationDto) {
         const invite = await this.findUsableInvite(token);
-        const enabledFields = new Set(invite.organization.publicRegistrationFields as PublicRegistrationField[]);
-        const isStudent = invite.kind === RegistrationKind.STUDENT;
+        const enabledFields = new Set<PublicRegistrationField>(registrationFieldsFor(invite.organization, invite.kind));
 
         if (await this.prisma.user.findFirst({ where: { email: { equals: invite.email, mode: 'insensitive' } }, select: { id: true } })) {
             throw new ConflictException('Já existe uma conta com este e-mail. Use "Esqueci minha senha" na tela de login.');
@@ -473,10 +481,11 @@ export class RegistrationsService {
                     phone: dto.phone,
                     requestedKind: invite.kind,
                     inviteId: invite.id,
-                    baptismDate: isStudent && enabledFields.has('baptismDate') && dto.baptismDate ? new Date(dto.baptismDate) : undefined,
-                    pioneerStatus: isStudent && enabledFields.has('pioneerStatus') ? dto.pioneerStatus : undefined,
-                    signedPetitions: isStudent && enabledFields.has('signedPetitions') ? dto.signedPetitions : undefined,
-                    profession: isStudent && enabledFields.has('profession') ? dto.profession : undefined,
+                    birthDate: enabledFields.has('birthDate') && dto.birthDate ? new Date(dto.birthDate) : undefined,
+                    baptismDate: enabledFields.has('baptismDate') && dto.baptismDate ? new Date(dto.baptismDate) : undefined,
+                    pioneerStatus: enabledFields.has('pioneerStatus') ? dto.pioneerStatus : undefined,
+                    signedPetitions: enabledFields.has('signedPetitions') ? dto.signedPetitions : undefined,
+                    profession: enabledFields.has('profession') ? dto.profession : undefined,
                 },
             });
             // O convite é a autorização: quem convidou é registrado como revisor.

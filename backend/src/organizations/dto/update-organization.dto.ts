@@ -33,4 +33,15 @@ export class UpdateOrganizationDto extends PartialType(OmitType(CreateOrganizati
     @IsArray()
     @IsIn(PUBLIC_REGISTRATION_FIELD_CATALOG, { each: true, message: 'Um ou mais campos informados não existem no catálogo de autocadastro.' })
     publicRegistrationFields?: string[];
+
+    /// Campos do formulário para quem entra como instrutor / equipe (o de cima é o do aluno).
+    @IsOptional()
+    @IsArray()
+    @IsIn(PUBLIC_REGISTRATION_FIELD_CATALOG, { each: true, message: 'Um ou mais campos informados não existem no catálogo de autocadastro.' })
+    publicRegistrationFieldsInstructor?: string[];
+
+    @IsOptional()
+    @IsArray()
+    @IsIn(PUBLIC_REGISTRATION_FIELD_CATALOG, { each: true, message: 'Um ou mais campos informados não existem no catálogo de autocadastro.' })
+    publicRegistrationFieldsStaff?: string[];
 }

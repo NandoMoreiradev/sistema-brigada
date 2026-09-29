@@ -21,4 +21,6 @@ export class UpdateMyOrganizationDto extends PickType(UpdateOrganizationDto, [
     'emailFromName',
     'publicRegistrationEnabled',
     'publicRegistrationFields',
+    'publicRegistrationFieldsInstructor',
+    'publicRegistrationFieldsStaff',
 ] as const) {}

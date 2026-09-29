@@ -54,6 +54,11 @@ export class EmailTemplatesController {
         return this.emailTemplatesService.create(dto, user, activeOrganizationId);
     }
 
+    @Post(':id/customize')
+    customize(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser, @ActiveOrganizationId() activeOrganizationId?: string) {
+        return this.emailTemplatesService.customize(id, user, activeOrganizationId);
+    }
+
     @Patch(':id')
     update(
         @Param('id') id: string,

@@ -19,6 +19,7 @@ export interface SubmitRegistrationInput {
     phone: string;
     /** Sugestão do link (?tipo=): quem revisa decide o papel final. */
     requestedKind?: RegistrationKind;
+    birthDate?: string;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];
@@ -27,8 +28,8 @@ export interface SubmitRegistrationInput {
 
 // Sem autenticação — usado pela página pública de autocadastro (/register/:token).
 export const registrationsPublicApi = {
-    getForm: async (token: string) => {
-        const { data } = await api.get<PublicRegistrationForm>(`/public/registrations/${token}`);
+    getForm: async (token: string, kind?: RegistrationKind) => {
+        const { data } = await api.get<PublicRegistrationForm>(`/public/registrations/${token}`, { params: { kind } });
         return data;
     },
     submit: async (token: string, input: SubmitRegistrationInput) => {
@@ -47,6 +48,7 @@ export const registrationsPublicApi = {
 
 export interface ApproveRegistrationInput {
     kind?: RegistrationKind;
+    birthDate?: string;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];

@@ -12,13 +12,16 @@ import { Field, Label, Input, Form, HelpText } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 import { FilterChip } from '@/pages/course-detail/styles';
 import { toast } from '@/utils/toast';
+import { Segmented } from '@/components/ui/Segmented';
 import { KIND_LABEL, KIND_ORDER, KIND_QUERY } from '@/utils/registrationKinds';
+import type { RegistrationKind } from '@/types';
 import { SettingsCard, TabStack, SaveFooter, CardSkeleton, SwitchRow, SwitchInput, DangerZone, useReportDirty } from './SettingsParts';
 import { useMyOrganization } from './useMyOrganization';
 
 // Mesmo catálogo fixo de backend/src/common/constants/public-registration-fields.constant.ts
-// (não é form-builder livre — só toggle sobre esses 4 campos).
+// (não é form-builder livre — só toggle sobre esses campos, que valem para qualquer papel).
 const PUBLIC_REGISTRATION_FIELDS: { value: string; label: string }[] = [
+    { value: 'birthDate', label: 'Data de nascimento' },
     { value: 'baptismDate', label: 'Data de batismo' },
     { value: 'pioneerStatus', label: 'Situação de pioneiro' },
     { value: 'signedPetitions', label: 'Petições assinadas' },
@@ -53,22 +56,38 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 
 export function OrganizationRegistrationTab() {
     const { data, isLoading, save, regenerateToken } = useMyOrganization();
-    const [fields, setFields] = useState<string[]>([]);
+    // Campos opcionais do formulário, escolhidos por papel (aluno / instrutor / equipe).
+    const [fieldsByKind, setFieldsByKind] = useState<Record<RegistrationKind, string[]>>({ STUDENT: [], INSTRUCTOR: [], STAFF: [] });
+    const [fieldsKind, setFieldsKind] = useState<RegistrationKind>('STUDENT');
+    const fields = fieldsByKind[fieldsKind];
     const { register, handleSubmit, reset, watch, formState: { isDirty: switchDirty } } = useForm<FormData>({ defaultValues: { publicRegistrationEnabled: false } });
 
     useEffect(() => {
         if (!data) return;
         reset({ publicRegistrationEnabled: data.publicRegistrationEnabled });
-        setFields(data.publicRegistrationFields || []);
+        setFieldsByKind({
+            STUDENT: data.publicRegistrationFields || [],
+            INSTRUCTOR: data.publicRegistrationFieldsInstructor || [],
+            STAFF: data.publicRegistrationFieldsStaff || [],
+        });
     }, [data, reset]);
 
     const enabled = watch('publicRegistrationEnabled');
-    const isDirty = switchDirty || (!!data && !sameSet(fields, data.publicRegistrationFields || []));
+    const savedByKind: Record<RegistrationKind, string[]> = {
+        STUDENT: data?.publicRegistrationFields || [],
+        INSTRUCTOR: data?.publicRegistrationFieldsInstructor || [],
+        STAFF: data?.publicRegistrationFieldsStaff || [],
+    };
+    const isDirty = switchDirty || (!!data && KIND_ORDER.some((kind) => !sameSet(fieldsByKind[kind], savedByKind[kind])));
     useReportDirty(isDirty);
 
     const link = data?.publicRegistrationToken ? `${window.location.origin}/register/${data.publicRegistrationToken}` : null;
 
-    const toggleField = (value: string) => setFields((prev) => (prev.includes(value) ? prev.filter((f) => f !== value) : [...prev, value]));
+    const toggleField = (value: string) =>
+        setFieldsByKind((prev) => ({
+            ...prev,
+            [fieldsKind]: prev[fieldsKind].includes(value) ? prev[fieldsKind].filter((f) => f !== value) : [...prev[fieldsKind], value],
+        }));
 
     const copyLink = async (value: string) => {
         try {
@@ -91,7 +110,10 @@ export function OrganizationRegistrationTab() {
             >
                 <Form
                     id="org-registration-form"
-                    onSubmit={handleSubmit((input) => save.mutate({ publicRegistrationEnabled: input.publicRegistrationEnabled, publicRegistrationFields: fields }))}
+                    onSubmit={handleSubmit((input) => save.mutate({ publicRegistrationEnabled: input.publicRegistrationEnabled, publicRegistrationFields: fieldsByKind.STUDENT,
+                        publicRegistrationFieldsInstructor: fieldsByKind.INSTRUCTOR,
+                        publicRegistrationFieldsStaff: fieldsByKind.STAFF,
+                    }))}
                 >
                     <SwitchRow>
                         <span className="text">
@@ -105,6 +127,12 @@ export function OrganizationRegistrationTab() {
                         <>
                             <Field>
                                 <Label>Campos extras no formulário</Label>
+                                <Segmented
+                                    ariaLabel="Papel"
+                                    value={fieldsKind}
+                                    onChange={setFieldsKind}
+                                    options={KIND_ORDER.map((kind) => ({ value: kind, label: `${KIND_LABEL[kind]} (${fieldsByKind[kind].length})` }))}
+                                />
                                 <Chips>
                                     {PUBLIC_REGISTRATION_FIELDS.map((field) => (
                                         <FilterChip key={field.value} type="button" $active={fields.includes(field.value)} aria-pressed={fields.includes(field.value)} onClick={() => toggleField(field.value)}>
@@ -112,7 +140,7 @@ export function OrganizationRegistrationTab() {
                                         </FilterChip>
                                     ))}
                                 </Chips>
-                                <HelpText>Nome, e-mail e telefone são sempre pedidos — estes são os campos opcionais.</HelpText>
+                                <HelpText>Nome, e-mail e telefone são sempre pedidos. Cada papel tem a sua lista de campos opcionais: o que você marca aqui vale só para {KIND_LABEL[fieldsKind].toLowerCase()}.</HelpText>
                             </Field>
 
                             <Field>

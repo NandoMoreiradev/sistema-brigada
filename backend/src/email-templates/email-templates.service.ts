@@ -118,6 +118,42 @@ export class EmailTemplatesService {
         }
     }
 
+    /**
+     * Cria o override da academia ativa a partir de um template global: copia conteúdo e design
+     * pra academia poder editar sem começar do zero. A cópia é independente — mudanças
+     * posteriores no global não chegam nela (pra voltar ao padrão, basta remover o override).
+     */
+    async customize(id: string, user: AuthenticatedUser, activeOrganizationId?: string) {
+        const organizationId = this.requireActiveOrganization(activeOrganizationId);
+        const source = await this.findOne(id, user, activeOrganizationId);
+
+        if (source.organizationId) {
+            throw new BadRequestException('Apenas templates padrão (globais) podem ser personalizados.');
+        }
+        if (!source.trigger) {
+            throw new BadRequestException('Este template não tem gatilho e não pode ser personalizado.');
+        }
+
+        try {
+            return await this.prisma.emailTemplate.create({
+                data: {
+                    name: source.name,
+                    subject: source.subject,
+                    body: source.body,
+                    trigger: source.trigger,
+                    ...(source.designJson ? { designJson: source.designJson as Prisma.JsonObject } : {}),
+                    organization: { connect: { id: organizationId } },
+                    createdBy: { connect: { id: user.id } },
+                },
+            });
+        } catch (error: any) {
+            if (error?.code === 'P2002') {
+                throw new ConflictException('Esta academia já tem um template personalizado para esse gatilho.');
+            }
+            throw error;
+        }
+    }
+
     async findOne(id: string, user: AuthenticatedUser, activeOrganizationId?: string) {
         const template = await this.prisma.emailTemplate.findUnique({ where: { id } });
         if (!template) {

@@ -1,15 +1,7 @@
-import { IsOptional, IsString, IsDateString, IsObject, IsEnum, IsArray } from 'class-validator';
-import { PioneerStatus } from '@prisma/client';
+import { IsOptional, IsString, IsObject } from 'class-validator';
 
+/** Só o que é de aluno. Nascimento, batismo etc. vão em PersonProfileDto. */
 export class StudentProfileDto {
-    @IsOptional()
-    @IsDateString()
-    birthDate?: string;
-
-    @IsOptional()
-    @IsString()
-    gender?: string;
-
     @IsOptional()
     @IsObject()
     healthInfo?: Record<string, unknown>;
@@ -21,21 +13,4 @@ export class StudentProfileDto {
     @IsOptional()
     @IsString()
     guardianPhone?: string;
-
-    @IsOptional()
-    @IsDateString()
-    baptismDate?: string;
-
-    @IsOptional()
-    @IsEnum(PioneerStatus)
-    pioneerStatus?: PioneerStatus;
-
-    @IsOptional()
-    @IsArray()
-    @IsString({ each: true })
-    signedPetitions?: string[];
-
-    @IsOptional()
-    @IsString()
-    profession?: string;
 }
