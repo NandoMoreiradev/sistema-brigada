@@ -72,6 +72,31 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultEmailTemplate[] = [
         `.trim(),
     },
     {
+        name: 'Padrão — Cadastro recusado (autocadastro público)',
+        trigger: EmailTriggerType.REGISTRATION_REJECTED,
+        subject: 'Sobre o seu cadastro em {{organization_name}}',
+        body: `
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Analisamos o seu cadastro em <strong>{{organization_name}}</strong> e, neste momento, não foi possível aprová-lo.</p>
+            {{#if rejection_reason}}<p><strong>Motivo:</strong> {{rejection_reason}}</p>{{/if}}
+            <p>Se você acha que houve um engano, entre em contato diretamente com a academia.</p>
+        `.trim(),
+    },
+    {
+        name: 'Padrão — Convite para se cadastrar',
+        trigger: EmailTriggerType.REGISTRATION_INVITE,
+        subject: 'Você foi convidado(a) para {{organization_name}}',
+        body: `
+            <h2>Você foi convidado(a)!</h2>
+            <p>Olá{{#if user.name}}, {{user.name | firstname}}{{/if}}.</p>
+            <p><strong>{{organization_name}}</strong> convidou você para se cadastrar como <strong>{{invite_kind}}</strong>. Preencha seus dados pelo botão abaixo — o link é pessoal e vale por 7 dias.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{invite_link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Completar meu cadastro</a>
+            </p>
+            <p>Se você não esperava este e-mail, pode ignorá-lo com segurança.</p>
+        `.trim(),
+    },
+    {
         name: 'Padrão — Certificado vencendo',
         trigger: EmailTriggerType.CERTIFICATE_EXPIRING,
         subject: 'Seu certificado está vencendo',

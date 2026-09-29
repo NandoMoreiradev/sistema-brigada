@@ -151,6 +151,12 @@ export default function People() {
         },
     });
 
+    const resendAccessMutation = useMutation({
+        mutationFn: (id: string) => peopleApi.resendAccess(id),
+        onSuccess: (result) => (result.sent ? toast.success(result.message) : toast.error(result.message)),
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível reenviar o acesso.'),
+    });
+
     const handleResetPassword = () => {
         if (!editing) return;
         if (window.confirm(`Enviar um novo e-mail de redefinição de senha para ${editing.name}?`)) {
@@ -427,6 +433,17 @@ export default function People() {
                                 disabled={resetPasswordMutation.isPending}
                             >
                                 {resetPasswordMutation.isPending ? 'Enviando...' : 'Redefinir senha'}
+                            </Button>
+                        )}
+                        {editing && (
+                            <Button
+                                type="button"
+                                $variant="ghost"
+                                onClick={() => resendAccessMutation.mutate(editing.id)}
+                                disabled={resendAccessMutation.isPending}
+                                title="Reenvia o e-mail de primeiro acesso, com um novo link de 7 dias"
+                            >
+                                {resendAccessMutation.isPending ? 'Enviando...' : 'Reenviar acesso'}
                             </Button>
                         )}
                         <div style={{ display: 'flex', gap: '0.5rem' }}>

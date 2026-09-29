@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { Paginated, RegistrationRequest, PioneerStatus } from '@/types';
+import type { Paginated, RegistrationRequest, RegistrationInvite, RegistrationKind, PioneerStatus } from '@/types';
 
 export interface PublicRegistrationForm {
     organizationName: string;
@@ -7,10 +7,18 @@ export interface PublicRegistrationForm {
     enabledFields: string[];
 }
 
+export interface PublicInviteForm extends PublicRegistrationForm {
+    kind: RegistrationKind;
+    email: string;
+    name?: string | null;
+}
+
 export interface SubmitRegistrationInput {
     name: string;
     email: string;
     phone: string;
+    /** Sugestão do link (?tipo=): quem revisa decide o papel final. */
+    requestedKind?: RegistrationKind;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];
@@ -27,9 +35,18 @@ export const registrationsPublicApi = {
         const { data } = await api.post<{ message: string }>(`/public/registrations/${token}`, input);
         return data;
     },
+    getInviteForm: async (token: string) => {
+        const { data } = await api.get<PublicInviteForm>(`/public/registrations/invite/${token}`);
+        return data;
+    },
+    submitInvite: async (token: string, input: Omit<SubmitRegistrationInput, 'email' | 'requestedKind'>) => {
+        const { data } = await api.post<{ message: string; emailSent: boolean }>(`/public/registrations/invite/${token}`, input);
+        return data;
+    },
 };
 
 export interface ApproveRegistrationInput {
+    kind?: RegistrationKind;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
     signedPetitions?: string[];
@@ -50,8 +67,33 @@ export const registrationsApi = {
         const { data } = await api.patch<RegistrationRequest>(`/registrations/${id}/approve`, input);
         return data;
     },
-    reject: async (id: string, reason?: string) => {
-        const { data } = await api.patch<RegistrationRequest>(`/registrations/${id}/reject`, { reason });
+    reject: async (id: string, input: { reason?: string; notify?: boolean }) => {
+        const { data } = await api.patch<RegistrationRequest>(`/registrations/${id}/reject`, input);
+        return data;
+    },
+    /** Só conta os pendentes (badge do menu): pede 1 item e lê o total. */
+    pendingCount: async () => {
+        const { data } = await api.get<Paginated<RegistrationRequest>>('/registrations', { params: { status: 'PENDING', limit: 1 } });
+        return data.total;
+    },
+    resendAccess: async (id: string) => {
+        const { data } = await api.post<{ sent: boolean; message: string }>(`/registrations/${id}/resend-access`);
+        return data;
+    },
+    listInvites: async () => {
+        const { data } = await api.get<RegistrationInvite[]>('/registrations/invites');
+        return data;
+    },
+    createInvite: async (input: { email: string; name?: string; kind: RegistrationKind }) => {
+        const { data } = await api.post<{ sent: boolean; invite: RegistrationInvite }>('/registrations/invites', input);
+        return data;
+    },
+    resendInvite: async (id: string) => {
+        const { data } = await api.post<{ sent: boolean; invite: RegistrationInvite }>(`/registrations/invites/${id}/resend`);
+        return data;
+    },
+    revokeInvite: async (id: string) => {
+        const { data } = await api.delete<RegistrationInvite>(`/registrations/invites/${id}`);
         return data;
     },
 };

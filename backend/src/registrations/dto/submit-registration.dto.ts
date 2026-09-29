@@ -6,7 +6,7 @@
 // publicRegistrationFields da academia no servidor, nunca confia no formulário.
 
 import { IsString, IsNotEmpty, IsEmail, IsOptional, IsDateString, IsEnum, IsArray } from 'class-validator';
-import { PioneerStatus } from '@prisma/client';
+import { PioneerStatus, RegistrationKind } from '@prisma/client';
 
 export class SubmitRegistrationDto {
     @IsString()
@@ -19,6 +19,11 @@ export class SubmitRegistrationDto {
     @IsString()
     @IsNotEmpty({ message: 'O telefone não pode ser vazio.' })
     phone: string;
+
+    /** Sugestão vinda do link (?tipo=): quem revisa decide o papel final. */
+    @IsOptional()
+    @IsEnum(RegistrationKind)
+    requestedKind?: RegistrationKind;
 
     @IsOptional()
     @IsDateString()

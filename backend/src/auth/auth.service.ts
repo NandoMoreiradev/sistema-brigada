@@ -341,10 +341,11 @@ export class AuthService {
      * ativação do administrador recém-criado de uma academia ("definir minha primeira senha"
      * é, na prática, o mesmo fluxo de "redefinir minha senha").
      */
-    createPasswordResetToken(userId: string): string {
+    /** Redefinição de senha vale 1h; o link de primeiro acesso (conta nova) vale mais (7d, ver UsersService). */
+    createPasswordResetToken(userId: string, expiresIn: string = '1h'): string {
         return this.jwtService.sign(
             { sub: userId, purpose: 'password-reset' },
-            { secret: this.configService.get<string>('JWT_SECRET'), expiresIn: '1h' },
+            { secret: this.configService.get<string>('JWT_SECRET'), expiresIn: expiresIn as any },
         );
     }
 

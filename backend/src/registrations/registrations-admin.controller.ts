@@ -4,10 +4,11 @@
 // própria (registrations:manage), não people:manage, pra permitir delegar a revisão (ex:
 // recepção) sem dar acesso total à tela de Alunos/Equipe. Mesmo shape de staff.controller.ts.
 
-import { Controller, Get, Patch, Param, Body, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { RegistrationsService } from './registrations.service';
 import { ApproveRegistrationDto } from './dto/approve-registration.dto';
 import { RejectRegistrationDto } from './dto/reject-registration.dto';
+import { CreateInviteDto } from './dto/create-invite.dto';
 import { ListRegistrationsQueryDto } from './dto/list-registrations-query.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -34,6 +35,31 @@ export class RegistrationsAdminController {
         return this.registrationsService.findAll(this.requireOrganizationId(organizationId), query);
     }
 
+    // Convites — declarados antes de `:id` para 'invites' não ser lido como um id.
+    @Get('invites')
+    @RequirePermission('registrations:manage')
+    listInvites(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.registrationsService.listInvites(this.requireOrganizationId(organizationId));
+    }
+
+    @Post('invites')
+    @RequirePermission('registrations:manage')
+    createInvite(@Body() dto: CreateInviteDto, @ActiveOrganizationId() organizationId: string | undefined, @CurrentUser() user: AuthenticatedUser) {
+        return this.registrationsService.createInvite(this.requireOrganizationId(organizationId), user.id, dto);
+    }
+
+    @Post('invites/:id/resend')
+    @RequirePermission('registrations:manage')
+    resendInvite(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.registrationsService.resendInvite(id, this.requireOrganizationId(organizationId));
+    }
+
+    @Delete('invites/:id')
+    @RequirePermission('registrations:manage')
+    revokeInvite(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.registrationsService.revokeInvite(id, this.requireOrganizationId(organizationId));
+    }
+
     @Get(':id')
     @RequirePermission('registrations:manage')
     findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
@@ -49,6 +75,12 @@ export class RegistrationsAdminController {
         @CurrentUser() user: AuthenticatedUser,
     ) {
         return this.registrationsService.approve(id, this.requireOrganizationId(organizationId), user.id, dto);
+    }
+
+    @Post(':id/resend-access')
+    @RequirePermission('registrations:manage')
+    resendAccess(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.registrationsService.resendAccess(id, this.requireOrganizationId(organizationId));
     }
 
     @Patch(':id/reject')

@@ -14,7 +14,7 @@ import styled from 'styled-components';
 import html2canvas from 'html2canvas';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Upload, Download, Printer, X, Clock, Share2, ChevronDown, Eye, Layers, AlertTriangle } from 'lucide-react';
+import { MapPin, Upload, Download, Printer, X, Clock, Share2, ChevronDown, Eye, Layers, AlertTriangle, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ActionMenu, MoreButton } from '@/components/ui/ActionMenu';
 import { Modal } from '@/components/ui/Modal';
@@ -64,7 +64,7 @@ const Bar = styled.div`
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem 1rem;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.5rem;
 `;
 
 const Chips = styled.div`
@@ -306,7 +306,7 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
             )}
 
             <Bar>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem 0.9rem' }}>
                     {multiPlan && (
                         <Chips role="tablist" aria-label="Planta">
                             {floorPlans.map((plan) => (
@@ -360,6 +360,12 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: '#6c757d' }}
+                        title={`${day ? `${day.label}: ${totalPeople} escalado(s), sem contar quem recusou.` : ''}${canManage && posts.length > 0 ? ' Arraste um posto na planta para reposicioná-lo.' : ''}`}
+                    >
+                        <Users size={13} /> {totalPeople}
+                    </span>
                     {canManage && (
                         <Button $variant={isPlacing ? 'primary' : 'secondary'} onClick={() => { setIsPlacing((v) => !v); setPendingPos(null); }}>
                             <MapPin size={14} /> {isPlacing ? 'Clique na planta para posicionar' : 'Adicionar posto'}
@@ -390,13 +396,6 @@ export function MapTab({ eventId, canManage }: { eventId: string; canManage: boo
                     )}
                 </div>
             </Bar>
-
-            <div style={{ marginBottom: '0.6rem' }}>
-                <HelpText>
-                    {day ? `${day.label}: ${totalPeople} escalado(s), sem contar quem recusou.` : ''}
-                    {canManage && posts.length > 0 && !isPlacing ? ' Arraste um posto na planta para reposicioná-lo.' : ''}
-                </HelpText>
-            </div>
 
             <MapSheet
                 imageUrl={floorPlanUrl}

@@ -62,6 +62,21 @@ export const MERGE_TAGS: MergeTagGroup[] = [
                 description: 'Usado no e-mail de boas-vindas do administrador de academia.',
             },
             {
+                value: '{{invite_link}}',
+                label: 'Link do convite',
+                description: 'Usado no e-mail de convite para se cadastrar na academia.',
+            },
+            {
+                value: '{{invite_kind}}',
+                label: 'Papel do convite',
+                description: 'Aluno, instrutor ou equipe — o papel com que a pessoa foi convidada.',
+            },
+            {
+                value: '{{rejection_reason}}',
+                label: 'Motivo da recusa',
+                description: 'Motivo informado por quem recusou o cadastro (pode estar vazio).',
+            },
+            {
                 value: '{{password_reset_link}}',
                 label: 'Link de redefinição de senha',
                 description: 'Usado no e-mail de "esqueci minha senha".',

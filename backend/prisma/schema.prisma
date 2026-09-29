@@ -55,6 +55,7 @@ model Organization {
   emailTemplates       EmailTemplate[]
   communications       Communication[]
   registrationRequests RegistrationRequest[]
+  registrationInvites  RegistrationInvite[]
 
   @@index([parentOrganizationId])
 }
@@ -104,6 +105,7 @@ model User {
   createdCommunications          Communication[]          @relation("CommunicationCreator")
   communicationRecipients        CommunicationRecipient[]
   reviewedRegistrationRequests   RegistrationRequest[]    @relation("RegistrationRequestReviewedBy")
+  createdRegistrationInvites     RegistrationInvite[]     @relation("RegistrationInviteCreatedBy")
   createdFromRegistrationRequest RegistrationRequest?     @relation("RegistrationRequestCreatedUser")
 
   @@index([organizationId])
@@ -833,6 +835,8 @@ enum EmailTriggerType {
   ENROLLMENT_CONFIRMED
   DESIGNATION_ASSIGNED
   REGISTRATION_APPROVED
+  REGISTRATION_REJECTED
+  REGISTRATION_INVITE
 }
 
 /// organizationId = null -> template padrão global (usado quando a academia não tem override).
@@ -889,12 +893,23 @@ model RegistrationRequest {
   rejectionReason  String?
   /// Preenchido só quando status = APPROVED.
   createdUserId    String?                   @unique
+  /// O que a pessoa pediu (link com ?tipo= ou convite) e o que o revisor aprovou de fato. O revisor
+  /// sempre decide: o pedido é só uma sugestão.
+  requestedKind    RegistrationKind          @default(STUDENT)
+  approvedKind     RegistrationKind?
+  /// Resultado do envio do e-mail de acesso (SENT/FAILED) — o envio não bloqueia a aprovação, então
+  /// sem isto uma falha ficava só no log do servidor.
+  accessEmailStatus String?
+  accessEmailAt     DateTime?
+  /// Preenchido quando a solicitação veio de um convite dirigido.
+  inviteId         String?                   @unique
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reviewedBy   User?        @relation("RegistrationRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   createdUser  User?        @relation("RegistrationRequestCreatedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+  invite       RegistrationInvite? @relation(fields: [inviteId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
 }
@@ -1017,4 +1032,37 @@ model TimeOff {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, start, end])
+}
+
+/// Papel que a pessoa entra: aluno (com perfil de aluno), instrutor (sem perfil, pronto para ser
+/// escalado em turmas) ou equipe (sem perfil, já promovida a integrante da equipe).
+enum RegistrationKind {
+  STUDENT
+  INSTRUCTOR
+  STAFF
+}
+
+/// Convite dirigido a um e-mail: link único, com validade, que já define o papel. Quem se cadastra
+/// por ele é aprovado na hora (o admin que convidou é quem autoriza).
+model RegistrationInvite {
+  id              String           @id @default(cuid())
+  organizationId  String
+  email           String
+  name            String?
+  kind            RegistrationKind @default(STUDENT)
+  token           String           @unique
+  createdByUserId String?
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  /// SENT/FAILED do último envio do convite por e-mail.
+  emailStatus     String?
+  emailSentAt     DateTime?
+  createdAt       DateTime         @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                @relation("RegistrationInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  request      RegistrationRequest?
+
+  @@index([organizationId, email])
 }
