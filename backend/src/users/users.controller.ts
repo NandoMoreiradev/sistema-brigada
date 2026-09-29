@@ -94,6 +94,12 @@ export class UsersController {
         return this.usersService.sendPasswordReset(id, this.requireOrganizationId(organizationId));
     }
 
+    @Post(':id/resend-access')
+    @RequirePermission('people:manage')
+    resendAccess(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.usersService.resendAccess(id, this.requireOrganizationId(organizationId));
+    }
+
     @Put(':id/role-assignment')
     @RequirePermission('people:manage')
     setRoleAssignment(

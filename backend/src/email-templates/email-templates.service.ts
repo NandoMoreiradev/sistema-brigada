@@ -28,6 +28,8 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
     ENROLLMENT_CONFIRMED: 'Matrícula confirmada',
     DESIGNATION_ASSIGNED: 'Nova designação em evento',
     REGISTRATION_APPROVED: 'Cadastro aprovado (autocadastro público)',
+    REGISTRATION_REJECTED: 'Cadastro recusado (autocadastro público)',
+    REGISTRATION_INVITE: 'Convite para se cadastrar',
 };
 
 @Injectable()

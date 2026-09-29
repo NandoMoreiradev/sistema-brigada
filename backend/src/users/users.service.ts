@@ -21,6 +21,9 @@ import { CreateExternalCertificationDto } from './dto/create-external-certificat
 import { AuthService } from '../auth/auth.service';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 
+/** Link de primeiro acesso: mais longo que o de "esqueci a senha" (1h) porque a pessoa pode abrir o e-mail dias depois. */
+export const ACTIVATION_TOKEN_TTL = '7d';
+
 const userListSelect = {
     id: true,
     name: true,
@@ -106,7 +109,7 @@ export class UsersService {
             return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userListSelect });
         });
 
-        const activationToken = this.authService.createPasswordResetToken(user.id);
+        const activationToken = this.authService.createPasswordResetToken(user.id, ACTIVATION_TOKEN_TTL);
         const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
 
         return { user, organizationName: organization.name, activationLink };
@@ -208,6 +211,38 @@ export class UsersService {
         );
 
         return { message: 'E-mail de redefinição de senha enviado.' };
+    }
+
+    /**
+     * Reenvia o e-mail de primeiro acesso (novo link de 7 dias). Diferente de `sendPasswordReset`
+     * (que manda o e-mail de "redefinição"), usa o e-mail de boas-vindas/aprovação, com o mesmo
+     * texto que a pessoa deveria ter recebido — e devolve se o envio realmente saiu, porque o
+     * envio inicial falha em silêncio.
+     */
+    async resendAccess(id: string, organizationId: string): Promise<{ sent: boolean; message: string }> {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId }, include: { organization: true } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+        if (!user.isActive) {
+            throw new BadRequestException('Esta pessoa está inativa — reative-a antes de reenviar o acesso.');
+        }
+
+        const token = this.authService.createPasswordResetToken(user.id, ACTIVATION_TOKEN_TTL);
+        const link = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+        const organizationName = user.organization?.name ?? '';
+
+        const fromRegistration = await this.prisma.registrationRequest.findFirst({ where: { createdUserId: user.id }, select: { id: true } });
+        const sent = fromRegistration
+            ? await this.transactionalEmailService.sendRegistrationApprovedEmail({ name: user.name, email: user.email }, organizationId, organizationName, link)
+            : await this.transactionalEmailService.sendUserWelcomeEmail({ name: user.name, email: user.email }, organizationId, organizationName, link);
+
+        return {
+            sent,
+            message: sent
+                ? `E-mail de acesso reenviado para ${user.email}.`
+                : 'Não foi possível enviar o e-mail. Confira a configuração de e-mail da academia (Minha Conta › Academia › E-mail).',
+        };
     }
 
     async update(id: string, organizationId: string, dto: UpdateUserDto) {

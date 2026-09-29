@@ -75,7 +75,7 @@ export class OrganizationsService {
         // Fora da transação e sem `await` — o e-mail não pode impedir nem atrasar a resposta
         // de criação da academia (ex: Resend fora do ar/lento). TransactionalEmailService já
         // captura e loga qualquer falha de envio internamente, sem propagar exceção.
-        const activationToken = this.authService.createPasswordResetToken(admin.id);
+        const activationToken = this.authService.createPasswordResetToken(admin.id, '7d');
         const activationLink = `${process.env.FRONTEND_URL}/reset-password?token=${activationToken}`;
         void this.transactionalEmailService.sendOrganizationAdminWelcomeEmail(
             { name: admin.name, email: admin.email, organizationId: organization.id },
