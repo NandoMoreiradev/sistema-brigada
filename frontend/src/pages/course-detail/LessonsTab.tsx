@@ -5,14 +5,15 @@
 
 import { useState } from 'react';
 import styled from 'styled-components';
-import { Plus, PlayCircle, CheckCircle2, Circle, Trash2, Pencil } from 'lucide-react';
+import { Plus, PlayCircle, CheckCircle2, Circle, Trash2, Pencil, UserCog } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, HelpText, Form, FormActions } from '@/components/ui/FormField';
+import { FilterChip } from './styles';
 import { TableWrapper, EmptyState } from '@/components/ui/Table';
-import { courseModulesApi, courseLessonsApi, type CourseLesson, type CourseLessonInput } from '@/services/courses';
+import { courseModulesApi, courseLessonsApi, type CourseLesson, type CourseLessonInput, type CourseModuleWithLessons } from '@/services/courses';
 import { mediaApi } from '@/services/media';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
@@ -50,6 +51,24 @@ const ModuleHeader = styled.div`
         font-size: 0.7rem;
         font-weight: 600;
         color: ${({ theme }) => theme.colors.textMuted};
+    }
+`;
+
+const ResponsibleLine = styled.div`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    color: ${({ theme }) => theme.colors.textMuted};
+
+    span {
+        padding: 0.1rem 0.5rem;
+        border-radius: ${({ theme }) => theme.radii.pill};
+        background: ${({ theme }) => theme.colors.primaryLight};
+        color: ${({ theme }) => theme.colors.infoDark};
+        font-weight: 600;
     }
 `;
 
@@ -106,15 +125,22 @@ const LessonExtra = styled.div`
 export function LessonsTab({
     courseId,
     canManageCourse,
-    canEditLessons,
+    isCourseInstructor,
+    courseInstructors,
+    currentUserId,
 }: {
     courseId: string;
-    /** Módulos (criar/editar/excluir) e excluir aula exigem courses:manage — mesmo gate do backend. */
+    /** Módulos (criar/excluir) e responsáveis exigem courses:manage — mesmo gate do backend. */
     canManageCourse: boolean;
-    /** Criar/editar aula é liberado também pra instrutor da turma (course-lessons.controller.ts). */
-    canEditLessons: boolean;
+    isCourseInstructor: boolean;
+    /** Instrutores da turma: são as únicas pessoas que podem ser responsáveis por um módulo. */
+    courseInstructors: { userId: string; user: { name: string } }[];
+    currentUserId?: string;
 }) {
     const [moduleModalOpen, setModuleModalOpen] = useState(false);
+    const [responsiblesModule, setResponsiblesModule] = useState<CourseModuleWithLessons | null>(null);
+    const [responsibleIds, setResponsibleIds] = useState<string[]>([]);
+    const [onlyMine, setOnlyMine] = useState(false);
     const [lessonModalModuleId, setLessonModalModuleId] = useState<string | null>(null);
     const [editingLesson, setEditingLesson] = useState<CourseLesson | null>(null);
     const [lessonMode, setLessonMode] = useState<'link' | 'upload'>('link');
@@ -130,10 +156,27 @@ export function LessonsTab({
 
     const invalidateModules = () => queryClient.invalidateQueries({ queryKey: ['courses', courseId, 'modules'] });
 
+    const isResponsible = (courseModule: CourseModuleWithLessons) => courseModule.instructors.some((i) => i.userId === currentUserId);
+    /** Espelha o backend: admin, ou instrutor da turma — e, se o módulo tem responsáveis, só um deles. */
+    const canEditModule = (courseModule: CourseModuleWithLessons) =>
+        canManageCourse || (isCourseInstructor && (courseModule.instructors.length === 0 || isResponsible(courseModule)));
+    /** Excluir aula: admin ou responsável explícito (módulo livre não deixa qualquer instrutor apagar). */
+    const canDeleteLessonIn = (courseModule: CourseModuleWithLessons) => canManageCourse || isResponsible(courseModule);
+
     const createModuleMutation = useMutation({
         mutationFn: (title: string) => courseModulesApi.create(courseId, { title }),
         onSuccess: () => { toast.success('Módulo criado.'); invalidateModules(); setModuleModalOpen(false); },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível criar o módulo.')),
+    });
+
+    const setResponsiblesMutation = useMutation({
+        mutationFn: ({ moduleId, userIds }: { moduleId: string; userIds: string[] }) => courseModulesApi.setInstructors(courseId, moduleId, userIds),
+        onSuccess: () => {
+            toast.success('Responsáveis do módulo atualizados.');
+            invalidateModules();
+            setResponsiblesModule(null);
+        },
+        onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível atualizar os responsáveis.')),
     });
 
     const removeModuleMutation = useMutation({
@@ -236,28 +279,51 @@ export function LessonsTab({
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível salvar o progresso.')),
     });
 
+    const allModules = modules ?? [];
+    const myModulesCount = allModules.filter(isResponsible).length;
+    const visibleModules = onlyMine ? allModules.filter(isResponsible) : allModules;
+
     return (
         <div>
-            {canManageCourse && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
-                    <Button onClick={() => { resetModule({ title: '' }); setModuleModalOpen(true); }}>
-                        <Plus size={16} /> Novo módulo
-                    </Button>
+            {(canManageCourse || myModulesCount > 0) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                    <div>
+                        {myModulesCount > 0 && (
+                            <FilterChip type="button" $active={onlyMine} onClick={() => setOnlyMine((value) => !value)}>
+                                Só os meus módulos ({myModulesCount})
+                            </FilterChip>
+                        )}
+                    </div>
+                    {canManageCourse && (
+                        <Button onClick={() => { resetModule({ title: '' }); setModuleModalOpen(true); }}>
+                            <Plus size={16} /> Novo módulo
+                        </Button>
+                    )}
                 </div>
             )}
 
-            {(modules ?? []).map((courseModule) => (
+            {visibleModules.map((courseModule) => (
                 <ModuleCard key={courseModule.id}>
                     <ModuleHeader>
                         <h3>
                             {courseModule.title}
                             <small>{courseModule.lessons.length} {courseModule.lessons.length === 1 ? 'aula' : 'aulas'}</small>
                         </h3>
-                        {(canEditLessons || canManageCourse) && (
+                        {(canEditModule(courseModule) || canManageCourse) && (
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                {canEditLessons && (
+                                {canEditModule(courseModule) && (
                                     <Button $variant="ghost" onClick={() => openCreateLesson(courseModule.id)}>
                                         <Plus size={14} /> Aula
+                                    </Button>
+                                )}
+                                {canManageCourse && (
+                                    <Button
+                                        $variant="ghost"
+                                        onClick={() => { setResponsibleIds(courseModule.instructors.map((i) => i.userId)); setResponsiblesModule(courseModule); }}
+                                        aria-label={`Definir responsáveis pelo módulo ${courseModule.title}`}
+                                        title="Definir professores responsáveis"
+                                    >
+                                        <UserCog size={14} /> Responsáveis
                                     </Button>
                                 )}
                                 {canManageCourse && (
@@ -274,7 +340,15 @@ export function LessonsTab({
                         )}
                     </ModuleHeader>
 
-                    {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditLessons ? ' Use “+ Aula” para adicionar.' : ''}</span>}
+                    <ResponsibleLine>
+                        {courseModule.instructors.length > 0 ? (
+                            <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
+                        ) : (
+                            <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
+                        )}
+                    </ResponsibleLine>
+
+                    {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditModule(courseModule) ? ' Use “+ Aula” para adicionar.' : ''}</span>}
 
                     {courseModule.lessons.map((lesson) => {
                         const completed = lesson.progress?.[0]?.completed ?? false;
@@ -299,12 +373,12 @@ export function LessonsTab({
                                             <PlayCircle size={14} /> Assistir
                                         </Button>
                                     )}
-                                    {canEditLessons && (
+                                    {canEditModule(courseModule) && (
                                         <Button $variant="ghost" onClick={() => openEditLesson(lesson)} aria-label={`Editar aula ${lesson.title}`} title="Editar aula">
                                             <Pencil size={14} />
                                         </Button>
                                     )}
-                                    {canManageCourse && (
+                                    {canDeleteLessonIn(courseModule) && (
                                         <Button
                                             $variant="ghost"
                                             onClick={() => { if (window.confirm(`Remover a aula "${lesson.title}"?`)) removeLessonMutation.mutate(lesson.id); }}
@@ -327,11 +401,49 @@ export function LessonsTab({
                 </ModuleCard>
             ))}
 
-            {(modules ?? []).length === 0 && (
+            {allModules.length === 0 && (
                 <TableWrapper>
                     <EmptyState>Nenhum módulo de vídeo-aula criado ainda.</EmptyState>
                 </TableWrapper>
             )}
+
+            <Modal open={!!responsiblesModule} onOpenChange={(open) => !open && setResponsiblesModule(null)} title={`Responsáveis — ${responsiblesModule?.title ?? ''}`}>
+                <Form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        if (responsiblesModule) setResponsiblesMutation.mutate({ moduleId: responsiblesModule.id, userIds: responsibleIds });
+                    }}
+                >
+                    {courseInstructors.length === 0 ? (
+                        <HelpText>Esta turma ainda não tem instrutores. Adicione-os em “Editar turma”.</HelpText>
+                    ) : (
+                        <Field>
+                            <Label>Professores responsáveis por este módulo</Label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {courseInstructors.map((instructor) => (
+                                    <label key={instructor.userId} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={responsibleIds.includes(instructor.userId)}
+                                            onChange={(e) =>
+                                                setResponsibleIds((current) => (e.target.checked ? [...current, instructor.userId] : current.filter((id) => id !== instructor.userId)))
+                                            }
+                                        />
+                                        {instructor.user.name}
+                                    </label>
+                                ))}
+                            </div>
+                            <HelpText>
+                                Com responsáveis marcados, só eles (e a coordenação) criam e editam as aulas deste módulo. Sem ninguém marcado, qualquer instrutor da turma pode editar.
+                            </HelpText>
+                        </Field>
+                    )}
+                    <FormActions>
+                        <Button type="button" $variant="secondary" onClick={() => setResponsiblesModule(null)}>Cancelar</Button>
+                        <Button type="submit" disabled={setResponsiblesMutation.isPending}>{setResponsiblesMutation.isPending ? 'Salvando...' : 'Salvar'}</Button>
+                    </FormActions>
+                </Form>
+            </Modal>
 
             <Modal open={moduleModalOpen} onOpenChange={setModuleModalOpen} title="Novo módulo">
                 <Form onSubmit={handleSubmitModule((data) => createModuleMutation.mutate(data.title))}>

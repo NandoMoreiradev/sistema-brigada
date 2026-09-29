@@ -9,6 +9,12 @@
 // são permitidos a quem tem `courses:manage` (admin) OU é CourseInstructor
 // desta turma especificamente — antes disso, o controller liberava para
 // qualquer ORG_USER autenticado, mesmo de fora da turma.
+//
+// Vários professores: um módulo pode ter professores responsáveis (`CourseModuleInstructor`).
+// Com responsáveis, só eles (ou quem tem `courses:manage`) criam/editam aulas nele; sem
+// responsáveis, vale a regra anterior (qualquer instrutor da turma edita). Excluir aula é do
+// admin ou de um responsável explícito pelo módulo — módulo "livre" não deixa qualquer
+// instrutor apagar conteúdo.
 
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,6 +23,7 @@ import { CreateCourseLessonDto } from './dto/create-course-lesson.dto';
 import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
+import { INSTRUCTOR_USER_SELECT } from './course-instructors.util';
 
 @Injectable()
 export class CourseLessonsService {
@@ -25,7 +32,12 @@ export class CourseLessonsService {
         private readonly certificatesService: CertificatesService,
     ) {}
 
-    private async assertCanEditLessons(courseId: string, user: AuthenticatedUser) {
+    /** Responsáveis do módulo ({id,name}); lista vazia = módulo livre para qualquer instrutor da turma. */
+    private async moduleResponsibles(moduleId: string) {
+        return this.prisma.courseModuleInstructor.findMany({ where: { moduleId }, include: { user: INSTRUCTOR_USER_SELECT } });
+    }
+
+    private async assertCanEditLessonsInModule(courseId: string, moduleId: string, user: AuthenticatedUser) {
         if (userHasPermission(user, 'courses:manage')) return;
 
         const isInstructor = await this.prisma.courseInstructor.findFirst({
@@ -34,6 +46,11 @@ export class CourseLessonsService {
         });
         if (!isInstructor) {
             throw new ForbiddenException('Você não é instrutor desta turma.');
+        }
+
+        const responsibles = await this.moduleResponsibles(moduleId);
+        if (responsibles.length > 0 && !responsibles.some((r) => r.userId === user.id)) {
+            throw new ForbiddenException(`Este módulo está sob responsabilidade de: ${responsibles.map((r) => r.user.name).join(', ')}.`);
         }
     }
 
@@ -66,8 +83,8 @@ export class CourseLessonsService {
 
     async create(courseId: string, organizationId: string, dto: CreateCourseLessonDto, user: AuthenticatedUser) {
         await this.requireCourse(courseId, organizationId);
-        await this.assertCanEditLessons(courseId, user);
         await this.requireModuleInCourse(courseId, dto.moduleId);
+        await this.assertCanEditLessonsInModule(courseId, dto.moduleId, user);
 
         return this.prisma.courseLesson.create({
             data: {
@@ -83,13 +100,19 @@ export class CourseLessonsService {
     }
 
     async update(courseId: string, organizationId: string, lessonId: string, dto: UpdateCourseLessonDto, user: AuthenticatedUser) {
-        await this.requireLesson(courseId, organizationId, lessonId);
-        await this.assertCanEditLessons(courseId, user);
+        const lesson = await this.requireLesson(courseId, organizationId, lessonId);
+        await this.assertCanEditLessonsInModule(courseId, lesson.moduleId, user);
         return this.prisma.courseLesson.update({ where: { id: lessonId }, data: dto });
     }
 
-    async remove(courseId: string, organizationId: string, lessonId: string) {
-        await this.requireLesson(courseId, organizationId, lessonId);
+    async remove(courseId: string, organizationId: string, lessonId: string, user: AuthenticatedUser) {
+        const lesson = await this.requireLesson(courseId, organizationId, lessonId);
+        if (!userHasPermission(user, 'courses:manage')) {
+            const responsibles = await this.moduleResponsibles(lesson.moduleId);
+            if (!responsibles.some((r) => r.userId === user.id)) {
+                throw new ForbiddenException('Só quem é responsável pelo módulo (ou a coordenação) pode excluir aulas dele.');
+            }
+        }
         await this.prisma.courseLesson.delete({ where: { id: lessonId } });
         return { id: lessonId };
     }

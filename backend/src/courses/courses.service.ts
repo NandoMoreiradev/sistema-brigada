@@ -97,7 +97,7 @@ export class CoursesService {
             where: { id, organizationId },
             include: {
                 ...courseInclude,
-                sessions: { include: { room: true, classLog: true }, orderBy: { date: 'asc' } },
+                sessions: { include: { room: true }, orderBy: { date: 'asc' } },
             },
         });
 
@@ -204,7 +204,12 @@ export class CoursesService {
 
     async removeInstructor(courseId: string, organizationId: string, userId: string) {
         await this.requireCourse(courseId, organizationId);
-        await this.prisma.courseInstructor.deleteMany({ where: { courseId, userId } });
+        // Quem deixa a turma também deixa a responsabilidade por módulos e aulas dela.
+        await this.prisma.$transaction([
+            this.prisma.courseModuleInstructor.deleteMany({ where: { userId, module: { courseId } } }),
+            this.prisma.classSessionInstructor.deleteMany({ where: { userId, session: { courseId } } }),
+            this.prisma.courseInstructor.deleteMany({ where: { courseId, userId } }),
+        ]);
         return this.requireCourse(courseId, organizationId);
     }
 }

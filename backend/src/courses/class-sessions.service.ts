@@ -1,7 +1,7 @@
 // backend/src/courses/class-sessions.service.ts
 //
-// Aulas agendadas de uma turma (`ClassSession`), diário de aula (`ClassLog`,
-// 1:1) e presença (`Attendance`). A emissão automática de certificado por
+// Aulas agendadas de uma turma (`ClassSession`), diário de aula (`ClassLog`, um por
+// professor) e presença (`Attendance`). A emissão automática de certificado por
 // critério de presença (decisão 16/17 do docs/decisoes.md) é responsabilidade
 // do futuro módulo de certificados — aqui só registramos a presença.
 //
@@ -10,6 +10,10 @@
 // `courses:manage` (admin) OU ser CourseInstructor desta turma. Antes disso o
 // controller liberava para qualquer ORG_USER autenticado, mesmo de fora da
 // turma (ver comentário em class-sessions.controller.ts).
+//
+// Vários professores: uma aula pode ter professores escalados (`ClassSessionInstructor`).
+// Com escala, só eles (ou quem tem `courses:manage`) lançam chamada/diário; sem escala, vale a
+// regra anterior (qualquer instrutor da turma). Cada professor mantém o próprio diário.
 
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,6 +25,13 @@ import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { CertificatesService } from '../certificates/certificates.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
+import { assertAreCourseInstructors, INSTRUCTOR_USER_SELECT } from './course-instructors.util';
+
+const SESSION_INCLUDE = {
+    room: true,
+    instructors: { include: { user: INSTRUCTOR_USER_SELECT } },
+} as const;
+
 
 @Injectable()
 export class ClassSessionsService {
@@ -38,15 +49,28 @@ export class ClassSessionsService {
         return course;
     }
 
-    private async assertCanRecordClass(courseId: string, user: AuthenticatedUser) {
+    private async isCourseInstructor(courseId: string, userId: string): Promise<boolean> {
+        const link = await this.prisma.courseInstructor.findFirst({ where: { courseId, userId }, select: { id: true } });
+        return Boolean(link);
+    }
+
+    /**
+     * Lançar chamada/diário: admin (`courses:manage`) ou instrutor da turma — e, se a aula tem
+     * professores escalados, só um deles.
+     */
+    private async assertCanRecordClass(courseId: string, sessionId: string, user: AuthenticatedUser) {
         if (userHasPermission(user, 'courses:manage')) return;
 
-        const isInstructor = await this.prisma.courseInstructor.findFirst({
-            where: { courseId, userId: user.id },
-            select: { id: true },
-        });
-        if (!isInstructor) {
+        if (!(await this.isCourseInstructor(courseId, user.id))) {
             throw new ForbiddenException('Você não é instrutor desta turma.');
+        }
+
+        const assigned = await this.prisma.classSessionInstructor.findMany({
+            where: { sessionId },
+            include: { user: INSTRUCTOR_USER_SELECT },
+        });
+        if (assigned.length > 0 && !assigned.some((a) => a.userId === user.id)) {
+            throw new ForbiddenException(`Esta aula está a cargo de: ${assigned.map((a) => a.user.name).join(', ')}.`);
         }
     }
 
@@ -60,19 +84,41 @@ export class ClassSessionsService {
             }
         }
 
+        const instructorIds = await assertAreCourseInstructors(this.prisma, courseId, dto.instructorIds ?? []);
+
         return this.prisma.classSession.create({
-            data: { courseId, date: new Date(dto.date), startTime: dto.startTime, endTime: dto.endTime, roomId: dto.roomId },
-            include: { room: true },
+            data: {
+                courseId,
+                date: new Date(dto.date),
+                startTime: dto.startTime,
+                endTime: dto.endTime,
+                roomId: dto.roomId,
+                topic: dto.topic?.trim() || undefined,
+                instructors: { create: instructorIds.map((userId) => ({ userId })) },
+            },
+            include: SESSION_INCLUDE,
         });
     }
 
-    async findAll(courseId: string, organizationId: string) {
+    /**
+     * O diário só é devolvido a quem administra ou leciona a turma — antes, qualquer membro da
+     * organização (inclusive aluno de outra turma) recebia o texto de todos os diários.
+     */
+    async findAll(courseId: string, organizationId: string, user: AuthenticatedUser) {
         await this.requireCourse(courseId, organizationId);
-        return this.prisma.classSession.findMany({
+        const canSeeLogs = userHasPermission(user, 'courses:manage') || (await this.isCourseInstructor(courseId, user.id));
+
+        const sessions = await this.prisma.classSession.findMany({
             where: { courseId },
-            include: { room: true, classLog: true, _count: { select: { attendances: true } } },
+            include: {
+                ...SESSION_INCLUDE,
+                classLogs: canSeeLogs ? { include: { createdBy: INSTRUCTOR_USER_SELECT }, orderBy: { createdAt: 'asc' } } : false,
+                _count: { select: { attendances: true, classLogs: true } },
+            },
             orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
         });
+
+        return sessions.map((session) => ({ ...session, classLogs: session.classLogs ?? [] }));
     }
 
     private async requireSession(courseId: string, organizationId: string, sessionId: string) {
@@ -86,6 +132,8 @@ export class ClassSessionsService {
 
     async update(courseId: string, organizationId: string, sessionId: string, dto: UpdateClassSessionDto) {
         await this.requireSession(courseId, organizationId, sessionId);
+        const instructorIds = dto.instructorIds === undefined ? undefined : await assertAreCourseInstructors(this.prisma, courseId, dto.instructorIds);
+
         return this.prisma.classSession.update({
             where: { id: sessionId },
             data: {
@@ -93,8 +141,14 @@ export class ClassSessionsService {
                 startTime: dto.startTime,
                 endTime: dto.endTime,
                 roomId: dto.roomId,
+                // Texto vazio/`null` limpa o assunto; `undefined` mantém.
+                topic: dto.topic === undefined ? undefined : dto.topic?.trim() || null,
+                // Lista enviada substitui a escala inteira (lista vazia = qualquer instrutor).
+                ...(instructorIds !== undefined && {
+                    instructors: { deleteMany: {}, create: instructorIds.map((userId) => ({ userId })) },
+                }),
             },
-            include: { room: true },
+            include: SESSION_INCLUDE,
         });
     }
 
@@ -106,11 +160,12 @@ export class ClassSessionsService {
 
     async upsertLog(courseId: string, organizationId: string, sessionId: string, user: AuthenticatedUser, dto: UpsertClassLogDto) {
         await this.requireSession(courseId, organizationId, sessionId);
-        await this.assertCanRecordClass(courseId, user);
+        await this.assertCanRecordClass(courseId, sessionId, user);
         return this.prisma.classLog.upsert({
-            where: { classSessionId: sessionId },
+            where: { classSessionId_createdByUserId: { classSessionId: sessionId, createdByUserId: user.id } },
             create: { classSessionId: sessionId, content: dto.content, createdByUserId: user.id },
             update: { content: dto.content },
+            include: { createdBy: INSTRUCTOR_USER_SELECT },
         });
     }
 
@@ -119,9 +174,14 @@ export class ClassSessionsService {
      * turma, mesmo os que ainda não têm registro de `Attendance` — a UI de
      * chamada precisa do roster completo, não só das linhas já lançadas.
      */
-    async getAttendanceRoster(courseId: string, organizationId: string, sessionId: string) {
+    async getAttendanceRoster(courseId: string, organizationId: string, sessionId: string, user: AuthenticatedUser) {
         await this.requireSession(courseId, organizationId, sessionId);
+        // A lista traz nome e e-mail de todos os alunos: só quem pode lançar a chamada a enxerga.
+        await this.assertCanRecordClass(courseId, sessionId, user);
+        return this.buildAttendanceRoster(courseId, sessionId);
+    }
 
+    private async buildAttendanceRoster(courseId: string, sessionId: string) {
         const [enrollments, attendances] = await Promise.all([
             this.prisma.enrollment.findMany({
                 where: { courseId, status: EnrollmentStatus.ACTIVE },
@@ -141,7 +201,7 @@ export class ClassSessionsService {
 
     async markAttendance(courseId: string, organizationId: string, sessionId: string, user: AuthenticatedUser, dto: MarkAttendanceDto) {
         await this.requireSession(courseId, organizationId, sessionId);
-        await this.assertCanRecordClass(courseId, user);
+        await this.assertCanRecordClass(courseId, sessionId, user);
 
         const enrollmentIds = dto.records.map((r) => r.enrollmentId);
         const validEnrollments = await this.prisma.enrollment.findMany({
@@ -169,6 +229,6 @@ export class ClassSessionsService {
         // deixa a chamada de presença falhar por causa disso.
         await Promise.all(dto.records.map((record) => this.certificatesService.issueIfEligible(record.enrollmentId)));
 
-        return this.getAttendanceRoster(courseId, organizationId, sessionId);
+        return this.buildAttendanceRoster(courseId, sessionId);
     }
 }

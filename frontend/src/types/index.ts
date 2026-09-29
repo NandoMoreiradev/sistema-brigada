@@ -152,8 +152,22 @@ export interface ClassSession {
     endTime: string;
     roomId?: string | null;
     room?: Room | null;
-    classLog?: { id: string; content: string } | null;
-    _count?: { attendances: number };
+    /** Assunto/tema da aula do dia. */
+    topic?: string | null;
+    /** Professores escalados. Vazio = qualquer instrutor da turma lança chamada/diário. */
+    instructors: { userId: string; user: { id: string; name: string } }[];
+    /** Um diário por professor. Só vem preenchido para quem administra ou leciona a turma. */
+    classLogs: ClassLogEntry[];
+    _count?: { attendances: number; classLogs: number };
+}
+
+export interface ClassLogEntry {
+    id: string;
+    content: string;
+    createdByUserId: string;
+    createdAt: string;
+    updatedAt: string;
+    createdBy: { id: string; name: string };
 }
 
 export interface Enrollment {

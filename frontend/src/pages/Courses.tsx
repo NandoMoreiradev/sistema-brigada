@@ -20,8 +20,7 @@ import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/com
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
-import { useAuth } from '@/contexts/AuthContext';
-import { hasPermission } from '@/utils/permissions';
+import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateOnly } from '@/utils/courseDates';
 import { ScrollX, Toolbar, ToolbarGroup, SearchInput, FilterChip, MiniProgress, Muted } from '@/pages/course-detail/styles';
 import type { EventStatus } from '@/types';
@@ -63,15 +62,11 @@ export default function Courses() {
     const [statusFilter, setStatusFilter] = useState<EventStatus | 'ALL'>('ALL');
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { user } = useAuth();
-    // Esta página já exige `courses:manage` (PermissionRoute), mas escolher instrutor
-    // ao criar turma precisa da lista de pessoas, que é `people:manage` — um cargo com
-    // só `courses:manage` chegaria aqui e levaria um 403 (e o toast do interceptor
-    // global) ao carregar, sem nem tentar usar o formulário.
-    const canListPeople = hasPermission(user, 'people:manage');
 
     const { data, isLoading } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list() });
-    const { data: peopleData } = useQuery({ queryKey: ['people', {}], queryFn: () => peopleApi.list(), enabled: canListPeople });
+    // Lista enxuta (id + nome), aberta a qualquer usuário da escola: escolher instrutor ao criar a
+    // turma não exige acesso ao cadastro de pessoas (`people:manage`).
+    const { data: roster } = useQuery({ queryKey: ['people', 'roster'], queryFn: () => peopleApi.roster() });
 
     const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -104,8 +99,8 @@ export default function Courses() {
             setModalOpen(false);
             navigate(`/courses/${course.id}`);
         },
-        onError: (error: any) => {
-            toast.error(error?.response?.data?.message || 'Não foi possível criar a turma.');
+        onError: (error: unknown) => {
+            toast.error(apiErrorMessage(error, 'Não foi possível criar a turma.'));
         },
     });
 
@@ -135,7 +130,7 @@ export default function Courses() {
         return haystack.includes(normalize(search));
     });
     const statusCounts = courses.reduce<Record<string, number>>((acc, course) => ({ ...acc, [course.event.status]: (acc[course.event.status] ?? 0) + 1 }), {});
-    const people = peopleData?.data ?? [];
+    const people = roster ?? [];
 
     return (
         <PageLayout

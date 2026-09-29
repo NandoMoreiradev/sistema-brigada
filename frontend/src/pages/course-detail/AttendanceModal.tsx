@@ -16,7 +16,10 @@ import { classSessionsApi } from '@/services/courses';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateWithWeekday } from '@/utils/courseDates';
-import type { AttendanceStatus } from '@/types';
+import { format } from 'date-fns';
+
+const formatDateTime = (iso: string) => format(new Date(iso), 'dd/MM HH:mm');
+import type { AttendanceStatus, ClassLogEntry } from '@/types';
 
 type Choice = { value: AttendanceStatus; label: string; short: string; icon: React.ReactNode; color: string; bg: string };
 
@@ -101,19 +104,41 @@ const Dirty = styled.span`
     color: #b8860b;
 `;
 
+const OtherLog = styled.div`
+    padding: 0.6rem 0.75rem;
+    border-radius: ${({ theme }) => theme.radii.sm};
+    background: ${({ theme }) => theme.colors.lightGray};
+    font-size: 0.8125rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+
+    header {
+        margin-bottom: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: ${({ theme }) => theme.colors.textMuted};
+    }
+`;
+
 interface AttendanceModalProps {
     courseId: string;
-    session: { id: string; date: string; classLog?: { content: string } | null };
+    session: { id: string; date: string; topic?: string | null; classLogs: ClassLogEntry[] };
+    currentUserId?: string;
     onClose: () => void;
 }
 
-export function AttendanceModal({ courseId, session, onClose }: AttendanceModalProps) {
+export function AttendanceModal({ courseId, session, currentUserId, onClose }: AttendanceModalProps) {
     const queryClient = useQueryClient();
     const [draft, setDraft] = useState<Record<string, AttendanceStatus | null>>({});
-    const [logContent, setLogContent] = useState(session.classLog?.content ?? '');
-    const savedLog = session.classLog?.content ?? '';
+    // Cada professor tem o próprio diário; os dos colegas aparecem só para leitura.
+    const myLog = session.classLogs.find((log) => log.createdByUserId === currentUserId);
+    const otherLogs = session.classLogs.filter((log) => log.createdByUserId !== currentUserId);
+    const savedLog = myLog?.content ?? '';
+    const [logContent, setLogContent] = useState(savedLog);
 
-    const { data: roster, isLoading } = useQuery({
+    const { data: roster, isLoading, isError } = useQuery({
         queryKey: ['courses', courseId, 'sessions', session.id, 'attendance'],
         queryFn: () => classSessionsApi.getAttendance(courseId, session.id),
     });
@@ -189,6 +214,8 @@ export function AttendanceModal({ courseId, session, onClose }: AttendanceModalP
         <Modal open onOpenChange={(open) => !open && requestClose()} title={`Chamada — ${formatDateWithWeekday(session.date)}`} width="680px">
             {isLoading ? (
                 <EmptyState>Carregando...</EmptyState>
+            ) : isError ? (
+                <EmptyState>Você não tem acesso à chamada desta aula (ela está a cargo de outro professor).</EmptyState>
             ) : (
                 <>
                     <Summary>
@@ -243,9 +270,22 @@ export function AttendanceModal({ courseId, session, onClose }: AttendanceModalP
                         </Button>
                     </div>
 
+                    {session.topic && <HelpText style={{ display: 'block', marginBottom: '0.75rem' }}>Assunto: <strong>{session.topic}</strong></HelpText>}
+
+                    {otherLogs.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                            {otherLogs.map((log) => (
+                                <OtherLog key={log.id}>
+                                    <header>Diário de {log.createdBy.name} · {formatDateTime(log.updatedAt)}</header>
+                                    {log.content}
+                                </OtherLog>
+                            ))}
+                        </div>
+                    )}
+
                     <Form onSubmit={(e) => { e.preventDefault(); upsertLogMutation.mutate(logContent); }}>
                         <Field>
-                            <Label htmlFor="classLog">Diário de aula</Label>
+                            <Label htmlFor="classLog">{otherLogs.length > 0 ? 'Meu diário de aula' : 'Diário de aula'}</Label>
                             <Textarea
                                 id="classLog"
                                 rows={5}
@@ -253,7 +293,7 @@ export function AttendanceModal({ courseId, session, onClose }: AttendanceModalP
                                 value={logContent}
                                 onChange={(e) => setLogContent(e.target.value)}
                             />
-                            <HelpText>Fica registrado na turma e visível para a coordenação.</HelpText>
+                            <HelpText>Cada professor tem o próprio diário. Fica registrado na turma e visível para a coordenação e os demais professores.</HelpText>
                         </Field>
                         <FormActions>
                             <Button type="button" $variant="secondary" onClick={requestClose}>Fechar</Button>
