@@ -59,7 +59,7 @@ export const MERGE_TAGS: MergeTagGroup[] = [
             {
                 value: '{{login_link}}',
                 label: 'Link de acesso / definir senha',
-                description: 'Usado no e-mail de boas-vindas do administrador de academia.',
+                description: 'Link para definir a senha. Usado nos e-mails de boas-vindas e de cadastro aprovado (equivale a {{password_reset_link}}).',
             },
             {
                 value: '{{invite_link}}',
@@ -79,7 +79,7 @@ export const MERGE_TAGS: MergeTagGroup[] = [
             {
                 value: '{{password_reset_link}}',
                 label: 'Link de redefinição de senha',
-                description: 'Usado no e-mail de "esqueci minha senha".',
+                description: 'Usado no e-mail de "esqueci minha senha" e também nos de boas-vindas (equivale a {{login_link}}).',
             },
             {
                 value: '{{certificate.link}}',
