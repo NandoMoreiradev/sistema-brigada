@@ -32,9 +32,13 @@ export interface CreateCourseInput {
     instructorUserIds?: string[];
 }
 
-export interface UpdateCourseInput extends Partial<CreateCourseInput> {
-    status?: EventStatus;
-}
+/**
+ * Na edição, `null` limpa o campo no backend (ex.: tirar a validade do certificado ou o limite
+ * de vagas); `undefined` deixa como está.
+ */
+export type UpdateCourseInput = {
+    [K in Exclude<keyof CreateCourseInput, 'instructorUserIds'>]?: CreateCourseInput[K] | null;
+} & { status?: EventStatus };
 
 export const coursesApi = {
     list: async (search?: string) => {
@@ -84,6 +88,10 @@ export const classSessionsApi = {
     },
     create: async (courseId: string, input: { date: string; startTime: string; endTime: string; roomId?: string }) => {
         const { data } = await api.post<ClassSession>(`/courses/${courseId}/sessions`, input);
+        return data;
+    },
+    update: async (courseId: string, sessionId: string, input: { date?: string; startTime?: string; endTime?: string; roomId?: string }) => {
+        const { data } = await api.patch<ClassSession>(`/courses/${courseId}/sessions/${sessionId}`, input);
         return data;
     },
     remove: async (courseId: string, sessionId: string) => {

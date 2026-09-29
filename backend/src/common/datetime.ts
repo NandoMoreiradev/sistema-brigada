@@ -20,13 +20,21 @@ export function parseAppDateTime(value: string | undefined): Date | undefined {
     return fromZonedTime(value, APP_TIME_ZONE);
 }
 
-/** "15/03/2026" — data no fuso da aplicação, para textos de e-mail. */
+/**
+ * "15/03/2026" — data no fuso da aplicação, para textos de e-mail.
+ *
+ * Turmas criadas antes de `parseAppDateTime` passar a ser usada em CoursesService guardam a
+ * data como meia-noite UTC exata (ex.: `2026-03-15T00:00:00.000Z`); no fuso do Brasil isso
+ * viraria o dia anterior, então esse valor específico é lido como data "solta" em UTC.
+ */
 export function formatAppDate(value: Date): string {
-    return value.toLocaleDateString('pt-BR', { timeZone: APP_TIME_ZONE });
+    const isUtcMidnight = value.getUTCHours() === 0 && value.getUTCMinutes() === 0 && value.getUTCSeconds() === 0 && value.getUTCMilliseconds() === 0;
+    return value.toLocaleDateString('pt-BR', { timeZone: isUtcMidnight ? 'UTC' : APP_TIME_ZONE });
 }
 
 /** "15/03/2026 às 08:00" — data e hora no fuso da aplicação, para textos de e-mail. */
 export function formatAppDateTime(value: Date): string {
+    const date = value.toLocaleDateString('pt-BR', { timeZone: APP_TIME_ZONE });
     const time = value.toLocaleTimeString('pt-BR', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
-    return `${formatAppDate(value)} às ${time}`;
+    return `${date} às ${time}`;
 }
