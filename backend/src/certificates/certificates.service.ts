@@ -408,7 +408,7 @@ export class CertificatesService {
                 certificate.enrollment.course.organization.name,
                 courseName,
                 expiresAtLabel,
-                `${process.env.FRONTEND_URL}/certificates`,
+                `${process.env.FRONTEND_URL}${link}`,
             );
 
             notifiedCount++;

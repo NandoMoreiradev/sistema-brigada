@@ -1,6 +1,7 @@
 import { EmailTriggerType } from '@prisma/client';
 import { TransactionalEmailService } from './transactional-email.service';
 import { MergeTagService } from '../common/merge-tag.service';
+import { DEFAULT_EMAIL_TEMPLATES } from '../../prisma/seed-data/default-email-templates';
 
 const LINK = 'https://app.exemplo.com/reset-password?token=abc';
 
@@ -41,5 +42,43 @@ describe('TransactionalEmailService — links de ativação', () => {
             expect(mailService.sendSingleOrThrow).toHaveBeenCalledWith(expect.objectContaining({ html: LINK }));
         }
         expect(EmailTriggerType.USER_WELCOME).toBeDefined();
+    });
+});
+
+// Auditoria: cada template padrão, renderizado pelo método REAL de envio do seu gatilho,
+// não pode sair com tag sem substituir nem com link/valor em branco.
+
+describe('TransactionalEmailService — templates padrão renderizam completos', () => {
+    const person = { name: 'Ana Souza', email: 'ana@x.com' };
+    const course = { name: 'Brigada Turma 1', startDate: '15/03/2026', location: 'Sede', link: 'https://app/courses/1' };
+    const event = { name: 'Simulado', date: '15/03/2026 08:00', location: 'Pátio', link: 'https://app/events/1' };
+
+    const senders: Record<string, (s: TransactionalEmailService) => Promise<unknown>> = {
+        ORGANIZATION_ADMIN_WELCOME: (s) => s.sendOrganizationAdminWelcomeEmail({ ...person, organizationId: 'o1' }, 'JB', LINK),
+        PASSWORD_RESET: (s) => s.sendPasswordResetEmail({ ...person, organizationId: 'o1' }, LINK),
+        USER_WELCOME: (s) => s.sendUserWelcomeEmail(person, 'o1', 'JB', LINK),
+        REGISTRATION_APPROVED: (s) => s.sendRegistrationApprovedEmail(person, 'o1', 'JB', LINK),
+        REGISTRATION_REJECTED: (s) => s.sendRegistrationRejectedEmail(person, 'o1', 'JB', 'Documentação incompleta'),
+        REGISTRATION_INVITE: (s) => s.sendRegistrationInviteEmail(person, 'o1', 'JB', 'Aluno', 'https://app/convite/t'),
+        CERTIFICATE_EXPIRING: (s) => s.sendCertificateExpiringEmail(person, 'o1', 'JB', 'Brigada Turma 1', '15/03/2026', 'https://app/my-certificates#c1'),
+        CERTIFICATE_ISSUED: (s) => s.sendCertificateIssuedEmail(person, 'o1', 'JB', 'Brigada Turma 1', 'https://app/my-certificates'),
+        ENROLLMENT_CONFIRMED: (s) => s.sendEnrollmentConfirmedEmail(person, 'o1', 'JB', course),
+        DESIGNATION_ASSIGNED: (s) => s.sendDesignationAssignedEmail(person, 'o1', 'JB', event, 'Brigadista'),
+    };
+
+    it('cobre todos os gatilhos que têm template padrão', () => {
+        expect(DEFAULT_EMAIL_TEMPLATES.map((t) => t.trigger).sort()).toEqual(Object.keys(senders).sort());
+    });
+
+    it.each(DEFAULT_EMAIL_TEMPLATES.map((t) => [t.trigger, t] as const))('%s', async (trigger, template) => {
+        const { service, mailService } = build(template.body);
+        await senders[trigger](service);
+
+        const { html, subject } = mailService.sendSingleOrThrow.mock.calls[0][0];
+        for (const out of [html, template.subject && new MergeTagService().process(template.subject, { organization_name: 'JB' })]) {
+            expect(out).not.toMatch(/\{\{|\}\}/);
+        }
+        expect(html).not.toMatch(/href=""|href="#"|<strong><\/strong>|em \.|vence em \./);
+        expect(subject).toBeDefined();
     });
 });
