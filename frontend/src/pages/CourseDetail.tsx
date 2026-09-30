@@ -9,11 +9,12 @@ import { useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import styled from 'styled-components';
-import { ArrowLeft, ClipboardList, Pencil } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ClipboardList, Pencil, Trash2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Table';
+import { toast } from '@/utils/toast';
 import { coursesApi, classSessionsApi, enrollmentsApi } from '@/services/courses';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -116,6 +117,16 @@ export default function CourseDetail() {
     const backPath = canManage ? '/courses' : '/my-courses';
     const backLabel = canManage ? 'Voltar para turmas' : 'Voltar para minhas turmas';
 
+    const removeCourseMutation = useMutation({
+        mutationFn: () => coursesApi.remove(courseId),
+        onSuccess: () => {
+            toast.success('Turma excluída.');
+            queryClient.invalidateQueries({ queryKey: ['courses'] });
+            navigate(backPath);
+        },
+        onError: (error: any) => toast.error(error?.response?.data?.message || 'Não foi possível excluir a turma.'),
+    });
+
     if (!course) {
         return (
             <PageLayout title="Turma" icon={<ClipboardList size={16} />}>
@@ -130,6 +141,13 @@ export default function CourseDetail() {
     const activeSession = (sessions ?? []).find((s) => s.id === activeSessionId) ?? null;
     const isInstructor = course.instructors.some((i) => i.userId === user?.id);
 
+    const handleDeleteCourse = () => {
+        const confirmed = window.confirm(
+            `Excluir a turma "${course.event.title}"? As matrículas dela deixarão de aparecer no sistema. Essa ação não pode ser desfeita.`,
+        );
+        if (confirmed) removeCourseMutation.mutate();
+    };
+
     return (
         <PageLayout
             title={course.event.title}
@@ -137,9 +155,14 @@ export default function CourseDetail() {
             icon={<ClipboardList size={16} />}
             actions={
                 canManage ? (
-                    <Button $variant="secondary" onClick={() => setEditModalOpen(true)}>
-                        <Pencil size={14} /> Editar turma
-                    </Button>
+                    <>
+                        <Button $variant="secondary" onClick={() => setEditModalOpen(true)}>
+                            <Pencil size={14} /> Editar turma
+                        </Button>
+                        <Button $variant="danger" onClick={handleDeleteCourse} disabled={removeCourseMutation.isPending}>
+                            <Trash2 size={14} /> Excluir
+                        </Button>
+                    </>
                 ) : undefined
             }
         >
