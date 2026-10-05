@@ -24,6 +24,7 @@ import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateOnly } from '@/utils/courseDates';
 import { RoomSelect } from '@/pages/course-detail/RoomSelect';
+import { InstructorList } from '@/pages/course-detail/CourseSummary';
 import { ScrollX, Toolbar, ToolbarGroup, SearchInput, FilterChip, MiniProgress, Muted } from '@/pages/course-detail/styles';
 import type { EventStatus } from '@/types';
 
@@ -195,7 +196,9 @@ export default function Courses() {
                                 <Td><strong>{course.event.title}</strong></Td>
                                 <Td>{course.category || '—'}</Td>
                                 <Td>{formatDateOnly(course.event.startDate)}</Td>
-                                <Td>{course.instructors.map((i) => i.user.name).join(', ') || '—'}</Td>
+                                <Td style={{ maxWidth: 360 }}>
+                                    {course.instructors.length > 0 ? <InstructorList instructors={course.instructors} /> : '—'}
+                                </Td>
                                 <Td>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                         <span>

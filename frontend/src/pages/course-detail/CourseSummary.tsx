@@ -97,9 +97,10 @@ const MoreChip = styled.button`
 `;
 
 // Turmas com muitos instrutores (ex.: a equipe toda) esticavam a linha de cartões inteira.
+// Também usado na listagem de turmas (Courses.tsx), onde a coluna ocupava a tabela toda.
 const VISIBLE_INSTRUCTORS = 3;
 
-function InstructorList({ instructors }: { instructors: Course['instructors'] }) {
+export function InstructorList({ instructors }: { instructors: Course['instructors'] }) {
     const [expanded, setExpanded] = useState(false);
     const hidden = instructors.length - VISIBLE_INSTRUCTORS;
     const visible = expanded || hidden <= 0 ? instructors : instructors.slice(0, VISIBLE_INSTRUCTORS);
@@ -112,7 +113,11 @@ function InstructorList({ instructors }: { instructors: Course['instructors'] })
             {hidden > 0 && (
                 <MoreChip
                     type="button"
-                    onClick={() => setExpanded((v) => !v)}
+                    onClick={(e) => {
+                        // Na listagem a linha inteira é clicável (abre a turma).
+                        e.stopPropagation();
+                        setExpanded((v) => !v);
+                    }}
                     title={expanded ? undefined : instructors.slice(VISIBLE_INSTRUCTORS).map((i) => i.user.name).join('\n')}
                 >
                     {expanded ? 'Mostrar menos' : `+${hidden}`}
