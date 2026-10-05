@@ -95,6 +95,8 @@ export interface SessionInput {
     endTime: string;
     /** Na edição, `null` tira a sala da aula. */
     roomId?: string | null;
+    /** Grupo da turma; `null` = turma inteira. */
+    groupId?: string | null;
     /** Assunto da aula; string vazia limpa. */
     topic?: string;
     /** Professores escalados (subconjunto dos instrutores da turma); lista vazia = qualquer instrutor. */

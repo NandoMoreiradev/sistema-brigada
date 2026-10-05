@@ -6,7 +6,7 @@
 // aponta para a página dedicada correspondente (/my-courses, etc.) em vez de
 // duplicar a listagem aqui.
 
-import { LayoutDashboard, GraduationCap, Award, ShieldCheck, Building2 } from 'lucide-react';
+import { LayoutDashboard, GraduationCap, Award, ShieldCheck, Building2, CalendarClock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import styled from 'styled-components';
@@ -17,6 +17,7 @@ import { meApi } from '@/services/me';
 import { coursesApi } from '@/services/courses';
 import { eventsApi } from '@/services/events';
 import { certificatesApi } from '@/services/certificates';
+import { formatDateWithWeekday, sessionTiming } from '@/utils/courseDates';
 
 const Grid = styled.div`
     display: grid;
@@ -106,43 +107,60 @@ export default function Dashboard() {
     });
 
     const pendingDesignations = (myDesignations ?? []).filter((d) => d.status === 'PENDING').length;
-    const expiringSoon = (myCertificates ?? []).filter((c) => c.status === 'VALID' && c.expiresAt).length;
+    // Antes contava todo certificado válido com data de validade, não só os que estão para vencer.
+    const in30Days = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const expiringSoon = (myCertificates ?? []).filter((c) => c.status === 'VALID' && c.expiresAt && new Date(c.expiresAt).getTime() <= in30Days).length;
+
+    // Próxima aula entre todas as turmas da pessoa (cursando ou lecionando).
+    const nextClass = [...(myCourses?.enrolled ?? []), ...(myCourses?.instructing ?? [])]
+        .filter((course) => course.nextSession)
+        .map((course) => ({ course, session: course.nextSession! }))
+        .sort((a, b) => `${a.session.date}${a.session.startTime}`.localeCompare(`${b.session.date}${b.session.startTime}`))[0];
 
     const hasAnyPersonalRole = isStudent || isInstructor || isStaff;
 
     return (
         <PageLayout title="Painel" subtitle="Visão geral da academia" icon={<LayoutDashboard size={16} />}>
-            {(isStudent || isInstructor) && (
+            {hasAnyPersonalRole && (
                 <Grid>
-                    <Card onClick={() => navigate('/my-courses')}>
-                        <CardHeader><GraduationCap size={16} /> Minhas Turmas</CardHeader>
-                        <Stat>{(myCourses?.instructing.length ?? 0) + (myCourses?.enrolled.length ?? 0)}</Stat>
-                        <StatLabel>
-                            {isInstructor && `${myCourses?.instructing.length ?? 0} lecionando`}
-                            {isInstructor && isStudent && ' · '}
-                            {isStudent && `${myCourses?.enrolled.length ?? 0} matriculado`}
-                        </StatLabel>
-                    </Card>
-                </Grid>
-            )}
+                    {nextClass && (
+                        <Card onClick={() => navigate(`/courses/${nextClass.course.id}`)}>
+                            <CardHeader><CalendarClock size={16} /> Próxima aula</CardHeader>
+                            <Stat style={{ fontSize: '1.25rem', textTransform: 'capitalize' }}>
+                                {sessionTiming(nextClass.session.date) === 'today' ? 'Hoje' : formatDateWithWeekday(nextClass.session.date)}, {nextClass.session.startTime}
+                            </Stat>
+                            <StatLabel>
+                                {nextClass.course.event.title} · {nextClass.session.room ? nextClass.session.room.name : 'sala a definir'}
+                            </StatLabel>
+                        </Card>
+                    )}
+                    {(isStudent || isInstructor) && (
+                        <Card onClick={() => navigate('/my-courses')}>
+                            <CardHeader><GraduationCap size={16} /> Minhas Turmas</CardHeader>
+                            <Stat>{(myCourses?.instructing.length ?? 0) + (myCourses?.enrolled.length ?? 0)}</Stat>
+                            <StatLabel>
+                                {isInstructor && `${myCourses?.instructing.length ?? 0} lecionando`}
+                                {isInstructor && isStudent && ' · '}
+                                {isStudent && `${myCourses?.enrolled.length ?? 0} matriculado`}
+                            </StatLabel>
+                        </Card>
+                    )}
 
-            {isStudent && (
-                <Grid>
-                    <Card onClick={() => navigate('/my-certificates')}>
-                        <CardHeader><Award size={16} /> Meus Certificados</CardHeader>
-                        <Stat>{myCertificates?.length ?? 0}</Stat>
-                        <StatLabel>{expiringSoon > 0 ? `${expiringSoon} válido(s), verifique o vencimento` : 'emitidos'}</StatLabel>
-                    </Card>
-                </Grid>
-            )}
+                    {isStudent && (
+                        <Card onClick={() => navigate('/my-certificates')}>
+                            <CardHeader><Award size={16} /> Meus Certificados</CardHeader>
+                            <Stat>{myCertificates?.length ?? 0}</Stat>
+                            <StatLabel>{expiringSoon > 0 ? `${expiringSoon} vence(m) nos próximos 30 dias` : 'emitidos'}</StatLabel>
+                        </Card>
+                    )}
 
-            {isStaff && (
-                <Grid>
-                    <Card onClick={() => navigate('/my-designations')}>
-                        <CardHeader><ShieldCheck size={16} /> Minhas Designações</CardHeader>
-                        <Stat>{myDesignations?.length ?? 0}</Stat>
-                        <StatLabel>{pendingDesignations > 0 ? `${pendingDesignations} aguardando sua confirmação` : 'nenhuma pendente'}</StatLabel>
-                    </Card>
+                    {isStaff && (
+                        <Card onClick={() => navigate('/my-designations')}>
+                            <CardHeader><ShieldCheck size={16} /> Minhas Designações</CardHeader>
+                            <Stat>{myDesignations?.length ?? 0}</Stat>
+                            <StatLabel>{pendingDesignations > 0 ? `${pendingDesignations} aguardando sua confirmação` : 'nenhuma pendente'}</StatLabel>
+                        </Card>
+                    )}
                 </Grid>
             )}
 

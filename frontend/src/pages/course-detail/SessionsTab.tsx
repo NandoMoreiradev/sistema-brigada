@@ -11,7 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, ClipboardCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { classSessionsApi } from '@/services/courses';
 import { toast } from '@/utils/toast';
@@ -19,7 +19,7 @@ import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateWithWeekday, sessionTiming, toDateOnly } from '@/utils/courseDates';
 import { RoomSelect } from './RoomSelect';
 import { ScrollX, Toolbar, ToolbarGroup, FilterChip, RowActions, Muted, MiniProgress } from './styles';
-import type { ClassSession } from '@/types';
+import type { AttendanceStatus, ClassSession, CourseGroupSummary } from '@/types';
 
 const sessionSchema = z
     .object({
@@ -27,10 +27,17 @@ const sessionSchema = z
         startTime: z.string().min(1, 'Informe o horário de início'),
         endTime: z.string().min(1, 'Informe o horário de término'),
         roomId: z.string().optional(),
+        groupId: z.string().optional(),
         topic: z.string().max(200, 'No máximo 200 caracteres').optional(),
     })
     .refine((data) => data.endTime > data.startTime, { path: ['endTime'], message: 'O término deve ser depois do início' });
 type SessionFormData = z.infer<typeof sessionSchema>;
+
+const MY_ATTENDANCE: Record<AttendanceStatus, { label: string; tone: 'success' | 'danger' | 'warning' }> = {
+    PRESENT: { label: 'Presente', tone: 'success' },
+    ABSENT: { label: 'Falta', tone: 'danger' },
+    JUSTIFIED_ABSENT: { label: 'Falta justificada', tone: 'warning' },
+};
 
 interface SessionsTabProps {
     courseId: string;
@@ -40,18 +47,25 @@ interface SessionsTabProps {
     /** Instrutores da turma: são as únicas pessoas que podem ser escaladas numa aula. */
     courseInstructors: { userId: string; user: { name: string } }[];
     currentUserId?: string;
+    /** Aluno: no lugar das colunas de controle (chamada/diário), mostra a presença dele em cada aula. */
+    studentView?: boolean;
+    /** Grupos da turma (Programação). Aula de um grupo tem chamada só com os alunos dele. */
+    groups?: CourseGroupSummary[];
+    /** Alunos por grupo, para a barra de chamada mostrar "lançados / alunos do grupo". */
+    groupSizes?: Record<string, number>;
     /** Sala padrão da turma: vem pré-selecionada numa aula nova. */
     defaultRoomId?: string | null;
     vacancies?: number | null;
     onOpenAttendance: (sessionId: string) => void;
 }
 
-export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, courseInstructors, currentUserId, defaultRoomId, vacancies, onOpenAttendance }: SessionsTabProps) {
+export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, courseInstructors, currentUserId, studentView = false, groups = [], groupSizes = {}, defaultRoomId, vacancies, onOpenAttendance }: SessionsTabProps) {
     const queryClient = useQueryClient();
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<ClassSession | null>(null);
     const [selectedInstructorIds, setSelectedInstructorIds] = useState<string[]>([]);
     const [onlyMine, setOnlyMine] = useState(false);
+    const [groupFilter, setGroupFilter] = useState<string>('ALL');
 
     const isInstructor = courseInstructors.some((i) => i.userId === currentUserId);
     const isAssignedToMe = (session: ClassSession) => session.instructors.some((i) => i.userId === currentUserId);
@@ -65,14 +79,14 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
         // Sugere o horário da última aula (turmas costumam repetir o mesmo horário) e a sala padrão
         // da turma — ou, sem ela, a sala da última aula.
         const last = sessions[sessions.length - 1];
-        reset({ date: '', startTime: last?.startTime ?? '', endTime: last?.endTime ?? '', roomId: defaultRoomId || last?.roomId || '', topic: '' });
+        reset({ date: '', startTime: last?.startTime ?? '', endTime: last?.endTime ?? '', roomId: defaultRoomId || last?.roomId || '', groupId: '', topic: '' });
         setSelectedInstructorIds([]);
         setEditing(null);
         setModalOpen(true);
     };
 
     const openEdit = (session: ClassSession) => {
-        reset({ date: toDateOnly(session.date), startTime: session.startTime, endTime: session.endTime, roomId: session.roomId ?? '', topic: session.topic ?? '' });
+        reset({ date: toDateOnly(session.date), startTime: session.startTime, endTime: session.endTime, roomId: session.roomId ?? '', groupId: session.groupId ?? '', topic: session.topic ?? '' });
         setSelectedInstructorIds(session.instructors.map((i) => i.userId));
         setEditing(session);
         setModalOpen(true);
@@ -88,6 +102,7 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                 endTime: input.endTime,
                 // Na edição, `null` tira a sala; na criação, sem sala é só não mandar.
                 roomId: input.roomId || (editing ? null : undefined),
+                groupId: input.groupId || (editing ? null : undefined),
                 topic: input.topic?.trim() ?? '',
                 instructorIds: selectedInstructorIds,
             };
@@ -118,7 +133,11 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
         }
     };
 
-    const visibleSessions = onlyMine ? sessions.filter(isAssignedToMe) : sessions;
+    const visibleSessions = sessions
+        .filter((s) => !onlyMine || isAssignedToMe(s))
+        // Aula da turma inteira aparece em qualquer filtro de grupo: ela vale para todos.
+        .filter((s) => groupFilter === 'ALL' || !s.groupId || s.groupId === groupFilter);
+    const showGroups = groups.length > 0 && !studentView;
     // A primeira aula de hoje em diante recebe o destaque "Próxima".
     const nextSessionId = sessions.find((s) => sessionTiming(s.date) !== 'past')?.id;
 
@@ -132,6 +151,14 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                             <FilterChip type="button" $active={onlyMine} onClick={() => setOnlyMine((value) => !value)}>
                                 Só as minhas aulas ({myCount})
                             </FilterChip>
+                        )}
+                        {showGroups && (
+                            <>
+                                <FilterChip type="button" $active={groupFilter === 'ALL'} onClick={() => setGroupFilter('ALL')}>Todos os grupos</FilterChip>
+                                {groups.map((g) => (
+                                    <FilterChip key={g.id} type="button" $active={groupFilter === g.id} onClick={() => setGroupFilter(g.id)}>{g.name}</FilterChip>
+                                ))}
+                            </>
                         )}
                     </ToolbarGroup>
                     {canManage && (
@@ -149,18 +176,26 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                             <tr>
                                 <Th>Data</Th>
                                 <Th>Horário</Th>
+                                {showGroups && <Th>Grupo</Th>}
                                 <Th>Assunto / professor</Th>
                                 <Th>Sala</Th>
-                                <Th>Chamada</Th>
-                                <Th>Diário</Th>
-                                <Th></Th>
+                                {studentView ? (
+                                    <Th>Minha presença</Th>
+                                ) : (
+                                    <>
+                                        <Th>Chamada</Th>
+                                        <Th>Diário</Th>
+                                        <Th></Th>
+                                    </>
+                                )}
                             </tr>
                         </Thead>
                         <tbody>
                             {visibleSessions.map((session) => {
                                 const timing = sessionTiming(session.date);
                                 const launched = session._count?.attendances ?? 0;
-                                const percent = enrollmentsCount ? (launched / enrollmentsCount) * 100 : 0;
+                                const rosterSize = session.groupId ? (groupSizes[session.groupId] ?? 0) : enrollmentsCount;
+                                const percent = rosterSize ? (launched / rosterSize) * 100 : 0;
                                 return (
                                     <Tr key={session.id} style={timing === 'past' ? { opacity: 0.85 } : undefined}>
                                         <Td>
@@ -171,50 +206,69 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                                             </div>
                                         </Td>
                                         <Td style={{ whiteSpace: 'nowrap' }}>{session.startTime} — {session.endTime}</Td>
+                                        {showGroups && <Td>{session.group?.name ?? <Muted>Turma inteira</Muted>}</Td>}
                                         <Td>
                                             {session.topic && <div style={{ fontWeight: 600 }}>{session.topic}</div>}
-                                            <Muted>
-                                                {session.instructors.length > 0
-                                                    ? session.instructors.map((i) => i.user.name).join(', ')
-                                                    : 'Qualquer instrutor da turma'}
-                                            </Muted>
+                                            {/* Período da programação: quem dá cada atividade está na aba Programação. */}
+                                            {(session.instructors.length > 0 || (!studentView && !session.fromSchedule)) && (
+                                                <Muted>
+                                                    {session.instructors.length > 0
+                                                        ? session.instructors.map((i) => i.user.name).join(', ')
+                                                        : 'Qualquer instrutor da turma'}
+                                                </Muted>
+                                            )}
                                         </Td>
-                                        <Td>{session.room?.name || '—'}</Td>
-                                        <Td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <MiniProgress $percent={percent} />
-                                                <Muted style={{ whiteSpace: 'nowrap' }}>{launched} / {enrollmentsCount}</Muted>
-                                            </div>
-                                        </Td>
-                                        <Td>{(session._count?.classLogs ?? 0) > 0 ? <Badge $tone="success">Lançado</Badge> : <Badge>Pendente</Badge>}</Td>
-                                        <Td>
-                                            <RowActions>
-                                                {canRecord(session) && (
-                                                    <Button
-                                                        $variant={timing === 'past' || timing === 'today' ? 'primary' : 'secondary'}
-                                                        onClick={() => onOpenAttendance(session.id)}
-                                                    >
-                                                        <ClipboardCheck size={14} /> Chamada e diário
-                                                    </Button>
+                                        <Td style={{ whiteSpace: 'nowrap' }}>{session.room?.name || '—'}</Td>
+                                        {studentView ? (
+                                            <Td>
+                                                {session.myAttendance ? (
+                                                    <Badge $tone={MY_ATTENDANCE[session.myAttendance].tone}>{MY_ATTENDANCE[session.myAttendance].label}</Badge>
+                                                ) : (
+                                                    <Muted>{timing === 'upcoming' ? '—' : 'Chamada não lançada'}</Muted>
                                                 )}
-                                                {canManage && (
-                                                    <>
-                                                        <Button $variant="ghost" onClick={() => openEdit(session)} aria-label="Editar aula" title="Editar aula">
-                                                            <Pencil size={14} />
-                                                        </Button>
-                                                        <Button
-                                                            $variant="ghost"
-                                                            onClick={() => handleRemove(session)}
-                                                            disabled={removeMutation.isPending}
-                                                            aria-label="Remover aula"
-                                                            title="Remover aula"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </RowActions>
-                                        </Td>
+                                            </Td>
+                                        ) : (
+                                            <>
+                                                <Td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <MiniProgress $percent={percent} />
+                                                        <Muted style={{ whiteSpace: 'nowrap' }}>{launched} / {rosterSize}</Muted>
+                                                    </div>
+                                                </Td>
+                                                <Td>{(session._count?.classLogs ?? 0) > 0 ? <Badge $tone="success">Lançado</Badge> : <Badge>Pendente</Badge>}</Td>
+                                                <Td>
+                                                    <RowActions>
+                                                        {canRecord(session) && (
+                                                            <Button
+                                                                $variant={timing === 'past' || timing === 'today' ? 'primary' : 'secondary'}
+                                                                onClick={() => onOpenAttendance(session.id)}
+                                                            >
+                                                                <ClipboardCheck size={14} /> Chamada e diário
+                                                            </Button>
+                                                        )}
+                                                        {canManage && session.fromSchedule && (
+                                                            <Muted title="Data, horário e sala deste período vêm da aba Programação" style={{ whiteSpace: 'nowrap' }}>pela Programação</Muted>
+                                                        )}
+                                                        {canManage && !session.fromSchedule && (
+                                                            <>
+                                                                <Button $variant="ghost" onClick={() => openEdit(session)} aria-label="Editar aula" title="Editar aula">
+                                                                    <Pencil size={14} />
+                                                                </Button>
+                                                                <Button
+                                                                    $variant="ghost"
+                                                                    onClick={() => handleRemove(session)}
+                                                                    disabled={removeMutation.isPending}
+                                                                    aria-label="Remover aula"
+                                                                    title="Remover aula"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </RowActions>
+                                                </Td>
+                                            </>
+                                        )}
                                     </Tr>
                                 );
                             })}
@@ -245,6 +299,18 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                             {errors.endTime && <ErrorText>{errors.endTime.message}</ErrorText>}
                         </Field>
                     </FieldRow>
+                    {groups.length > 0 && (
+                        <Field>
+                            <Label htmlFor="sessionGroup">Grupo</Label>
+                            <Select id="sessionGroup" {...register('groupId')}>
+                                <option value="">Turma inteira</option>
+                                {groups.map((g) => (
+                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                ))}
+                            </Select>
+                            <HelpText>Aula de um grupo tem chamada só com os alunos dele.</HelpText>
+                        </Field>
+                    )}
                     <Field>
                         <Label htmlFor="sessionRoom">Sala (opcional)</Label>
                         <Controller

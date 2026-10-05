@@ -3,7 +3,8 @@
 // Detalhe de uma turma: agenda (aulas + chamada + diário), vídeo-aulas e matrículas. A emissão
 // automática de certificado por critério de presença (decisão 16/17 do docs/decisoes.md) fica
 // no módulo de certificados — aqui só mostramos/coletamos os dados que ele consome.
-// Cada aba mora em pages/course-detail/.
+// Cada aba mora em pages/course-detail/. Agenda = aulas/períodos onde se faz a chamada;
+// Programação = o que acontece dentro deles (atividades de cada grupo, ver ScheduleTab).
 
 import { useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -24,8 +25,10 @@ import { LessonsTab } from '@/pages/course-detail/LessonsTab';
 import { EnrollmentsTab } from '@/pages/course-detail/EnrollmentsTab';
 import { AttendanceModal } from '@/pages/course-detail/AttendanceModal';
 import { EditCourseModal } from '@/pages/course-detail/EditCourseModal';
+import { MyProgress } from '@/pages/course-detail/MyProgress';
+import { ScheduleTab } from '@/pages/course-detail/ScheduleTab';
 
-const TABS = ['sessions', 'lessons', 'enrollments'] as const;
+const TABS = ['sessions', 'schedule', 'lessons', 'enrollments'] as const;
 type TabValue = (typeof TABS)[number];
 
 const TabsList = styled(Tabs.List)`
@@ -103,13 +106,18 @@ export default function CourseDetail() {
     const canManage = hasPermission(user, 'courses:manage');
     // Emissão manual de certificado é um módulo à parte (certificates:manage).
     const canIssueCertificates = hasPermission(user, 'certificates:manage');
+    // A lista de alunos (nome e e-mail) é só da coordenação e dos instrutores da turma; o backend
+    // recusa para os demais. Aluno vê a turma do ponto de vista dele (MyProgress).
+    const teachesThisCourse = user?.instructorCourseIds?.includes(courseId) ?? false;
+    const canSeeRoster = canManage || teachesThisCourse;
 
     const { data: course, isLoading, isError } = useQuery({ queryKey: ['courses', courseId], queryFn: () => coursesApi.get(courseId) });
     const { data: sessions } = useQuery({ queryKey: ['courses', courseId, 'sessions'], queryFn: () => classSessionsApi.list(courseId) });
-    const { data: enrollments } = useQuery({ queryKey: ['courses', courseId, 'enrollments'], queryFn: () => enrollmentsApi.list(courseId) });
+    const { data: enrollments } = useQuery({ queryKey: ['courses', courseId, 'enrollments'], queryFn: () => enrollmentsApi.list(courseId), enabled: canSeeRoster });
 
     const requestedTab = searchParams.get('tab');
-    const activeTab: TabValue = TABS.includes(requestedTab as TabValue) ? (requestedTab as TabValue) : 'sessions';
+    const activeTab: TabValue =
+        TABS.includes(requestedTab as TabValue) && (requestedTab !== 'enrollments' || canSeeRoster) ? (requestedTab as TabValue) : 'sessions';
     // `replace` para trocar de aba não empilhar histórico; o link com ?tab= abre direto na aba.
     const changeTab = (value: string) => setSearchParams(value === 'sessions' ? {} : { tab: value }, { replace: true });
 
@@ -140,6 +148,11 @@ export default function CourseDetail() {
 
     const activeSession = (sessions ?? []).find((s) => s.id === activeSessionId) ?? null;
     const isInstructor = course.instructors.some((i) => i.userId === user?.id);
+    // Lista de chamada de um grupo = alunos ativos dele (mesmo filtro do backend).
+    const groupSizes = (enrollments ?? []).reduce<Record<string, number>>((acc, e) => {
+        if (e.groupId && e.status === 'ACTIVE') acc[e.groupId] = (acc[e.groupId] ?? 0) + 1;
+        return acc;
+    }, {});
 
     const handleDeleteCourse = () => {
         const confirmed = window.confirm(
@@ -172,11 +185,16 @@ export default function CourseDetail() {
 
             <CourseSummary course={course} />
 
+            {!canManage && <MyProgress courseId={courseId} sessions={sessions ?? []} />}
+
             <Tabs.Root value={activeTab} onValueChange={changeTab}>
                 <TabsList aria-label="Seções da turma">
                     <TabsTrigger value="sessions">Agenda <TabCount>{sessions?.length ?? course._count.sessions}</TabCount></TabsTrigger>
+                    <TabsTrigger value="schedule">Programação</TabsTrigger>
                     <TabsTrigger value="lessons">Vídeo-aulas</TabsTrigger>
-                    <TabsTrigger value="enrollments">Matrículas <TabCount>{enrollments?.length ?? course._count.enrollments}</TabCount></TabsTrigger>
+                    {canSeeRoster && (
+                        <TabsTrigger value="enrollments">Matrículas <TabCount>{enrollments?.length ?? course._count.enrollments}</TabCount></TabsTrigger>
+                    )}
                 </TabsList>
 
                 <Tabs.Content value="sessions">
@@ -187,10 +205,17 @@ export default function CourseDetail() {
                         canManage={canManage}
                         courseInstructors={course.instructors}
                         currentUserId={user?.id}
+                        studentView={!canSeeRoster}
+                        groups={course.groups ?? []}
+                        groupSizes={groupSizes}
                         defaultRoomId={course.defaultRoomId}
                         vacancies={course.vacancies}
                         onOpenAttendance={setActiveSessionId}
                     />
+                </Tabs.Content>
+
+                <Tabs.Content value="schedule">
+                    <ScheduleTab courseId={courseId} canManage={canManage} courseStartDate={course.event.startDate} courseTitle={course.event.title} />
                 </Tabs.Content>
 
                 <Tabs.Content value="lessons">
@@ -198,20 +223,24 @@ export default function CourseDetail() {
                         courseId={courseId}
                         canManageCourse={canManage}
                         isCourseInstructor={isInstructor}
+                        studentView={!canSeeRoster}
                         courseInstructors={course.instructors}
                         currentUserId={user?.id}
                     />
                 </Tabs.Content>
 
-                <Tabs.Content value="enrollments">
-                    <EnrollmentsTab
-                        courseId={courseId}
-                        enrollments={enrollments ?? []}
-                        canManage={canManage}
-                        canIssueCertificates={canIssueCertificates}
-                        onCourseChanged={() => queryClient.invalidateQueries({ queryKey: ['courses', courseId] })}
-                    />
-                </Tabs.Content>
+                {canSeeRoster && (
+                    <Tabs.Content value="enrollments">
+                        <EnrollmentsTab
+                            courseId={courseId}
+                            enrollments={enrollments ?? []}
+                            canManage={canManage}
+                            canIssueCertificates={canIssueCertificates}
+                            groups={course.groups ?? []}
+                            onCourseChanged={() => queryClient.invalidateQueries({ queryKey: ['courses', courseId] })}
+                        />
+                    </Tabs.Content>
+                )}
             </Tabs.Root>
 
             {/* Chamada de presença + diário de aula */}

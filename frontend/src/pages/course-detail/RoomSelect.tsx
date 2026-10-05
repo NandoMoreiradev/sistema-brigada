@@ -158,9 +158,11 @@ interface RoomSelectProps {
     emptyLabel: string;
     /** Vagas da turma: avisa quando a sala escolhida comporta menos gente. */
     vacancies?: number | null;
+    /** Chamado quando uma sala é escolhida (ou cadastrada) — ex.: para sugerir o nome do grupo. */
+    onRoomPicked?: (room: Room) => void;
 }
 
-export function RoomSelect({ id, value, onChange, emptyLabel, vacancies }: RoomSelectProps) {
+export function RoomSelect({ id, value, onChange, emptyLabel, vacancies, onRoomPicked }: RoomSelectProps) {
     const [manageOpen, setManageOpen] = useState(false);
     const { data: rooms } = useQuery({ queryKey: ['rooms'], queryFn: () => roomsApi.list() });
 
@@ -171,7 +173,15 @@ export function RoomSelect({ id, value, onChange, emptyLabel, vacancies }: RoomS
     return (
         <>
             <Row>
-                <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+                <Select
+                    id={id}
+                    value={value}
+                    onChange={(e) => {
+                        onChange(e.target.value);
+                        const room = (rooms ?? []).find((r) => r.id === e.target.value);
+                        if (room) onRoomPicked?.(room);
+                    }}
+                >
                     <option value="">{emptyLabel}</option>
                     {options.map((room) => (
                         <option key={room.id} value={room.id}>
@@ -195,6 +205,7 @@ export function RoomSelect({ id, value, onChange, emptyLabel, vacancies }: RoomS
                 onCreated={(room) => {
                     // Sala recém-cadastrada já fica escolhida: quem abriu o cadastro queria usá-la.
                     onChange(room.id);
+                    onRoomPicked?.(room);
                     setManageOpen(false);
                 }}
             />

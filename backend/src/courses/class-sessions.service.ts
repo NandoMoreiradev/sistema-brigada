@@ -33,6 +33,7 @@ import { RoomsService } from './rooms.service';
 
 const SESSION_INCLUDE = {
     room: true,
+    group: { select: { id: true, name: true } },
     instructors: { include: { user: INSTRUCTOR_USER_SELECT } },
 } as const;
 
@@ -79,8 +80,17 @@ export class ClassSessionsService {
         }
     }
 
+    private async assertCourseGroup(courseId: string, groupId: string | null | undefined) {
+        if (!groupId) return;
+        const group = await this.prisma.courseGroup.findFirst({ where: { id: groupId, courseId }, select: { id: true } });
+        if (!group) {
+            throw new BadRequestException('Grupo informado não é desta turma.');
+        }
+    }
+
     async create(courseId: string, organizationId: string, dto: CreateClassSessionDto) {
         await this.requireCourse(courseId, organizationId);
+        await this.assertCourseGroup(courseId, dto.groupId);
         await this.roomsService.assertUsable(dto.roomId, organizationId);
         await this.assertRoomFree(dto.roomId, new Date(dto.date), dto.startTime, dto.endTime);
 
@@ -93,6 +103,7 @@ export class ClassSessionsService {
                 startTime: dto.startTime,
                 endTime: dto.endTime,
                 roomId: dto.roomId,
+                groupId: dto.groupId || null,
                 topic: dto.topic?.trim() || undefined,
                 instructors: { create: instructorIds.map((userId) => ({ userId })) },
             },
@@ -101,24 +112,41 @@ export class ClassSessionsService {
     }
 
     /**
-     * O diário só é devolvido a quem administra ou leciona a turma — antes, qualquer membro da
-     * organização (inclusive aluno de outra turma) recebia o texto de todos os diários.
+     * Só quem administra, leciona ou está matriculado na turma vê a agenda (antes bastava ser da
+     * academia). O diário só vai para quem administra ou leciona; o aluno recebe, em vez dele, a
+     * própria presença em cada aula (`myAttendance`) e só as aulas do grupo dele (e as da turma inteira).
      */
     async findAll(courseId: string, organizationId: string, user: AuthenticatedUser) {
         await this.requireCourse(courseId, organizationId);
         const canSeeLogs = userHasPermission(user, 'courses:manage') || (await this.isCourseInstructor(courseId, user.id));
+        const myEnrollment = await this.prisma.enrollment.findFirst({
+            where: { courseId, studentProfile: { userId: user.id } },
+            select: { id: true, groupId: true },
+        });
+        if (!canSeeLogs && !myEnrollment) {
+            throw new ForbiddenException('Você não faz parte desta turma.');
+        }
+        const onlyMyGroup = !canSeeLogs && myEnrollment
+            ? { OR: [{ groupId: null }, ...(myEnrollment.groupId ? [{ groupId: myEnrollment.groupId }] : [])] }
+            : {};
 
         const sessions = await this.prisma.classSession.findMany({
-            where: { courseId },
+            where: { courseId, ...onlyMyGroup },
             include: {
                 ...SESSION_INCLUDE,
                 classLogs: canSeeLogs ? { include: { createdBy: INSTRUCTOR_USER_SELECT }, orderBy: { createdAt: 'asc' } } : false,
+                attendances: myEnrollment ? { where: { enrollmentId: myEnrollment.id }, select: { status: true } } : false,
                 _count: { select: { attendances: true, classLogs: true } },
             },
             orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
         });
 
-        return sessions.map((session) => ({ ...session, classLogs: session.classLogs ?? [] }));
+        return sessions.map(({ attendances, ...session }) => ({
+            ...session,
+            classLogs: session.classLogs ?? [],
+            // `null` = chamada desta aula ainda não lançada para o aluno.
+            myAttendance: myEnrollment ? (attendances?.[0]?.status ?? null) : undefined,
+        }));
     }
 
     private async requireSession(courseId: string, organizationId: string, sessionId: string) {
@@ -154,8 +182,19 @@ export class ClassSessionsService {
         }
     }
 
+    /** Período gerado pela programação: data, horário, sala e grupo vêm dela, não da edição avulsa. */
+    private assertNotFromSchedule(session: { fromSchedule: boolean }, action: string) {
+        if (session.fromSchedule) {
+            throw new BadRequestException(`Este período foi gerado pela programação da turma. Para ${action}, altere a programação.`);
+        }
+    }
+
     async update(courseId: string, organizationId: string, sessionId: string, dto: UpdateClassSessionDto) {
         const session = await this.requireSession(courseId, organizationId, sessionId);
+        if ([dto.date, dto.startTime, dto.endTime, dto.roomId, dto.groupId].some((value) => value !== undefined)) {
+            this.assertNotFromSchedule(session, 'mudar data, horário, sala ou grupo');
+        }
+        await this.assertCourseGroup(courseId, dto.groupId);
         await this.roomsService.assertUsable(dto.roomId, organizationId, session.roomId);
         // Confere o conflito com o resultado final da edição (o que veio no DTO por cima do que já existe).
         await this.assertRoomFree(
@@ -173,8 +212,9 @@ export class ClassSessionsService {
                 date: dto.date ? new Date(dto.date) : undefined,
                 startTime: dto.startTime,
                 endTime: dto.endTime,
-                // `null` tira a sala; `undefined` mantém.
+                // `null` tira a sala/grupo; `undefined` mantém.
                 roomId: dto.roomId,
+                groupId: dto.groupId === undefined ? undefined : dto.groupId || null,
                 // Texto vazio/`null` limpa o assunto; `undefined` mantém.
                 topic: dto.topic === undefined ? undefined : dto.topic?.trim() || null,
                 // Lista enviada substitui a escala inteira (lista vazia = qualquer instrutor).
@@ -187,7 +227,9 @@ export class ClassSessionsService {
     }
 
     async remove(courseId: string, organizationId: string, sessionId: string) {
-        await this.requireSession(courseId, organizationId, sessionId);
+        const session = await this.requireSession(courseId, organizationId, sessionId);
+        this.assertNotFromSchedule(session, 'remover');
+
         await this.prisma.classSession.delete({ where: { id: sessionId } });
         return { id: sessionId };
     }
@@ -215,10 +257,13 @@ export class ClassSessionsService {
         return this.buildAttendanceRoster(courseId, sessionId);
     }
 
+    /** Aula de um grupo: a lista de chamada traz só os alunos dele. */
     private async buildAttendanceRoster(courseId: string, sessionId: string) {
+        const session = await this.prisma.classSession.findUniqueOrThrow({ where: { id: sessionId }, select: { groupId: true } });
         const [enrollments, attendances] = await Promise.all([
             this.prisma.enrollment.findMany({
-                where: { courseId, status: EnrollmentStatus.ACTIVE },
+                where: { courseId, status: EnrollmentStatus.ACTIVE, ...(session.groupId && { groupId: session.groupId }) },
+                orderBy: { studentProfile: { user: { name: 'asc' } } },
                 include: { studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } } },
             }),
             this.prisma.attendance.findMany({ where: { classSessionId: sessionId } }),
@@ -234,18 +279,18 @@ export class ClassSessionsService {
     }
 
     async markAttendance(courseId: string, organizationId: string, sessionId: string, user: AuthenticatedUser, dto: MarkAttendanceDto) {
-        await this.requireSession(courseId, organizationId, sessionId);
+        const session = await this.requireSession(courseId, organizationId, sessionId);
         await this.assertCanRecordClass(courseId, sessionId, user);
 
         const enrollmentIds = dto.records.map((r) => r.enrollmentId);
         const validEnrollments = await this.prisma.enrollment.findMany({
-            where: { id: { in: enrollmentIds }, courseId },
+            where: { id: { in: enrollmentIds }, courseId, ...(session.groupId && { groupId: session.groupId }) },
             select: { id: true },
         });
         const validIds = new Set(validEnrollments.map((e) => e.id));
         const invalid = enrollmentIds.filter((id) => !validIds.has(id));
         if (invalid.length > 0) {
-            throw new BadRequestException(`Matrícula(s) não pertencem a esta turma: ${invalid.join(', ')}`);
+            throw new BadRequestException(`Matrícula(s) não pertencem a esta turma${session.groupId ? ' ou a este grupo' : ''}: ${invalid.join(', ')}`);
         }
 
         await this.prisma.$transaction(

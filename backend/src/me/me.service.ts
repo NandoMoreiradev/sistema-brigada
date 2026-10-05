@@ -7,9 +7,11 @@
 // certificados. Não há checagem de permissão aqui além de estar autenticado —
 // é sempre sobre o próprio usuário (userId vem do JWT, não de input).
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { AttendanceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
+import { appTodayAsDateOnly } from '../common/datetime';
 
 @Injectable()
 export class MeService {
@@ -35,9 +37,83 @@ export class MeService {
             }),
         ]);
 
+        const sessions = await this.findUpcomingSessions([...instructing.map((i) => i.courseId), ...enrollments.map((e) => e.courseId)]);
+        // Instrutor: a próxima aula da turma. Aluno: a próxima do grupo dele (ou da turma inteira).
+        const nextFor = (courseId: string, groupId?: string | null) =>
+            sessions.find((s) => s.courseId === courseId && (groupId === undefined || s.groupId === null || s.groupId === groupId)) ?? null;
+
         return {
-            instructing: instructing.map(({ course }) => course),
-            enrolled: enrollments.map(({ course, status, id }) => ({ ...course, enrollmentId: id, enrollmentStatus: status })),
+            instructing: instructing.map(({ course }) => ({ ...course, nextSession: nextFor(course.id) })),
+            enrolled: enrollments.map(({ course, status, id, groupId }) => ({
+                ...course,
+                enrollmentId: id,
+                enrollmentStatus: status,
+                nextSession: nextFor(course.id, groupId),
+            })),
+        };
+    }
+
+    /** Aulas de hoje em diante, com a sala — para "onde e quando é a próxima aula". */
+    private async findUpcomingSessions(courseIds: string[]) {
+        if (courseIds.length === 0) return [];
+        return this.prisma.classSession.findMany({
+            where: { courseId: { in: courseIds }, date: { gte: appTodayAsDateOnly() } },
+            select: {
+                id: true,
+                courseId: true,
+                groupId: true,
+                date: true,
+                startTime: true,
+                endTime: true,
+                topic: true,
+                room: { select: { name: true } },
+                group: { select: { name: true } },
+            },
+            orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+        });
+    }
+
+    /**
+     * Onde o aluno está em relação ao certificado da turma: mesma conta que
+     * CertificatesService.checkEligibility (presenças sobre o total de aulas agendadas).
+     */
+    async getMyCourseProgress(userId: string, organizationId: string, courseId: string) {
+        const enrollment = await this.prisma.enrollment.findFirst({
+            where: { courseId, organizationId, studentProfile: { userId } },
+            include: { course: true, certificate: true, group: { select: { id: true, name: true } } },
+        });
+        if (!enrollment) {
+            throw new NotFoundException('Você não está matriculado nesta turma.');
+        }
+
+        // Mesma regra do certificado: só as aulas do grupo do aluno (e as da turma inteira).
+        const sessionScope = { courseId, OR: [{ groupId: null }, ...(enrollment.groupId ? [{ groupId: enrollment.groupId }] : [])] };
+        const [totalSessions, upcomingSessions, attendanceGroups, totalLessons, completedLessons] = await Promise.all([
+            this.prisma.classSession.count({ where: sessionScope }),
+            this.prisma.classSession.count({ where: { ...sessionScope, date: { gt: appTodayAsDateOnly() } } }),
+            this.prisma.attendance.groupBy({ by: ['status'], where: { enrollmentId: enrollment.id }, _count: { _all: true } }),
+            this.prisma.courseLesson.count({ where: { module: { courseId }, active: true } }),
+            this.prisma.lessonProgress.count({ where: { userId, completed: true, lesson: { module: { courseId }, active: true } } }),
+        ]);
+        const countOf = (status: AttendanceStatus) => attendanceGroups.find((g) => g.status === status)?._count._all ?? 0;
+        const present = countOf(AttendanceStatus.PRESENT);
+
+        return {
+            enrollmentStatus: enrollment.status,
+            group: enrollment.group,
+            attendance: {
+                present,
+                absent: countOf(AttendanceStatus.ABSENT),
+                justifiedAbsent: countOf(AttendanceStatus.JUSTIFIED_ABSENT),
+                totalSessions,
+                upcomingSessions,
+                percent: totalSessions ? Math.round((present / totalSessions) * 100) : 0,
+                minPercent: enrollment.course.minAttendancePercent,
+            },
+            lessons: { completed: completedLessons, total: totalLessons, required: enrollment.course.requireAllLessonsWatched },
+            certificate: enrollment.certificate
+                ? { id: enrollment.certificate.id, status: enrollment.certificate.status, pdfUrl: this.toPdfUrl(enrollment.certificate.pdfKey) }
+                : null,
         };
     }
 

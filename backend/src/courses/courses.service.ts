@@ -22,6 +22,7 @@ import { RoomsService } from './rooms.service';
 const courseInclude = {
     event: true,
     defaultRoom: true,
+    groups: { include: { room: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
     instructors: { include: { user: { select: { id: true, name: true, email: true } } } },
     _count: { select: { enrollments: true, sessions: true } },
 } satisfies Prisma.CourseInclude;

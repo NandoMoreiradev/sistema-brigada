@@ -8,10 +8,11 @@
 import { GraduationCap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { formatDateOnly } from '@/utils/courseDates';
+import { formatDateOnly, formatDateWithWeekday, sessionTiming } from '@/utils/courseDates';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { meApi, type MyCourse } from '@/services/me';
+import { meApi, type MyCourse, type MyNextSession } from '@/services/me';
+import { Muted } from '@/pages/course-detail/styles';
 import type { EventStatus } from '@/types';
 
 const STATUS_LABEL: Record<EventStatus, string> = {
@@ -28,6 +29,18 @@ const STATUS_TONE: Record<EventStatus, 'neutral' | 'success' | 'info' | 'danger'
     CANCELLED: 'danger',
 };
 
+/** "Hoje, 19:00 · Sala 2" — onde e quando é a próxima aula, sem precisar abrir a turma. */
+function NextSessionCell({ session }: { session: MyNextSession | null }) {
+    if (!session) return <Muted>—</Muted>;
+    const day = sessionTiming(session.date) === 'today' ? 'Hoje' : formatDateWithWeekday(session.date);
+    return (
+        <>
+            <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{day}, {session.startTime}</div>
+            <Muted>{session.room ? session.room.name : 'Sala a definir'}</Muted>
+        </>
+    );
+}
+
 function CourseTable({ courses, emptyMessage, onOpen }: { courses: MyCourse[]; emptyMessage: string; onOpen: (id: string) => void }) {
     return (
         <TableWrapper>
@@ -36,8 +49,8 @@ function CourseTable({ courses, emptyMessage, onOpen }: { courses: MyCourse[]; e
                     <tr>
                         <Th>Turma</Th>
                         <Th>Início</Th>
+                        <Th>Próxima aula</Th>
                         <Th>Status</Th>
-                        <Th></Th>
                     </tr>
                 </Thead>
                 <tbody>
@@ -45,8 +58,8 @@ function CourseTable({ courses, emptyMessage, onOpen }: { courses: MyCourse[]; e
                         <Tr key={course.id} onClick={() => onOpen(course.id)} style={{ cursor: 'pointer' }}>
                             <Td>{course.event.title}</Td>
                             <Td>{formatDateOnly(course.event.startDate)}</Td>
+                            <Td><NextSessionCell session={course.nextSession} /></Td>
                             <Td><Badge $tone={STATUS_TONE[course.event.status]}>{STATUS_LABEL[course.event.status]}</Badge></Td>
-                            <Td></Td>
                         </Tr>
                     ))}
                 </tbody>
