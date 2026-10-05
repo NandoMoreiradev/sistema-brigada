@@ -17,34 +17,34 @@ enum Role {
 }
 
 model Organization {
-  id                        String    @id @default(cuid())
-  name                      String
-  subdomain                 String?   @unique
-  logoUrl                   String?
-  isMatrix                  Boolean   @default(false)
-  parentOrganizationId      String?
-  groupName                 String?
-  enabledModules            String[]  @default([])
+  id                                 String    @id @default(cuid())
+  name                               String
+  subdomain                          String?   @unique
+  logoUrl                            String?
+  isMatrix                           Boolean   @default(false)
+  parentOrganizationId               String?
+  groupName                          String?
+  enabledModules                     String[]  @default([])
   /// Chave Resend própria da academia. Quando ausente, o envio cai para
   /// RESEND_API_KEY (conta global da plataforma) — ver EmailSenderFactory.
-  resendApiKey              String?
-  emailFromAddress          String?
-  emailFromName             String?
+  resendApiKey                       String?
+  emailFromAddress                   String?
+  emailFromName                      String?
   /// Autocadastro público (/register/:token) — desativado por padrão, cada academia liga
   /// explicitamente (ver OrganizationsService). Token não é removido ao desativar, só ao
   /// regenerar, pra reativar reaproveitar o mesmo link já compartilhado.
-  publicRegistrationEnabled Boolean   @default(false)
-  publicRegistrationToken   String?   @unique
+  publicRegistrationEnabled          Boolean   @default(false)
+  publicRegistrationToken            String?   @unique
   /// Subconjunto de PUBLIC_REGISTRATION_FIELD_CATALOG (common/constants) exibido no
   /// formulário público desta academia — não é form-builder livre, é toggle sobre um
   /// catálogo fixo de campos de StudentProfile.
-  publicRegistrationFields  String[]  @default([])
+  publicRegistrationFields           String[]  @default([])
   /// Mesmo catálogo, escolhido separadamente para quem entra como instrutor / equipe (o de cima é o do aluno).
-  publicRegistrationFieldsInstructor String[] @default([])
-  publicRegistrationFieldsStaff      String[] @default([])
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
-  deletedAt                 DateTime?
+  publicRegistrationFieldsInstructor String[]  @default([])
+  publicRegistrationFieldsStaff      String[]  @default([])
+  createdAt                          DateTime  @default(now())
+  updatedAt                          DateTime  @updatedAt
+  deletedAt                          DateTime?
 
   parentOrganization   Organization?            @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
   childOrganizations   Organization[]           @relation("OrgHierarchy")
@@ -54,6 +54,8 @@ model Organization {
   courses              Course[]
   events               Event[]
   rooms                Room[]
+  instructorTeams      InstructorTeam[]
+  scheduleTemplates    ScheduleTemplate[]
   certificateTemplate  CertificateTemplate?
   emailTemplates       EmailTemplate[]
   communications       Communication[]
@@ -95,6 +97,8 @@ model User {
   studentProfile                 StudentProfile?
   staffMember                    StaffMember?
   instructorAssignments          CourseInstructor[]
+  teamMemberships                InstructorTeamMember[]
+  activityAssignments            CourseActivityAssignee[]
   moduleAssignments              CourseModuleInstructor[]
   sessionAssignments             ClassSessionInstructor[]
   classLogs                      ClassLog[]
@@ -215,14 +219,14 @@ model PersonProfile {
 
 /// Só o que é de aluno (saúde, responsável, matrículas). Dados pessoais ficam em PersonProfile.
 model StudentProfile {
-  id              String         @id @default(cuid())
-  userId          String         @unique
-  organizationId  String
-  healthInfo      Json?
-  guardianName    String?
-  guardianPhone   String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  organizationId String
+  healthInfo     Json?
+  guardianName   String?
+  guardianPhone  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
@@ -263,6 +267,9 @@ model Course {
   recommendedRecyclingCourse Course?            @relation("RecyclingCourse", fields: [recommendedRecyclingCourseId], references: [id])
   recycledByCourses          Course[]           @relation("RecyclingCourse")
   defaultRoom                Room?              @relation(fields: [defaultRoomId], references: [id], onDelete: SetNull)
+  groups                     CourseGroup[]
+  activities                 CourseActivity[]
+  scheduleBlocks             ScheduleBlock[]
   instructors                CourseInstructor[]
   sessions                   ClassSession[]
   modules                    CourseModule[]
@@ -291,26 +298,34 @@ model Room {
   capacity       Int?
   active         Boolean @default(true)
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions     ClassSession[]
   courses      Course[]
+  groups       CourseGroup[]
+  activities   CourseActivity[]
 
   @@unique([organizationId, name])
 }
 
 model ClassSession {
-  id        String   @id @default(cuid())
-  courseId  String
-  date      DateTime @db.Date
-  startTime String   @db.Char(5)
-  endTime   String   @db.Char(5)
-  roomId    String?
+  id           String   @id @default(cuid())
+  courseId     String
+  date         DateTime @db.Date
+  startTime    String   @db.Char(5)
+  endTime      String   @db.Char(5)
+  roomId       String?
   /// Assunto/tema da aula do dia (ex.: "Primeiros socorros — RCP"), texto livre.
-  topic     String?
-  createdAt DateTime @default(now())
+  topic        String?
+  /// Grupo da turma a que a aula se destina (chamada só com os alunos dele). Vazio = turma inteira.
+  groupId      String?
+  /// Gerada pela programação (um período do dia de um grupo): o horário é mantido pela
+  /// programação, não editado à mão. Ver course-schedule.service.ts.
+  fromSchedule Boolean  @default(false)
+  createdAt    DateTime @default(now())
 
   course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   room        Room?                    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  group       CourseGroup?             @relation(fields: [groupId], references: [id], onDelete: Cascade)
   attendances Attendance[]
   /// Um diário por professor: dois professores na mesma aula não se sobrescrevem.
   classLogs   ClassLog[]
@@ -320,6 +335,136 @@ model ClassSession {
   @@index([courseId])
   @@index([date])
   @@index([roomId])
+}
+
+// ============================ PROGRAMAÇÃO DA TURMA ============================
+// Treinamento com a turma dividida em grupos que fazem um rodízio pelas mesmas atividades
+// (ex.: Sala 1, Sala 2 e Sala 3 passando pelas mesmas estações em ordens diferentes).
+// - Grupo (CourseGroup) é QUEM: um conjunto de alunos. Sala (Room) é ONDE. O grupo tem uma
+//   sala base, mas passa parte do dia em outros lugares (ex.: Área da prática).
+// - Atividade (CourseActivity) é cadastrada uma vez na turma: duração, local fixo e responsáveis.
+// - A programação de um grupo num dia é a sequência de blocos (ScheduleBlock); os horários são
+//   calculados a partir do início do dia e da duração de cada atividade.
+// - A chamada é por período: a programação gera uma ClassSession (`fromSchedule`) para cada
+//   trecho entre refeições (manhã/tarde).
+
+enum ScheduleActivityKind {
+  ACTIVITY
+  BREAK
+  MEAL
+}
+
+model CourseGroup {
+  id        String   @id @default(cuid())
+  courseId  String
+  name      String
+  /// Sala base: local das atividades que não têm local fixo.
+  roomId    String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  course         Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  room           Room?           @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  enrollments    Enrollment[]
+  sessions       ClassSession[]
+  scheduleBlocks ScheduleBlock[]
+
+  @@unique([courseId, name])
+  @@index([courseId])
+}
+
+/// Equipe fixa de instrutores (ex.: "Equipe de Ana"). É da academia: serve a todas as turmas.
+model InstructorTeam {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members           InstructorTeamMember[]
+  activityAssignees CourseActivityAssignee[]
+
+  @@unique([organizationId, name])
+}
+
+model InstructorTeamMember {
+  id     String @id @default(cuid())
+  teamId String
+  userId String
+
+  team InstructorTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model CourseActivity {
+  id              String               @id @default(cuid())
+  courseId        String
+  title           String
+  kind            ScheduleActivityKind @default(ACTIVITY)
+  durationMinutes Int
+  /// Local fixo (ex.: Área da prática). Vazio = sala base do grupo.
+  roomId          String?
+  order           Int                  @default(0)
+  createdAt       DateTime             @default(now())
+
+  course    Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  room      Room?                    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  assignees CourseActivityAssignee[]
+  blocks    ScheduleBlock[]
+
+  @@index([courseId])
+}
+
+/// Responsável por uma atividade: uma equipe OU uma pessoa (exatamente um dos dois).
+model CourseActivityAssignee {
+  id         String  @id @default(cuid())
+  activityId String
+  teamId     String?
+  userId     String?
+
+  activity CourseActivity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  team     InstructorTeam? @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+}
+
+model ScheduleBlock {
+  id         String   @id @default(cuid())
+  courseId   String
+  /// Vazio = programação da turma inteira (turma sem grupos).
+  groupId    String?
+  date       DateTime @db.Date
+  order      Int
+  activityId String
+  /// Calculados (início do dia + durações anteriores) e guardados para checar conflitos.
+  startTime  String   @db.Char(5)
+  endTime    String   @db.Char(5)
+
+  course   Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  group    CourseGroup?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  activity CourseActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, date])
+  @@index([date])
+}
+
+/// Programação inteira (grupos, atividades e ordem de cada grupo) salva para reaproveitar em
+/// turmas novas. `data` é uma cópia, não referência: apagar a turma de origem não afeta o modelo.
+model ScheduleTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  data           Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
 }
 
 model ClassLog {
@@ -366,9 +511,12 @@ model Enrollment {
   enrolledAt       DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?
+  /// Grupo da turma (ex.: "Sala 1"). A presença do aluno conta só as aulas do grupo dele e as da turma inteira.
+  groupId          String?
 
   studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
   course         Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  group          CourseGroup?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
   attendances    Attendance[]
   certificate    Certificate?
 
@@ -899,41 +1047,41 @@ enum RegistrationRequestStatus {
 }
 
 model RegistrationRequest {
-  id               String                    @id @default(cuid())
-  organizationId   String
-  name             String
-  email            String
-  phone            String
+  id                String                    @id @default(cuid())
+  organizationId    String
+  name              String
+  email             String
+  phone             String
   /// Subconjunto de StudentProfile submetido pela pessoa — só os campos que estavam
   /// habilitados em Organization.publicRegistrationFields no momento do envio. Guardados
   /// soltos aqui (não em StudentProfile) porque a conta real só existe após aprovação.
-  birthDate        DateTime?
-  baptismDate      DateTime?
-  pioneerStatus    PioneerStatus?
-  signedPetitions  String[]                  @default([])
-  profession       String?
-  status           RegistrationRequestStatus @default(PENDING)
-  reviewedByUserId String?
-  reviewedAt       DateTime?
-  rejectionReason  String?
+  birthDate         DateTime?
+  baptismDate       DateTime?
+  pioneerStatus     PioneerStatus?
+  signedPetitions   String[]                  @default([])
+  profession        String?
+  status            RegistrationRequestStatus @default(PENDING)
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  rejectionReason   String?
   /// Preenchido só quando status = APPROVED.
-  createdUserId    String?                   @unique
+  createdUserId     String?                   @unique
   /// O que a pessoa pediu (link com ?tipo= ou convite) e o que o revisor aprovou de fato. O revisor
   /// sempre decide: o pedido é só uma sugestão.
-  requestedKind    RegistrationKind          @default(STUDENT)
-  approvedKind     RegistrationKind?
+  requestedKind     RegistrationKind          @default(STUDENT)
+  approvedKind      RegistrationKind?
   /// Resultado do envio do e-mail de acesso (SENT/FAILED) — o envio não bloqueia a aprovação, então
   /// sem isto uma falha ficava só no log do servidor.
   accessEmailStatus String?
   accessEmailAt     DateTime?
   /// Preenchido quando a solicitação veio de um convite dirigido.
-  inviteId         String?                   @unique
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
+  inviteId          String?                   @unique
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reviewedBy   User?        @relation("RegistrationRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  createdUser  User?        @relation("RegistrationRequestCreatedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewedBy   User?               @relation("RegistrationRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdUser  User?               @relation("RegistrationRequestCreatedUser", fields: [createdUserId], references: [id], onDelete: SetNull)
   invite       RegistrationInvite? @relation(fields: [inviteId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])

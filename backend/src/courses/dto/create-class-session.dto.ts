@@ -16,6 +16,11 @@ export class CreateClassSessionDto {
     @IsOptional()
     roomId?: string;
 
+    /** Grupo da turma (ex.: "Sala 1"): a chamada mostra só os alunos dele. Vazio = turma inteira. */
+    @IsString()
+    @IsOptional()
+    groupId?: string | null;
+
     /** Assunto/tema da aula do dia. */
     @IsString()
     @IsOptional()

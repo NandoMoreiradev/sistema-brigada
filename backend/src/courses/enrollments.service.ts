@@ -7,7 +7,7 @@
 // emissão automática de certificado (decisão 16) fica para o módulo de
 // certificados; aqui a troca de status é manual.
 
-import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentStatus } from '@prisma/client';
 import { UsersService } from '../users/users.service';
@@ -17,6 +17,8 @@ import { CertificatesService } from '../certificates/certificates.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { formatAppDate } from '../common/datetime';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { userHasPermission } from '../auth/common/user-has-permission.util';
 
 @Injectable()
 export class EnrollmentsService {
@@ -158,12 +160,24 @@ export class EnrollmentsService {
         }
     }
 
-    findAll(courseId: string, organizationId: string) {
+    /**
+     * Antes, qualquer pessoa da academia (inclusive aluno de outra turma) recebia nome e e-mail
+     * de todos os matriculados. Agora só quem administra turmas ou é instrutor desta.
+     */
+    async findAll(courseId: string, organizationId: string, user: AuthenticatedUser) {
+        if (!userHasPermission(user, 'courses:manage')) {
+            const isInstructor = await this.prisma.courseInstructor.findFirst({ where: { courseId, userId: user.id }, select: { id: true } });
+            if (!isInstructor) {
+                throw new ForbiddenException('Só a coordenação e os instrutores da turma veem a lista de alunos.');
+            }
+        }
+
         return this.prisma.enrollment.findMany({
             where: { courseId, organizationId },
             include: {
                 studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
                 certificate: { select: { id: true, status: true } },
+                group: { select: { id: true, name: true } },
             },
             orderBy: { enrolledAt: 'desc' },
         });

@@ -86,6 +86,8 @@ export interface User {
     isTwoFactorEnabled: boolean;
     isSuperAdminRoot: boolean;
     isActive: boolean;
+    /** Link público do crachá digital: /badge/:publicBadgeToken. */
+    publicBadgeToken?: string;
 
     // Preenchidos pelo backend em /auth/profile
     organization?: Organization | null;
@@ -169,6 +171,8 @@ export interface Course {
     /** Sala pré-selecionada ao agendar uma aula nova. */
     defaultRoomId?: string | null;
     defaultRoom?: Room | null;
+    /** Grupos da turma (ex.: Sala 1, Sala 2), quando ela é dividida. */
+    groups?: CourseGroupSummary[];
     active: boolean;
     event: CourseEvent;
     instructors: CourseInstructor[];
@@ -182,6 +186,14 @@ export interface Room {
     active: boolean;
 }
 
+/** Grupo da turma: QUEM (um conjunto de alunos). A sala base é ONDE ele fica por padrão. */
+export interface CourseGroupSummary {
+    id: string;
+    name: string;
+    roomId?: string | null;
+    room?: Room | null;
+}
+
 export interface ClassSession {
     id: string;
     courseId: string;
@@ -192,10 +204,17 @@ export interface ClassSession {
     room?: Room | null;
     /** Assunto/tema da aula do dia. */
     topic?: string | null;
+    /** Grupo da turma a que a aula se destina; vazio = turma inteira. */
+    groupId?: string | null;
+    group?: { id: string; name: string } | null;
+    /** Período gerado pela programação: data/horário/sala vêm dela e não são editados aqui. */
+    fromSchedule?: boolean;
     /** Professores escalados. Vazio = qualquer instrutor da turma lança chamada/diário. */
     instructors: { userId: string; user: { id: string; name: string } }[];
     /** Um diário por professor. Só vem preenchido para quem administra ou leciona a turma. */
     classLogs: ClassLogEntry[];
+    /** Só para aluno matriculado: a presença dele nesta aula (`null` = chamada ainda não lançada). */
+    myAttendance?: AttendanceStatus | null;
     _count?: { attendances: number; classLogs: number };
 }
 
@@ -215,6 +234,8 @@ export interface Enrollment {
     enrolledAt: string;
     studentProfile: { id: string; user: { id: string; name: string; email: string } };
     certificate: { id: string; status: 'VALID' | 'EXPIRED' | 'REVOKED' } | null;
+    groupId?: string | null;
+    group?: { id: string; name: string } | null;
 }
 
 export interface AttendanceRosterEntry {

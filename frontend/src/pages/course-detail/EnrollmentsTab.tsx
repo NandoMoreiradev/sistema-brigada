@@ -3,21 +3,25 @@
 // Matrículas da turma. Alterar status e matricular exigem `courses:manage`; emitir certificado
 // exige `certificates:manage`. Quem não tem a permissão vê o status só como leitura (antes o
 // dropdown aparecia para todos e falhava com 403 ao mudar).
+//
+// Turma dividida em grupos (aba Programação): cada aluno é colocado num grupo aqui — um a um ou
+// com "Distribuir", que espalha quem está sem grupo pelos grupos com menos gente.
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Select, ErrorText, HelpText, Form, FormActions } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { enrollmentsApi } from '@/services/courses';
+import { courseScheduleApi } from '@/services/schedule';
 import { certificatesApi } from '@/services/certificates';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage, apiErrorStatus } from '@/utils/apiError';
 import { ScrollX, Toolbar, ToolbarGroup, SearchInput, FilterChip, Muted } from './styles';
-import type { Enrollment, EnrollmentStatus } from '@/types';
+import type { CourseGroupSummary, Enrollment, EnrollmentStatus } from '@/types';
 
 const ENROLLMENT_LABEL: Record<EnrollmentStatus, string> = { ACTIVE: 'Ativa', COMPLETED: 'Concluída', DROPPED: 'Cancelada' };
 const ENROLLMENT_TONE: Record<EnrollmentStatus, 'success' | 'info' | 'danger'> = { ACTIVE: 'info', COMPLETED: 'success', DROPPED: 'danger' };
@@ -29,16 +33,19 @@ interface EnrollmentsTabProps {
     enrollments: Enrollment[];
     canManage: boolean;
     canIssueCertificates: boolean;
+    /** Grupos da turma; sem grupos, a coluna "Grupo" nem aparece. */
+    groups: CourseGroupSummary[];
     onCourseChanged: () => void;
 }
 
-export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCertificates, onCourseChanged }: EnrollmentsTabProps) {
+export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCertificates, groups, onCourseChanged }: EnrollmentsTabProps) {
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<EnrollmentStatus | 'ALL'>('ALL');
     const [enrollModalOpen, setEnrollModalOpen] = useState(false);
     const [enrollUserIds, setEnrollUserIds] = useState<string[]>([]);
     const [studentSearch, setStudentSearch] = useState('');
+    const [groupFilter, setGroupFilter] = useState<string>('ALL');
 
     const { data: peopleData } = useQuery({
         queryKey: ['people', { hasStudentProfile: true }],
@@ -92,6 +99,34 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
         },
     });
 
+    const assignMutation = useMutation({
+        mutationFn: (assignments: { enrollmentId: string; groupId: string | null }[]) => courseScheduleApi.assignGroups(courseId, assignments),
+        onSuccess: (_, assignments) => {
+            if (assignments.length > 1) toast.success(`${assignments.length} alunos distribuídos nos grupos.`);
+            // Grupo muda a lista de chamada, a contagem dos grupos e a presença considerada.
+            queryClient.invalidateQueries({ queryKey: ['courses', courseId] });
+        },
+        onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível mudar o grupo.')),
+    });
+
+    /** Espalha os alunos ativos sem grupo, sempre para o grupo com menos gente no momento. */
+    const distributeUngrouped = () => {
+        const ungrouped = enrollments
+            .filter((e) => e.status !== 'DROPPED' && !e.groupId)
+            .sort((a, b) => a.studentProfile.user.name.localeCompare(b.studentProfile.user.name));
+        const size = new Map(groups.map((g) => [g.id, enrollments.filter((e) => e.status !== 'DROPPED' && e.groupId === g.id).length]));
+        const assignments = ungrouped.map((enrollment) => {
+            const smallest = groups.reduce((best, g) => (size.get(g.id)! < size.get(best.id)! ? g : best), groups[0]);
+            size.set(smallest.id, size.get(smallest.id)! + 1);
+            return { enrollmentId: enrollment.id, groupId: smallest.id };
+        });
+        const who = assignments.length === 1 ? 'aluno sem grupo' : 'alunos sem grupo';
+        if (window.confirm(`Distribuir ${assignments.length} ${who} entre ${groups.length} grupos, equilibrando a quantidade?`)) {
+            assignMutation.mutate(assignments);
+        }
+    };
+    const ungroupedCount = enrollments.filter((e) => e.status !== 'DROPPED' && !e.groupId).length;
+
     const counts = useMemo(() => {
         const base = { ALL: enrollments.length, ACTIVE: 0, COMPLETED: 0, DROPPED: 0 };
         enrollments.forEach((e) => { base[e.status] += 1; });
@@ -100,6 +135,7 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
 
     const visible = enrollments.filter((e) => {
         if (statusFilter !== 'ALL' && e.status !== statusFilter) return false;
+        if (groupFilter !== 'ALL' && (e.groupId ?? 'NONE') !== groupFilter) return false;
         if (!search.trim()) return true;
         const term = normalize(search);
         return normalize(e.studentProfile.user.name).includes(term) || normalize(e.studentProfile.user.email).includes(term);
@@ -139,11 +175,27 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
                         </FilterChip>
                     ))}
                 </ToolbarGroup>
-                {canManage && (
-                    <Button onClick={() => { setEnrollUserIds([]); setStudentSearch(''); setEnrollModalOpen(true); }}>
-                        <Plus size={16} /> Matricular alunos
-                    </Button>
-                )}
+                <ToolbarGroup>
+                    {groups.length > 0 && (
+                        <Select aria-label="Filtrar por grupo" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} style={{ width: 'auto' }}>
+                            <option value="ALL">Todos os grupos</option>
+                            {groups.map((g) => (
+                                <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                            <option value="NONE">Sem grupo</option>
+                        </Select>
+                    )}
+                    {canManage && groups.length > 0 && ungroupedCount > 0 && (
+                        <Button $variant="secondary" onClick={distributeUngrouped} disabled={assignMutation.isPending}>
+                            <Shuffle size={14} /> Distribuir {ungroupedCount} sem grupo
+                        </Button>
+                    )}
+                    {canManage && (
+                        <Button onClick={() => { setEnrollUserIds([]); setStudentSearch(''); setEnrollModalOpen(true); }}>
+                            <Plus size={16} /> Matricular alunos
+                        </Button>
+                    )}
+                </ToolbarGroup>
             </Toolbar>
 
             <TableWrapper>
@@ -152,6 +204,7 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
                         <Thead>
                             <tr>
                                 <Th>Aluno</Th>
+                                {groups.length > 0 && <Th>Grupo</Th>}
                                 <Th>Status</Th>
                                 {canIssueCertificates && <Th>Certificado</Th>}
                             </tr>
@@ -163,6 +216,25 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
                                         <div style={{ fontWeight: 600 }}>{enrollment.studentProfile.user.name}</div>
                                         <Muted>{enrollment.studentProfile.user.email}</Muted>
                                     </Td>
+                                    {groups.length > 0 && (
+                                        <Td>
+                                            {canManage ? (
+                                                <Select
+                                                    aria-label={`Grupo de ${enrollment.studentProfile.user.name}`}
+                                                    value={enrollment.groupId ?? ''}
+                                                    disabled={assignMutation.isPending}
+                                                    onChange={(e) => assignMutation.mutate([{ enrollmentId: enrollment.id, groupId: e.target.value || null }])}
+                                                >
+                                                    <option value="">Sem grupo</option>
+                                                    {groups.map((g) => (
+                                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                                    ))}
+                                                </Select>
+                                            ) : (
+                                                enrollment.group?.name ?? <Muted>Sem grupo</Muted>
+                                            )}
+                                        </Td>
+                                    )}
                                     <Td>
                                         {canManage ? (
                                             <Select

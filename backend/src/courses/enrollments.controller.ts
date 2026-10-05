@@ -9,6 +9,8 @@ import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.g
 import { Roles } from '../auth/decorator/roles.decorator';
 import { Role } from '@prisma/client';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
+import { CurrentUser } from '../auth/common/current-user.decorator';
+import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 const ALL_ORG_ROLES = [Role.SUPER_ADMIN, Role.GROUP_ADMIN, Role.ORG_ADMIN, Role.ORG_USER] as const;
 
@@ -44,10 +46,15 @@ export class EnrollmentsController {
         return this.enrollmentsService.enrollBulk(courseId, this.requireOrganizationId(organizationId), dto);
     }
 
+    /** Lista com nome e e-mail dos alunos: só quem administra ou leciona a turma (checado no service). */
     @Get()
     @Roles(...ALL_ORG_ROLES)
-    findAll(@Param('courseId') courseId: string, @ActiveOrganizationId() organizationId: string | undefined) {
-        return this.enrollmentsService.findAll(courseId, this.requireOrganizationId(organizationId));
+    findAll(
+        @Param('courseId') courseId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.enrollmentsService.findAll(courseId, this.requireOrganizationId(organizationId), user);
     }
 
     @Patch(':enrollmentId')

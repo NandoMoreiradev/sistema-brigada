@@ -121,11 +121,16 @@ const LessonExtra = styled.div`
  * (videoUrl = URL pública do upload, videoKey = chave no bucket) — o player
  * embutido só é usado para vídeo próprio (videoKey presente); link externo
  * abre em nova aba, já que não dá pra assumir que é embutível.
+ *
+ * Progresso do aluno: vídeo próprio é marcado como assistido sozinho quando chega ao fim (o aluno
+ * não marca à mão). Link externo não tem como ser acompanhado, então continua sendo o aluno quem
+ * marca. Marcar assistida pode liberar o certificado (course-lessons.service.ts).
  */
 export function LessonsTab({
     courseId,
     canManageCourse,
     isCourseInstructor,
+    studentView = false,
     courseInstructors,
     currentUserId,
 }: {
@@ -133,6 +138,8 @@ export function LessonsTab({
     /** Módulos (criar/excluir) e responsáveis exigem courses:manage — mesmo gate do backend. */
     canManageCourse: boolean;
     isCourseInstructor: boolean;
+    /** Aluno: esconde o que é de gestão (responsáveis) e mostra o próprio progresso. */
+    studentView?: boolean;
     /** Instrutores da turma: são as únicas pessoas que podem ser responsáveis por um módulo. */
     courseInstructors: { userId: string; user: { name: string } }[];
     currentUserId?: string;
@@ -275,16 +282,28 @@ export function LessonsTab({
 
     const progressMutation = useMutation({
         mutationFn: ({ lessonId, completed }: { lessonId: string; completed: boolean }) => courseLessonsApi.markProgress(courseId, lessonId, completed),
-        onSuccess: () => invalidateModules(),
+        onSuccess: () => {
+            invalidateModules();
+            // O resumo "Meu progresso" (e o certificado, que pode ter saído agora) dependem disto.
+            queryClient.invalidateQueries({ queryKey: ['me'] });
+        },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível salvar o progresso.')),
     });
 
     const allModules = modules ?? [];
     const myModulesCount = allModules.filter(isResponsible).length;
     const visibleModules = onlyMine ? allModules.filter(isResponsible) : allModules;
+    const allLessons = allModules.flatMap((m) => m.lessons);
+    const watchedCount = allLessons.filter((l) => l.progress?.[0]?.completed).length;
 
     return (
         <div>
+            {studentView && allLessons.length > 0 && (
+                <HelpText as="p" style={{ margin: '0 0 0.75rem' }}>
+                    Você assistiu {watchedCount} de {allLessons.length} vídeo-aulas. Vídeos daqui são marcados sozinhos quando terminam; nos links externos, marque
+                    você mesmo depois de assistir.
+                </HelpText>
+            )}
             {(canManageCourse || myModulesCount > 0) && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                     <div>
@@ -340,30 +359,44 @@ export function LessonsTab({
                         )}
                     </ModuleHeader>
 
-                    <ResponsibleLine>
-                        {courseModule.instructors.length > 0 ? (
-                            <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
-                        ) : (
-                            <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
-                        )}
-                    </ResponsibleLine>
+                    {!studentView && (
+                        <ResponsibleLine>
+                            {courseModule.instructors.length > 0 ? (
+                                <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
+                            ) : (
+                                <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
+                            )}
+                        </ResponsibleLine>
+                    )}
 
                     {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditModule(courseModule) ? ' Use “+ Aula” para adicionar.' : ''}</span>}
 
                     {courseModule.lessons.map((lesson) => {
                         const completed = lesson.progress?.[0]?.completed ?? false;
                         const hasContent = Boolean(lesson.content && lesson.content !== '<p></p>');
+                        // Vídeo próprio: para o aluno, só o fim do vídeo marca como assistida.
+                        const autoTracked = studentView && Boolean(lesson.videoKey && lesson.videoUrl);
                         return (
                             <LessonItem key={lesson.id}>
                                 <LessonRow>
-                                    <button
-                                        type="button"
-                                        onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
-                                        style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
-                                        title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
-                                    >
-                                        {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                    </button>
+                                    {autoTracked ? (
+                                        <span
+                                            style={{ display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
+                                            title={completed ? 'Assistida' : 'Será marcada como assistida quando o vídeo terminar'}
+                                        >
+                                            {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
+                                            title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
+                                            aria-label={completed ? `Marcar "${lesson.title}" como não assistida` : `Marcar "${lesson.title}" como assistida`}
+                                        >
+                                            {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                        </button>
+                                    )}
                                     <LessonTitle>
                                         <strong>{lesson.title}</strong>
                                         {lesson.duration && <span>{Math.round(lesson.duration / 60)} min</span>}
@@ -391,7 +424,16 @@ export function LessonsTab({
                                 </LessonRow>
                                 {(lesson.videoKey || hasContent) && (
                                     <LessonExtra>
-                                        {lesson.videoKey && lesson.videoUrl && <video controls src={lesson.videoUrl} />}
+                                        {lesson.videoKey && lesson.videoUrl && (
+                                            <video
+                                                controls
+                                                preload="metadata"
+                                                src={lesson.videoUrl}
+                                                onEnded={() => {
+                                                    if (studentView && !completed) progressMutation.mutate({ lessonId: lesson.id, completed: true });
+                                                }}
+                                            />
+                                        )}
                                         {hasContent && <RichTextViewer html={lesson.content!} />}
                                     </LessonExtra>
                                 )}

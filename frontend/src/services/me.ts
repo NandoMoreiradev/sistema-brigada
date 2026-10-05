@@ -23,6 +23,36 @@ export interface MyCourse {
     recyclingValidityMonths: number | null;
     active: boolean;
     event: CourseEvent;
+    /** Próxima aula (de hoje em diante), com a sala. */
+    nextSession: MyNextSession | null;
+}
+
+export interface MyNextSession {
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    topic: string | null;
+    room: { name: string } | null;
+    group: { name: string } | null;
+}
+
+/** Onde o aluno está em relação ao certificado da turma (GET /me/courses/:id/progress). */
+export interface MyCourseProgress {
+    enrollmentStatus: EnrollmentStatus;
+    /** Grupo do aluno na turma (ex.: "Sala 2"), quando a turma é dividida. */
+    group: { id: string; name: string } | null;
+    attendance: {
+        present: number;
+        absent: number;
+        justifiedAbsent: number;
+        totalSessions: number;
+        upcomingSessions: number;
+        percent: number;
+        minPercent: number;
+    };
+    lessons: { completed: number; total: number; required: boolean };
+    certificate: { id: string; status: CertificateStatus; pdfUrl: string | null } | null;
 }
 
 export interface MyCourses {
@@ -79,6 +109,10 @@ export interface MyCertificate {
 export const meApi = {
     getMyCourses: async () => {
         const { data } = await api.get<MyCourses>('/me/courses');
+        return data;
+    },
+    getMyCourseProgress: async (courseId: string) => {
+        const { data } = await api.get<MyCourseProgress>(`/me/courses/${courseId}/progress`);
         return data;
     },
     getMyEnrollments: async () => {

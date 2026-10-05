@@ -3,6 +3,10 @@ import { CoursesService } from './courses.service';
 import { CoursesController } from './courses.controller';
 import { RoomsService } from './rooms.service';
 import { RoomsController } from './rooms.controller';
+import { TeamsService } from './teams.service';
+import { TeamsController } from './teams.controller';
+import { CourseScheduleService } from './course-schedule.service';
+import { CourseScheduleController, ScheduleTemplatesController } from './course-schedule.controller';
 import { ClassSessionsService } from './class-sessions.service';
 import { ClassSessionsController } from './class-sessions.controller';
 import { EnrollmentsService } from './enrollments.service';
@@ -22,6 +26,9 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
     controllers: [
         CoursesController,
         RoomsController,
+        TeamsController,
+        CourseScheduleController,
+        ScheduleTemplatesController,
         ClassSessionsController,
         EnrollmentsController,
         CourseModulesController,
@@ -30,6 +37,8 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
     providers: [
         CoursesService,
         RoomsService,
+        TeamsService,
+        CourseScheduleService,
         ClassSessionsService,
         EnrollmentsService,
         CourseModulesService,

@@ -5,7 +5,7 @@
 // autenticado, então qualquer papel (inclusive ORG_USER sem nenhum cargo)
 // pode chamá-los.
 
-import { Controller, Get, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { MeService } from './me.service';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { ActiveOrganizationId } from '../auth/common/active-organization-id.decorator';
@@ -27,6 +27,15 @@ export class MeController {
     @Get('courses')
     getMyCourses(@CurrentUser() user: AuthenticatedUser, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.meService.getMyCourses(user.id, this.requireOrganizationId(organizationId));
+    }
+
+    @Get('courses/:courseId/progress')
+    getMyCourseProgress(
+        @Param('courseId') courseId: string,
+        @CurrentUser() user: AuthenticatedUser,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.meService.getMyCourseProgress(user.id, this.requireOrganizationId(organizationId), courseId);
     }
 
     @Get('enrollments')

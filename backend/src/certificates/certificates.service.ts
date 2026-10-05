@@ -20,6 +20,7 @@ import { Prisma, AttendanceStatus, EnrollmentStatus, CertificateStatus } from '@
 import { ListCertificatesDto } from './dto/list-certificates.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
+import { appTodayAsDateOnly } from '../common/datetime';
 
 const certificateInclude = {
     enrollment: {
@@ -135,9 +136,33 @@ export class CertificatesService {
             return { eligible: false, reason: 'Matrícula cancelada não é elegível para certificado.', enrollment };
         }
 
-        const totalSessions = await this.prisma.classSession.count({ where: { courseId: enrollment.courseId } });
+        // Turma dividida em grupos: o aluno só é cobrado pelas aulas do grupo dele (e as da turma inteira).
+        const hasGroups = (await this.prisma.courseGroup.count({ where: { courseId: enrollment.courseId } })) > 0;
+        if (hasGroups && !enrollment.groupId) {
+            return { eligible: false, reason: 'O aluno ainda não foi colocado em um grupo da turma.', enrollment };
+        }
+        const sessionScope: Prisma.ClassSessionWhereInput = {
+            courseId: enrollment.courseId,
+            OR: [{ groupId: null }, ...(enrollment.groupId ? [{ groupId: enrollment.groupId }] : [])],
+        };
+
+        const totalSessions = await this.prisma.classSession.count({ where: sessionScope });
         if (totalSessions === 0) {
             return { eligible: false, reason: 'A turma ainda não tem nenhuma aula lançada.', enrollment };
+        }
+
+        // A presença é calculada sobre as aulas agendadas. Sem esta trava, quem agenda uma aula por
+        // vez via o aluno bater 100% (1 de 1) já na primeira chamada e ganhar o certificado no
+        // primeiro dia. Por isso só se avalia depois da última aula agendada.
+        const upcomingSessions = await this.prisma.classSession.count({
+            where: { ...sessionScope, date: { gt: appTodayAsDateOnly() } },
+        });
+        if (upcomingSessions > 0) {
+            return {
+                eligible: false,
+                reason: `A turma ainda tem ${upcomingSessions} ${upcomingSessions === 1 ? 'aula agendada' : 'aulas agendadas'} pela frente.`,
+                enrollment,
+            };
         }
 
         const presentCount = await this.prisma.attendance.count({

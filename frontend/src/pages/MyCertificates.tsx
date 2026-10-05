@@ -6,13 +6,16 @@
 // esta tela não tem regeração de PDF nem personalização — só consulta e
 // download do próprio certificado.
 
-import { Award, Download } from 'lucide-react';
+import { Award, Download, Link2, ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { meApi } from '@/services/me';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/utils/toast';
+import { Muted, Toolbar, ToolbarGroup } from '@/pages/course-detail/styles';
 import type { CertificateStatus } from '@/services/certificates';
 
 const STATUS_LABEL: Record<CertificateStatus, string> = {
@@ -30,9 +33,40 @@ const STATUS_TONE: Record<CertificateStatus, 'success' | 'warning' | 'danger'> =
 export default function MyCertificates() {
     const { data, isLoading } = useQuery({ queryKey: ['me', 'certificates'], queryFn: () => meApi.getMyCertificates() });
     const certificates = data ?? [];
+    const { user } = useAuth();
+    // Página pública (sem login) que lista os certificados válidos: é o que o aluno mostra a
+    // quem precisa conferir a formação dele. Antes existia, mas nenhuma tela dava o link.
+    const badgeUrl = user?.publicBadgeToken ? `${window.location.origin}/badge/${user.publicBadgeToken}` : null;
+
+    const copyBadgeUrl = async () => {
+        if (!badgeUrl) return;
+        try {
+            await navigator.clipboard.writeText(badgeUrl);
+            toast.success('Link do crachá copiado.');
+        } catch {
+            toast.error('Não foi possível copiar. Use “Abrir crachá” e copie o endereço da página.');
+        }
+    };
 
     return (
         <PageLayout title="Meus Certificados" subtitle="Seus certificados e crachás digitais" icon={<Award size={16} />}>
+            {badgeUrl && certificates.some((c) => c.status === 'VALID') && (
+                <Toolbar>
+                    <ToolbarGroup>
+                        <Muted style={{ fontSize: '0.8125rem' }}>
+                            Crachá digital: uma página pública com seus certificados válidos, para mostrar a quem precisar conferir.
+                        </Muted>
+                    </ToolbarGroup>
+                    <ToolbarGroup>
+                        <Button type="button" $variant="secondary" onClick={copyBadgeUrl}>
+                            <Link2 size={14} /> Copiar link
+                        </Button>
+                        <Button as="a" href={badgeUrl} target="_blank" rel="noreferrer" $variant="ghost">
+                            <ExternalLink size={14} /> Abrir crachá
+                        </Button>
+                    </ToolbarGroup>
+                </Toolbar>
+            )}
             <TableWrapper>
                 <Table>
                     <Thead>
@@ -65,7 +99,7 @@ export default function MyCertificates() {
                     </tbody>
                 </Table>
                 {!isLoading && certificates.length === 0 && (
-                    <EmptyState>Nenhum certificado emitido ainda — ele é gerado automaticamente quando você atinge a presença mínima da turma.</EmptyState>
+                    <EmptyState>Nenhum certificado emitido ainda. Ele sai automaticamente depois da última aula da turma, se você tiver cumprido a presença mínima (e as vídeo-aulas, quando a turma exigir). Acompanhe pela página da turma.</EmptyState>
                 )}
             </TableWrapper>
         </PageLayout>

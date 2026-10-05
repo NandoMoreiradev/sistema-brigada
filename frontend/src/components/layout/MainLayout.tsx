@@ -360,9 +360,12 @@ export function MainLayout({ children }: { children: ReactNode }) {
                   ? { to: '/courses', label: 'Turmas', icon: GraduationCap }
                   : { to: '/my-courses', label: 'Minhas Turmas', icon: GraduationCap },
               { to: '/events', label: 'Eventos', icon: CalendarClock },
-              hasPermission(user, 'staff:manage')
-                  ? { to: '/staff', label: 'Equipe', icon: ShieldCheck }
-                  : { to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck },
+              // Designação é escala de equipe: aluno que não é da equipe nunca teria nada ali.
+              ...(hasPermission(user, 'staff:manage')
+                  ? [{ to: '/staff', label: 'Equipe', icon: ShieldCheck }]
+                  : user?.staffMember
+                    ? [{ to: '/my-designations', label: 'Minhas Designações', icon: ShieldCheck }]
+                    : []),
               ...(hasPermission(user, 'people:manage') ? [{ to: '/people', label: 'Pessoas', icon: Users }] : []),
               ...(hasPermission(user, 'registrations:manage') ? [{ to: '/registrations', label: 'Cadastros', icon: UserPlus, badge: pendingRegistrations }] : []),
               hasPermission(user, 'certificates:manage')

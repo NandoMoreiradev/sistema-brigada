@@ -32,6 +32,14 @@ export function formatAppDate(value: Date): string {
     return value.toLocaleDateString('pt-BR', { timeZone: isUtcMidnight ? 'UTC' : APP_TIME_ZONE });
 }
 
+/**
+ * Hoje (no fuso da aplicação) como meia-noite UTC — o mesmo formato em que o Prisma devolve
+ * colunas `@db.Date` (ex.: `ClassSession.date`), para comparar direto com elas.
+ */
+export function appTodayAsDateOnly(now = new Date()): Date {
+    return new Date(`${now.toLocaleDateString('en-CA', { timeZone: APP_TIME_ZONE })}T00:00:00.000Z`);
+}
+
 /** "15/03/2026 às 08:00" — data e hora no fuso da aplicação, para textos de e-mail. */
 export function formatAppDateTime(value: Date): string {
     const date = value.toLocaleDateString('pt-BR', { timeZone: APP_TIME_ZONE });
