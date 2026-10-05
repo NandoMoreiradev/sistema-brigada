@@ -14,8 +14,11 @@
 // Vários professores: uma aula pode ter professores escalados (`ClassSessionInstructor`).
 // Com escala, só eles (ou quem tem `courses:manage`) lançam chamada/diário; sem escala, vale a
 // regra anterior (qualquer instrutor da turma). Cada professor mantém o próprio diário.
+//
+// Sala: duas aulas (de qualquer turma da academia) não podem ocupar a mesma sala em horários
+// que se sobrepõem — ver `assertRoomFree`.
 
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EnrollmentStatus } from '@prisma/client';
 import { CreateClassSessionDto } from './dto/create-class-session.dto';
@@ -26,6 +29,7 @@ import { CertificatesService } from '../certificates/certificates.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 import { assertAreCourseInstructors, INSTRUCTOR_USER_SELECT } from './course-instructors.util';
+import { RoomsService } from './rooms.service';
 
 const SESSION_INCLUDE = {
     room: true,
@@ -38,6 +42,7 @@ export class ClassSessionsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly certificatesService: CertificatesService,
+        private readonly roomsService: RoomsService,
     ) {}
 
     /** Garante que a turma pertence à organização ativa antes de qualquer operação. */
@@ -76,13 +81,8 @@ export class ClassSessionsService {
 
     async create(courseId: string, organizationId: string, dto: CreateClassSessionDto) {
         await this.requireCourse(courseId, organizationId);
-
-        if (dto.roomId) {
-            const room = await this.prisma.room.findFirst({ where: { id: dto.roomId, organizationId } });
-            if (!room) {
-                throw new BadRequestException('Sala informada não pertence a esta organização.');
-            }
-        }
+        await this.roomsService.assertUsable(dto.roomId, organizationId);
+        await this.assertRoomFree(dto.roomId, new Date(dto.date), dto.startTime, dto.endTime);
 
         const instructorIds = await assertAreCourseInstructors(this.prisma, courseId, dto.instructorIds ?? []);
 
@@ -130,8 +130,41 @@ export class ClassSessionsService {
         return session;
     }
 
+    /**
+     * Horários "HH:mm" se comparam como texto. Aulas encostadas (uma termina 10:00, a outra
+     * começa 10:00) não contam como conflito. Turmas excluídas (lixeira) não ocupam sala.
+     */
+    private async assertRoomFree(roomId: string | null | undefined, date: Date, startTime: string, endTime: string, ignoreSessionId?: string) {
+        if (!roomId) return;
+        const clash = await this.prisma.classSession.findFirst({
+            where: {
+                roomId,
+                date,
+                startTime: { lt: endTime },
+                endTime: { gt: startTime },
+                ...(ignoreSessionId && { id: { not: ignoreSessionId } }),
+                course: { deletedAt: null },
+            },
+            include: { room: true, course: { include: { event: { select: { title: true } } } } },
+        });
+        if (clash) {
+            throw new ConflictException(
+                `A sala "${clash.room?.name}" já está ocupada das ${clash.startTime} às ${clash.endTime} por uma aula da turma "${clash.course.event.title}".`,
+            );
+        }
+    }
+
     async update(courseId: string, organizationId: string, sessionId: string, dto: UpdateClassSessionDto) {
-        await this.requireSession(courseId, organizationId, sessionId);
+        const session = await this.requireSession(courseId, organizationId, sessionId);
+        await this.roomsService.assertUsable(dto.roomId, organizationId, session.roomId);
+        // Confere o conflito com o resultado final da edição (o que veio no DTO por cima do que já existe).
+        await this.assertRoomFree(
+            dto.roomId === undefined ? session.roomId : dto.roomId,
+            dto.date ? new Date(dto.date) : session.date,
+            dto.startTime ?? session.startTime,
+            dto.endTime ?? session.endTime,
+            sessionId,
+        );
         const instructorIds = dto.instructorIds === undefined ? undefined : await assertAreCourseInstructors(this.prisma, courseId, dto.instructorIds);
 
         return this.prisma.classSession.update({
@@ -140,6 +173,7 @@ export class ClassSessionsService {
                 date: dto.date ? new Date(dto.date) : undefined,
                 startTime: dto.startTime,
                 endTime: dto.endTime,
+                // `null` tira a sala; `undefined` mantém.
                 roomId: dto.roomId,
                 // Texto vazio/`null` limpa o assunto; `undefined` mantém.
                 topic: dto.topic === undefined ? undefined : dto.topic?.trim() || null,

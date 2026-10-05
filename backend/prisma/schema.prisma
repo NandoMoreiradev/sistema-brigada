@@ -250,6 +250,9 @@ model Course {
   /// de brigada variam muito de formato (decisão 17) — a academia escreve do
   /// jeito que já usa na ementa impressa dela.
   syllabus                     String?   @db.Text
+  /// Sala onde a turma costuma ter aula: vem pré-selecionada ao agendar uma aula nova.
+  /// Cada aula guarda a própria sala (`ClassSession.roomId`), então trocar aqui não mexe nas já agendadas.
+  defaultRoomId                String?
   active                       Boolean   @default(true)
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
@@ -259,6 +262,7 @@ model Course {
   organization               Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   recommendedRecyclingCourse Course?            @relation("RecyclingCourse", fields: [recommendedRecyclingCourseId], references: [id])
   recycledByCourses          Course[]           @relation("RecyclingCourse")
+  defaultRoom                Room?              @relation(fields: [defaultRoomId], references: [id], onDelete: SetNull)
   instructors                CourseInstructor[]
   sessions                   ClassSession[]
   modules                    CourseModule[]
@@ -289,6 +293,7 @@ model Room {
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions     ClassSession[]
+  courses      Course[]
 
   @@unique([organizationId, name])
 }

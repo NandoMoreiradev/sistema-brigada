@@ -3,6 +3,7 @@
 // Cabeçalho da turma: cartões com o que o professor consulta o tempo todo (quando/onde,
 // lotação, instrutores, regra do certificado), no lugar da linha única com 7 itens.
 
+import { useState } from 'react';
 import styled from 'styled-components';
 import { CalendarDays, MapPin, Users, Award } from 'lucide-react';
 import { Badge } from '@/components/ui/Table';
@@ -80,6 +81,47 @@ const InstructorChip = styled.span`
     font-weight: 600;
 `;
 
+const MoreChip = styled.button`
+    padding: 0.15rem 0.55rem;
+    border-radius: ${({ theme }) => theme.radii.pill};
+    border: 1px dashed ${({ theme }) => theme.colors.borderLight};
+    background: transparent;
+    color: ${({ theme }) => theme.colors.textMedium};
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+        color: ${({ theme }) => theme.colors.textDark};
+    }
+`;
+
+// Turmas com muitos instrutores (ex.: a equipe toda) esticavam a linha de cartões inteira.
+const VISIBLE_INSTRUCTORS = 3;
+
+function InstructorList({ instructors }: { instructors: Course['instructors'] }) {
+    const [expanded, setExpanded] = useState(false);
+    const hidden = instructors.length - VISIBLE_INSTRUCTORS;
+    const visible = expanded || hidden <= 0 ? instructors : instructors.slice(0, VISIBLE_INSTRUCTORS);
+
+    return (
+        <Chips>
+            {visible.map((instructor) => (
+                <InstructorChip key={instructor.userId}>{instructor.user.name}</InstructorChip>
+            ))}
+            {hidden > 0 && (
+                <MoreChip
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    title={expanded ? undefined : instructors.slice(VISIBLE_INSTRUCTORS).map((i) => i.user.name).join('\n')}
+                >
+                    {expanded ? 'Mostrar menos' : `+${hidden}`}
+                </MoreChip>
+            )}
+        </Chips>
+    );
+}
+
 export function CourseSummary({ course }: { course: Course }) {
     const start = formatDateOnly(course.event.startDate);
     const end = course.event.endDate ? formatDateOnly(course.event.endDate) : null;
@@ -97,6 +139,7 @@ export function CourseSummary({ course }: { course: Course }) {
             <Card>
                 <CardLabel><MapPin size={13} /> Local</CardLabel>
                 <CardValue>{course.event.location || 'Não informado'}</CardValue>
+                {course.defaultRoom && <CardHint>Sala padrão: {course.defaultRoom.name}</CardHint>}
             </Card>
 
             <Card>
@@ -109,13 +152,11 @@ export function CourseSummary({ course }: { course: Course }) {
             </Card>
 
             <Card>
-                <CardLabel><Users size={13} /> Instrutores</CardLabel>
+                <CardLabel>
+                    <Users size={13} /> Instrutores{course.instructors.length > VISIBLE_INSTRUCTORS ? ` (${course.instructors.length})` : ''}
+                </CardLabel>
                 {course.instructors.length > 0 ? (
-                    <Chips>
-                        {course.instructors.map((instructor) => (
-                            <InstructorChip key={instructor.userId}>{instructor.user.name}</InstructorChip>
-                        ))}
-                    </Chips>
+                    <InstructorList instructors={course.instructors} />
                 ) : (
                     <CardValue>Nenhum definido</CardValue>
                 )}

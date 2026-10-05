@@ -26,6 +26,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
+import { TrashButton } from '@/components/trash/TrashModal';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, ErrorText, CheckboxField, Form, FormActions, FieldRow, HelpText } from '@/components/ui/FormField';
@@ -250,9 +251,12 @@ export default function People() {
             subtitle="Cadastro geral de alunos, instrutores e equipe"
             icon={<Users size={16} />}
             actions={
-                <Button onClick={openCreate}>
-                    <Plus size={16} /> Nova pessoa
-                </Button>
+                <>
+                    <TrashButton entity="people" />
+                    <Button onClick={openCreate}>
+                        <Plus size={16} /> Nova pessoa
+                    </Button>
+                </>
             }
         >
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>

@@ -37,6 +37,33 @@ const SOFT_DELETE_CASCADE_TARGETS: Partial<Record<Prisma.ModelName, Array<{ mode
     Course: [{ model: 'Enrollment', field: 'courseId' }],
 };
 
+/**
+ * Propaga o soft delete do pai para os filhos, em todos os níveis (Event → Course → Enrollment).
+ * Todos recebem o mesmo `now`: é o que permite à lixeira restaurar só o que foi excluído junto
+ * com o pai (`deletedAt` igual), sem ressuscitar matrículas removidas por outro motivo.
+ * Só busca os ids dos filhos quando eles próprios têm filhos a propagar; senão, um `updateMany` basta.
+ */
+export async function cascadeSoftDelete(client: any, model: Prisma.ModelName, parentIds: string[], now: Date): Promise<void> {
+    const targets = SOFT_DELETE_CASCADE_TARGETS[model];
+    if (!targets || parentIds.length === 0) return;
+
+    for (const target of targets) {
+        if (!SOFT_DELETE_MODELS.has(target.model)) continue;
+        const where = { [target.field]: { in: parentIds }, deletedAt: null };
+
+        if (!SOFT_DELETE_CASCADE_TARGETS[target.model]) {
+            await client[target.model].updateMany({ where, data: { deletedAt: now } });
+            continue;
+        }
+
+        const children: Array<{ id: string }> = await client[target.model].findMany({ where, select: { id: true } });
+        if (children.length === 0) continue;
+        const childIds = children.map((child) => child.id);
+        await client[target.model].updateMany({ where: { id: { in: childIds } }, data: { deletedAt: now } });
+        await cascadeSoftDelete(client, target.model, childIds, now);
+    }
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
     private readonly logger = new Logger(PrismaService.name);
@@ -104,16 +131,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
                             const targets = SOFT_DELETE_CASCADE_TARGETS[model as Prisma.ModelName];
 
                             if (before?.id && targets) {
-                                await Promise.all(
-                                    targets.map(async (target) => {
-                                        if (SOFT_DELETE_MODELS.has(target.model)) {
-                                            await client[target.model].updateMany({
-                                                where: { [target.field]: before.id, deletedAt: null },
-                                                data: { deletedAt: now },
-                                            });
-                                        }
-                                    }),
-                                );
+                                await cascadeSoftDelete(client, model as Prisma.ModelName, [before.id], now);
                             }
 
                             return client[model].update({

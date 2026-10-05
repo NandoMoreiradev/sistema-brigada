@@ -12,6 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
+import { TrashButton } from '@/components/trash/TrashModal';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
@@ -93,11 +94,14 @@ export default function Events() {
             subtitle="Assembleias, congressos e atuações de brigada"
             icon={<CalendarClock size={16} />}
             actions={
-                canManageEvents ? (
-                    <Button onClick={openCreate}>
-                        <Plus size={16} /> Novo evento
-                    </Button>
-                ) : undefined
+                <>
+                    <TrashButton entity="events" />
+                    {canManageEvents && (
+                        <Button onClick={openCreate}>
+                            <Plus size={16} /> Novo evento
+                        </Button>
+                    )}
+                </>
             }
         >
             <TableWrapper>

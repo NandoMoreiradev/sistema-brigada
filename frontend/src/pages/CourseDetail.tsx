@@ -143,7 +143,7 @@ export default function CourseDetail() {
 
     const handleDeleteCourse = () => {
         const confirmed = window.confirm(
-            `Excluir a turma "${course.event.title}"? As matrículas dela deixarão de aparecer no sistema. Essa ação não pode ser desfeita.`,
+            `Excluir a turma "${course.event.title}"? As matrículas dela deixarão de aparecer no sistema. Ela vai para a lixeira, de onde pode ser restaurada.`,
         );
         if (confirmed) removeCourseMutation.mutate();
     };
@@ -187,6 +187,8 @@ export default function CourseDetail() {
                         canManage={canManage}
                         courseInstructors={course.instructors}
                         currentUserId={user?.id}
+                        defaultRoomId={course.defaultRoomId}
+                        vacancies={course.vacancies}
                         onOpenAttendance={setActiveSessionId}
                     />
                 </Tabs.Content>

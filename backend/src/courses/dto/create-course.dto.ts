@@ -69,6 +69,11 @@ export class CreateCourseDto {
     @IsOptional()
     syllabus?: string;
 
+    /** Sala pré-selecionada ao agendar uma aula nova desta turma. */
+    @IsString()
+    @IsOptional()
+    defaultRoomId?: string;
+
     @IsArray()
     @IsString({ each: true })
     @IsOptional()

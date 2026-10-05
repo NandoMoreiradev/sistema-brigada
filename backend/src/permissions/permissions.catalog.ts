@@ -68,4 +68,11 @@ export const PERMISSIONS_CATALOG: PermissionCatalogEntry[] = [
         module: 'REGISTRATIONS',
         group: 'Cadastros',
     },
+    {
+        id: 'trash:manage',
+        name: 'Gerenciar Lixeira',
+        description: 'Permite ver, restaurar e excluir definitivamente turmas, eventos, pessoas e cargos que foram excluídos.',
+        module: 'TRASH',
+        group: 'Lixeira',
+    },
 ];

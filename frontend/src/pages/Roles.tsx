@@ -12,6 +12,7 @@ import { ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
+import { TrashButton } from '@/components/trash/TrashModal';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Form, FormActions, ErrorText, HelpText } from '@/components/ui/FormField';
@@ -151,7 +152,7 @@ export default function Roles() {
     const people = peopleData?.data ?? [];
 
     return (
-        <PageLayout title="Cargos" subtitle="Permissões da equipe administrativa" icon={<ShieldCheck size={16} />}>
+        <PageLayout title="Cargos" subtitle="Permissões da equipe administrativa" icon={<ShieldCheck size={16} />} actions={<TrashButton entity="roles" />}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
                 <Button onClick={openCreate}>
                     <Plus size={16} /> Novo cargo

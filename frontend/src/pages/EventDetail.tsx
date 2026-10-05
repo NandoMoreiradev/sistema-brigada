@@ -121,7 +121,7 @@ export default function EventDetail() {
 
     const handleDelete = () => {
         const confirmed = window.confirm(
-            `Excluir o evento "${event.title}"? Escala, ocorrências e arquivos associados deixarão de aparecer no sistema. Essa ação não pode ser desfeita.`,
+            `Excluir o evento "${event.title}"? Escala, ocorrências e arquivos associados deixarão de aparecer no sistema. Ele vai para a lixeira, de onde pode ser restaurado.`,
         );
         if (confirmed) removeMutation.mutate();
     };
