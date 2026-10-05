@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import styled from 'styled-components';
-import { Plus, PlayCircle, CheckCircle2, Circle, Trash2, Pencil, UserCog } from 'lucide-react';
+import { Plus, PlayCircle, CheckCircle2, Circle, Trash2, Pencil, UserCog, ChevronDown } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
@@ -31,26 +31,44 @@ const ModuleCard = styled.div`
     margin-bottom: 0.875rem;
 `;
 
-const ModuleHeader = styled.div`
+const ModuleHeader = styled.div<{ $collapsed: boolean }>`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin-bottom: ${({ $collapsed }) => ($collapsed ? '0' : '0.5rem')};
 
     h3 {
         margin: 0;
         font-size: 0.9375rem;
         font-weight: 700;
         color: ${({ theme }) => theme.colors.textDark};
-        display: flex;
-        align-items: baseline;
-        gap: 0.5rem;
     }
 
     small {
         font-size: 0.7rem;
         font-weight: 600;
         color: ${({ theme }) => theme.colors.textMuted};
+    }
+`;
+
+const ModuleToggle = styled.button<{ $collapsed: boolean }>`
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+
+    svg {
+        align-self: center;
+        flex-shrink: 0;
+        color: ${({ theme }) => theme.colors.textMuted};
+        transform: rotate(${({ $collapsed }) => ($collapsed ? '-90deg' : '0deg')});
+        transition: transform 0.15s ease;
     }
 `;
 
@@ -148,6 +166,7 @@ export function LessonsTab({
     const [responsiblesModule, setResponsiblesModule] = useState<CourseModuleWithLessons | null>(null);
     const [responsibleIds, setResponsibleIds] = useState<string[]>([]);
     const [onlyMine, setOnlyMine] = useState(false);
+    const [collapsedModuleIds, setCollapsedModuleIds] = useState<Set<string>>(new Set());
     const [lessonModalModuleId, setLessonModalModuleId] = useState<string | null>(null);
     const [editingLesson, setEditingLesson] = useState<CourseLesson | null>(null);
     const [lessonMode, setLessonMode] = useState<'link' | 'upload'>('link');
@@ -192,7 +211,15 @@ export function LessonsTab({
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível remover o módulo.')),
     });
 
-    const handleRemoveModule = (moduleId: string, title: string, lessonCount: number) => {
+    const toggleModule = (moduleId: string) =>
+        setCollapsedModuleIds((current) => {
+            const next = new Set(current);
+            if (next.has(moduleId)) next.delete(moduleId);
+            else next.add(moduleId);
+            return next;
+        });
+
+    const handleRemoveModule =(moduleId: string, title: string, lessonCount: number) => {
         const warning = lessonCount > 0 ? `\n\nATENÇÃO: as ${lessonCount} aula(s) deste módulo também serão removidas.` : '';
         if (window.confirm(`Remover o módulo "${title}"?${warning}`)) removeModuleMutation.mutate(moduleId);
     };
@@ -321,127 +348,143 @@ export function LessonsTab({
                 </div>
             )}
 
-            {visibleModules.map((courseModule) => (
-                <ModuleCard key={courseModule.id}>
-                    <ModuleHeader>
-                        <h3>
-                            {courseModule.title}
-                            <small>{courseModule.lessons.length} {courseModule.lessons.length === 1 ? 'aula' : 'aulas'}</small>
-                        </h3>
-                        {(canEditModule(courseModule) || canManageCourse) && (
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                {canEditModule(courseModule) && (
-                                    <Button $variant="ghost" onClick={() => openCreateLesson(courseModule.id)}>
-                                        <Plus size={14} /> Aula
-                                    </Button>
-                                )}
-                                {canManageCourse && (
-                                    <Button
-                                        $variant="ghost"
-                                        onClick={() => { setResponsibleIds(courseModule.instructors.map((i) => i.userId)); setResponsiblesModule(courseModule); }}
-                                        aria-label={`Definir responsáveis pelo módulo ${courseModule.title}`}
-                                        title="Definir professores responsáveis"
-                                    >
-                                        <UserCog size={14} /> Responsáveis
-                                    </Button>
-                                )}
-                                {canManageCourse && (
-                                    <Button
-                                        $variant="ghost"
-                                        onClick={() => handleRemoveModule(courseModule.id, courseModule.title, courseModule.lessons.length)}
-                                        aria-label={`Remover módulo ${courseModule.title}`}
-                                        title="Remover módulo"
-                                    >
-                                        <Trash2 size={14} />
-                                    </Button>
-                                )}
-                            </div>
-                        )}
-                    </ModuleHeader>
-
-                    {!studentView && (
-                        <ResponsibleLine>
-                            {courseModule.instructors.length > 0 ? (
-                                <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
-                            ) : (
-                                <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
-                            )}
-                        </ResponsibleLine>
-                    )}
-
-                    {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditModule(courseModule) ? ' Use “+ Aula” para adicionar.' : ''}</span>}
-
-                    {courseModule.lessons.map((lesson) => {
-                        const completed = lesson.progress?.[0]?.completed ?? false;
-                        const hasContent = Boolean(lesson.content && lesson.content !== '<p></p>');
-                        // Vídeo próprio: para o aluno, só o fim do vídeo marca como assistida.
-                        const autoTracked = studentView && Boolean(lesson.videoKey && lesson.videoUrl);
-                        return (
-                            <LessonItem key={lesson.id}>
-                                <LessonRow>
-                                    {autoTracked ? (
-                                        <span
-                                            style={{ display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
-                                            title={completed ? 'Assistida' : 'Será marcada como assistida quando o vídeo terminar'}
-                                        >
-                                            {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                        </span>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
-                                            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
-                                            title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
-                                            aria-label={completed ? `Marcar "${lesson.title}" como não assistida` : `Marcar "${lesson.title}" como assistida`}
-                                        >
-                                            {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                        </button>
-                                    )}
-                                    <LessonTitle>
-                                        <strong>{lesson.title}</strong>
-                                        {lesson.duration && <span>{Math.round(lesson.duration / 60)} min</span>}
-                                    </LessonTitle>
-                                    {lesson.videoUrl && !lesson.videoKey && (
-                                        <Button as="a" href={lesson.videoUrl} target="_blank" rel="noreferrer" $variant="ghost">
-                                            <PlayCircle size={14} /> Assistir
-                                        </Button>
-                                    )}
+            {visibleModules.map((courseModule) => {
+                const collapsed = collapsedModuleIds.has(courseModule.id);
+                const contentId = `module-${courseModule.id}-lessons`;
+                return (
+                    <ModuleCard key={courseModule.id}>
+                        <ModuleHeader $collapsed={collapsed}>
+                            <h3>
+                                <ModuleToggle
+                                    type="button"
+                                    $collapsed={collapsed}
+                                    onClick={() => toggleModule(courseModule.id)}
+                                    aria-expanded={!collapsed}
+                                    aria-controls={contentId}
+                                    title={collapsed ? 'Expandir módulo' : 'Recolher módulo'}
+                                >
+                                    <ChevronDown size={16} />
+                                    {courseModule.title}
+                                    <small>{courseModule.lessons.length} {courseModule.lessons.length === 1 ? 'aula' : 'aulas'}</small>
+                                </ModuleToggle>
+                            </h3>
+                            {(canEditModule(courseModule) || canManageCourse) && (
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     {canEditModule(courseModule) && (
-                                        <Button $variant="ghost" onClick={() => openEditLesson(lesson)} aria-label={`Editar aula ${lesson.title}`} title="Editar aula">
-                                            <Pencil size={14} />
+                                        <Button $variant="ghost" onClick={() => openCreateLesson(courseModule.id)}>
+                                            <Plus size={14} /> Aula
                                         </Button>
                                     )}
-                                    {canDeleteLessonIn(courseModule) && (
+                                    {canManageCourse && (
                                         <Button
                                             $variant="ghost"
-                                            onClick={() => { if (window.confirm(`Remover a aula "${lesson.title}"?`)) removeLessonMutation.mutate(lesson.id); }}
-                                            aria-label={`Remover aula ${lesson.title}`}
-                                            title="Remover aula"
+                                            onClick={() => { setResponsibleIds(courseModule.instructors.map((i) => i.userId)); setResponsiblesModule(courseModule); }}
+                                            aria-label={`Definir responsáveis pelo módulo ${courseModule.title}`}
+                                            title="Definir professores responsáveis"
+                                        >
+                                            <UserCog size={14} /> Responsáveis
+                                        </Button>
+                                    )}
+                                    {canManageCourse && (
+                                        <Button
+                                            $variant="ghost"
+                                            onClick={() => handleRemoveModule(courseModule.id, courseModule.title, courseModule.lessons.length)}
+                                            aria-label={`Remover módulo ${courseModule.title}`}
+                                            title="Remover módulo"
                                         >
                                             <Trash2 size={14} />
                                         </Button>
                                     )}
-                                </LessonRow>
-                                {(lesson.videoKey || hasContent) && (
-                                    <LessonExtra>
-                                        {lesson.videoKey && lesson.videoUrl && (
-                                            <video
-                                                controls
-                                                preload="metadata"
-                                                src={lesson.videoUrl}
-                                                onEnded={() => {
-                                                    if (studentView && !completed) progressMutation.mutate({ lessonId: lesson.id, completed: true });
-                                                }}
-                                            />
+                                </div>
+                            )}
+                        </ModuleHeader>
+
+                        <div id={contentId} hidden={collapsed}>
+                            {!studentView && (
+                                <ResponsibleLine>
+                                    {courseModule.instructors.length > 0 ? (
+                                        <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
+                                    ) : (
+                                        <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
+                                    )}
+                                </ResponsibleLine>
+                            )}
+
+                            {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditModule(courseModule) ? ' Use “+ Aula” para adicionar.' : ''}</span>}
+
+                            {courseModule.lessons.map((lesson) => {
+                                const completed = lesson.progress?.[0]?.completed ?? false;
+                                const hasContent = Boolean(lesson.content && lesson.content !== '<p></p>');
+                                // Vídeo próprio: para o aluno, só o fim do vídeo marca como assistida.
+                                const autoTracked = studentView && Boolean(lesson.videoKey && lesson.videoUrl);
+                                return (
+                                    <LessonItem key={lesson.id}>
+                                        <LessonRow>
+                                            {autoTracked ? (
+                                                <span
+                                                    style={{ display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
+                                                    title={completed ? 'Assistida' : 'Será marcada como assistida quando o vídeo terminar'}
+                                                >
+                                                    {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
+                                                    title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
+                                                    aria-label={completed ? `Marcar "${lesson.title}" como não assistida` : `Marcar "${lesson.title}" como assistida`}
+                                                >
+                                                    {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                                </button>
+                                            )}
+                                            <LessonTitle>
+                                                <strong>{lesson.title}</strong>
+                                                {lesson.duration && <span>{Math.round(lesson.duration / 60)} min</span>}
+                                            </LessonTitle>
+                                            {lesson.videoUrl && !lesson.videoKey && (
+                                                <Button as="a" href={lesson.videoUrl} target="_blank" rel="noreferrer" $variant="ghost">
+                                                    <PlayCircle size={14} /> Assistir
+                                                </Button>
+                                            )}
+                                            {canEditModule(courseModule) && (
+                                                <Button $variant="ghost" onClick={() => openEditLesson(lesson)} aria-label={`Editar aula ${lesson.title}`} title="Editar aula">
+                                                    <Pencil size={14} />
+                                                </Button>
+                                            )}
+                                            {canDeleteLessonIn(courseModule) && (
+                                                <Button
+                                                    $variant="ghost"
+                                                    onClick={() => { if (window.confirm(`Remover a aula "${lesson.title}"?`)) removeLessonMutation.mutate(lesson.id); }}
+                                                    aria-label={`Remover aula ${lesson.title}`}
+                                                    title="Remover aula"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </Button>
+                                            )}
+                                        </LessonRow>
+                                        {(lesson.videoKey || hasContent) && (
+                                            <LessonExtra>
+                                                {lesson.videoKey && lesson.videoUrl && (
+                                                    <video
+                                                        controls
+                                                        preload="metadata"
+                                                        src={lesson.videoUrl}
+                                                        onEnded={() => {
+                                                            if (studentView && !completed) progressMutation.mutate({ lessonId: lesson.id, completed: true });
+                                                        }}
+                                                    />
+                                                )}
+                                                {hasContent && <RichTextViewer html={lesson.content!} />}
+                                            </LessonExtra>
                                         )}
-                                        {hasContent && <RichTextViewer html={lesson.content!} />}
-                                    </LessonExtra>
-                                )}
-                            </LessonItem>
-                        );
-                    })}
-                </ModuleCard>
-            ))}
+                                    </LessonItem>
+                                );
+                            })}
+                        </div>
+                    </ModuleCard>
+                );
+            })}
 
             {allModules.length === 0 && (
                 <TableWrapper>
