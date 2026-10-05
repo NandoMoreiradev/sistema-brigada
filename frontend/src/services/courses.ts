@@ -30,6 +30,8 @@ export interface CreateCourseInput {
     recommendedRecyclingCourseId?: string;
     /** Conteúdo programático (texto livre) — vira a 2ª página do PDF do certificado quando preenchido. */
     syllabus?: string;
+    /** Sala pré-selecionada ao agendar uma aula nova desta turma. */
+    defaultRoomId?: string;
     instructorUserIds?: string[];
 }
 
@@ -80,13 +82,19 @@ export const roomsApi = {
         const { data } = await api.post<Room>('/rooms', input);
         return data;
     },
+    /** Sem exclusão: "remover" é `active: false` (a sala pode ter aulas antigas). */
+    update: async (id: string, input: { name?: string; capacity?: number | null; active?: boolean }) => {
+        const { data } = await api.patch<Room>(`/rooms/${id}`, input);
+        return data;
+    },
 };
 
 export interface SessionInput {
     date: string;
     startTime: string;
     endTime: string;
-    roomId?: string;
+    /** Na edição, `null` tira a sala da aula. */
+    roomId?: string | null;
     /** Assunto da aula; string vazia limpa. */
     topic?: string;
     /** Professores escalados (subconjunto dos instrutores da turma); lista vazia = qualquer instrutor. */

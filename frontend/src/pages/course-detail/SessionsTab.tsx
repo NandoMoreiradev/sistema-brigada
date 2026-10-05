@@ -4,19 +4,20 @@
 // turma só lança chamada e diário — por isso os botões de gestão não aparecem para ele.
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, ClipboardCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
+import { Field, Label, Input, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { roomsApi, classSessionsApi } from '@/services/courses';
+import { classSessionsApi } from '@/services/courses';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateWithWeekday, sessionTiming, toDateOnly } from '@/utils/courseDates';
+import { RoomSelect } from './RoomSelect';
 import { ScrollX, Toolbar, ToolbarGroup, FilterChip, RowActions, Muted, MiniProgress } from './styles';
 import type { ClassSession } from '@/types';
 
@@ -39,10 +40,13 @@ interface SessionsTabProps {
     /** Instrutores da turma: são as únicas pessoas que podem ser escaladas numa aula. */
     courseInstructors: { userId: string; user: { name: string } }[];
     currentUserId?: string;
+    /** Sala padrão da turma: vem pré-selecionada numa aula nova. */
+    defaultRoomId?: string | null;
+    vacancies?: number | null;
     onOpenAttendance: (sessionId: string) => void;
 }
 
-export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, courseInstructors, currentUserId, onOpenAttendance }: SessionsTabProps) {
+export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, courseInstructors, currentUserId, defaultRoomId, vacancies, onOpenAttendance }: SessionsTabProps) {
     const queryClient = useQueryClient();
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<ClassSession | null>(null);
@@ -55,15 +59,13 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
     const canRecord = (session: ClassSession) => canManage || (isInstructor && (session.instructors.length === 0 || isAssignedToMe(session)));
     const myCount = sessions.filter(isAssignedToMe).length;
 
-    // Salas só são necessárias no formulário de aula, que é de quem gerencia a turma.
-    const { data: rooms } = useQuery({ queryKey: ['rooms'], queryFn: () => roomsApi.list(), enabled: canManage });
-
-    const { register, handleSubmit, reset, formState: { errors } } = useForm<SessionFormData>({ resolver: zodResolver(sessionSchema) });
+    const { register, handleSubmit, reset, control, formState: { errors } } = useForm<SessionFormData>({ resolver: zodResolver(sessionSchema) });
 
     const openCreate = () => {
-        // Sugere a data e o horário da última aula: turmas costumam repetir o mesmo horário.
+        // Sugere o horário da última aula (turmas costumam repetir o mesmo horário) e a sala padrão
+        // da turma — ou, sem ela, a sala da última aula.
         const last = sessions[sessions.length - 1];
-        reset({ date: '', startTime: last?.startTime ?? '', endTime: last?.endTime ?? '', roomId: last?.roomId ?? '', topic: '' });
+        reset({ date: '', startTime: last?.startTime ?? '', endTime: last?.endTime ?? '', roomId: defaultRoomId || last?.roomId || '', topic: '' });
         setSelectedInstructorIds([]);
         setEditing(null);
         setModalOpen(true);
@@ -84,7 +86,8 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                 date: input.date,
                 startTime: input.startTime,
                 endTime: input.endTime,
-                roomId: input.roomId || undefined,
+                // Na edição, `null` tira a sala; na criação, sem sala é só não mandar.
+                roomId: input.roomId || (editing ? null : undefined),
                 topic: input.topic?.trim() ?? '',
                 instructorIds: selectedInstructorIds,
             };
@@ -244,12 +247,13 @@ export function SessionsTab({ courseId, sessions, enrollmentsCount, canManage, c
                     </FieldRow>
                     <Field>
                         <Label htmlFor="sessionRoom">Sala (opcional)</Label>
-                        <Select id="sessionRoom" {...register('roomId')}>
-                            <option value="">Sem sala definida</option>
-                            {(rooms ?? []).map((room) => (
-                                <option key={room.id} value={room.id}>{room.name}</option>
-                            ))}
-                        </Select>
+                        <Controller
+                            control={control}
+                            name="roomId"
+                            render={({ field }) => (
+                                <RoomSelect id="sessionRoom" value={field.value ?? ''} onChange={field.onChange} emptyLabel="Sem sala definida" vacancies={vacancies} />
+                            )}
+                        />
                     </Field>
                     <Field>
                         <Label htmlFor="sessionTopic">Assunto da aula (opcional)</Label>

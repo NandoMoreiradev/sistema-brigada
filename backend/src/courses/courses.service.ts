@@ -17,18 +17,25 @@ import { ListCoursesDto } from './dto/list-courses.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 import { parseAppDateTime } from '../common/datetime';
+import { RoomsService } from './rooms.service';
 
 const courseInclude = {
     event: true,
+    defaultRoom: true,
     instructors: { include: { user: { select: { id: true, name: true, email: true } } } },
     _count: { select: { enrollments: true, sessions: true } },
 } satisfies Prisma.CourseInclude;
 
 @Injectable()
 export class CoursesService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly roomsService: RoomsService,
+    ) {}
 
     async create(dto: CreateCourseDto, organizationId: string, createdByUserId: string) {
+        await this.roomsService.assertUsable(dto.defaultRoomId, organizationId);
+
         return this.prisma.$transaction(async (tx) => {
             const event = await tx.event.create({
                 data: {
@@ -53,6 +60,7 @@ export class CoursesService {
                     recyclingValidityMonths: dto.recyclingValidityMonths,
                     recommendedRecyclingCourseId: dto.recommendedRecyclingCourseId,
                     syllabus: dto.syllabus,
+                    defaultRoomId: dto.defaultRoomId,
                 },
             });
 
@@ -142,6 +150,7 @@ export class CoursesService {
     async update(id: string, organizationId: string, dto: UpdateCourseDto) {
         const course = await this.requireCourse(id, organizationId);
         const { status, ...courseFields } = dto;
+        await this.roomsService.assertUsable(courseFields.defaultRoomId, organizationId, course.defaultRoomId);
 
         return this.prisma.$transaction(async (tx) => {
             const eventFields = [status, courseFields.title, courseFields.location, courseFields.startDate, courseFields.endDate];
@@ -171,6 +180,8 @@ export class CoursesService {
                     recyclingValidityMonths: courseFields.recyclingValidityMonths,
                     recommendedRecyclingCourseId: courseFields.recommendedRecyclingCourseId,
                     syllabus: courseFields.syllabus,
+                    // `null` tira a sala padrão; `undefined` mantém.
+                    defaultRoomId: courseFields.defaultRoomId,
                 },
             });
 

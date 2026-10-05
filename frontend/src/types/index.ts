@@ -166,6 +166,9 @@ export interface Course {
     recyclingValidityMonths?: number | null;
     recommendedRecyclingCourseId?: string | null;
     syllabus?: string | null;
+    /** Sala pré-selecionada ao agendar uma aula nova. */
+    defaultRoomId?: string | null;
+    defaultRoom?: Room | null;
     active: boolean;
     event: CourseEvent;
     instructors: CourseInstructor[];

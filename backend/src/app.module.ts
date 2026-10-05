@@ -39,6 +39,7 @@ import { CommunicationsModule } from './communications/communications.module';
 import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { TransactionalEmailModule } from './transactional-email/transactional-email.module';
 import { RegistrationsModule } from './registrations/registrations.module';
+import { TrashModule } from './trash/trash.module';
 
 @Module({
     imports: [
@@ -61,6 +62,7 @@ import { RegistrationsModule } from './registrations/registrations.module';
         EmailTemplatesModule,
         TransactionalEmailModule,
         RegistrationsModule,
+        TrashModule,
     ],
     controllers: [AppController],
 })

@@ -6,7 +6,7 @@
 // virava `undefined` e o valor antigo permanecia.
 
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import styled from 'styled-components';
@@ -18,6 +18,7 @@ import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { toDateOnly } from '@/utils/courseDates';
+import { RoomSelect } from './RoomSelect';
 import type { Course, EventStatus } from '@/types';
 
 const STATUS_OPTIONS: { value: EventStatus; label: string }[] = [
@@ -33,6 +34,7 @@ interface FormData {
     startDate: string;
     endDate: string;
     location: string;
+    defaultRoomId: string;
     vacancies: string;
     status: EventStatus;
     minAttendancePercent: string;
@@ -98,7 +100,7 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
     const queryClient = useQueryClient();
     const courseId = course.id;
 
-    const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>();
+    const { register, handleSubmit, reset, watch, control, formState: { errors } } = useForm<FormData>();
 
     const { data: allCoursesData } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list(), enabled: open });
     // Lista enxuta (id + nome) aberta a qualquer usuário da escola: não exige acesso ao cadastro de pessoas.
@@ -113,6 +115,7 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
             startDate: toDateOnly(course.event.startDate),
             endDate: course.event.endDate ? toDateOnly(course.event.endDate) : '',
             location: course.event.location ?? '',
+            defaultRoomId: course.defaultRoomId ?? '',
             vacancies: course.vacancies ? String(course.vacancies) : '',
             status: course.event.status,
             minAttendancePercent: String(course.minAttendancePercent),
@@ -132,6 +135,7 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 startDate: input.startDate,
                 endDate: emptyToNull(input.endDate),
                 location: emptyToNull(input.location),
+                defaultRoomId: emptyToNull(input.defaultRoomId),
                 vacancies: numberOrNull(input.vacancies),
                 status: input.status,
                 minAttendancePercent: input.minAttendancePercent === '' ? 75 : Number(input.minAttendancePercent),
@@ -226,6 +230,17 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                         {errors.vacancies && <ErrorText>{errors.vacancies.message}</ErrorText>}
                     </Field>
                 </FieldRow>
+                <Field>
+                    <Label htmlFor="editDefaultRoomId">Sala padrão (opcional)</Label>
+                    <Controller
+                        control={control}
+                        name="defaultRoomId"
+                        render={({ field }) => (
+                            <RoomSelect id="editDefaultRoomId" value={field.value} onChange={field.onChange} emptyLabel="Nenhuma" vacancies={Number(watch('vacancies')) || null} />
+                        )}
+                    />
+                    <HelpText>Vem pré-selecionada ao agendar uma aula nova. Trocar aqui não muda as aulas já agendadas.</HelpText>
+                </Field>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                     <SectionTitle>Instrutores</SectionTitle>

@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { TrashButton } from '@/components/trash/TrashModal';
 import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, FieldRow, CheckboxField } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
@@ -22,12 +23,14 @@ import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateOnly } from '@/utils/courseDates';
+import { RoomSelect } from '@/pages/course-detail/RoomSelect';
 import { ScrollX, Toolbar, ToolbarGroup, SearchInput, FilterChip, MiniProgress, Muted } from '@/pages/course-detail/styles';
 import type { EventStatus } from '@/types';
 
 const schema = z.object({
     title: z.string().min(1, 'Informe o título da turma'),
     location: z.string().optional(),
+    defaultRoomId: z.string().optional(),
     startDate: z.string().min(1, 'Informe a data de início'),
     endDate: z.string().optional(),
     category: z.string().optional(),
@@ -68,7 +71,7 @@ export default function Courses() {
     // turma não exige acesso ao cadastro de pessoas (`people:manage`).
     const { data: roster } = useQuery({ queryKey: ['people', 'roster'], queryFn: () => peopleApi.roster() });
 
-    const { register, handleSubmit, reset, control, formState: { errors } } = useForm<FormData>({
+    const { register, handleSubmit, reset, control, watch, formState: { errors } } = useForm<FormData>({
         resolver: zodResolver(schema),
         defaultValues: { instructorUserIds: [] },
     });
@@ -77,6 +80,7 @@ export default function Courses() {
         reset({
             title: '',
             location: '',
+            defaultRoomId: '',
             startDate: '',
             endDate: '',
             category: '',
@@ -108,6 +112,7 @@ export default function Courses() {
         createMutation.mutate({
             title: formData.title,
             location: formData.location || undefined,
+            defaultRoomId: formData.defaultRoomId || undefined,
             startDate: formData.startDate,
             endDate: formData.endDate || undefined,
             category: formData.category || undefined,
@@ -138,9 +143,12 @@ export default function Courses() {
             subtitle="Cursos, aulas e matrículas"
             icon={<GraduationCap size={16} />}
             actions={
-                <Button onClick={openCreate}>
-                    <Plus size={16} /> Nova turma
-                </Button>
+                <>
+                    <TrashButton entity="courses" />
+                    <Button onClick={openCreate}>
+                        <Plus size={16} /> Nova turma
+                    </Button>
+                </>
             }
         >
             <Toolbar>
@@ -252,6 +260,17 @@ export default function Courses() {
                     <Field>
                         <Label htmlFor="location">Local</Label>
                         <Input id="location" {...register('location')} />
+                    </Field>
+
+                    <Field>
+                        <Label htmlFor="defaultRoomId">Sala padrão (opcional)</Label>
+                        <Controller
+                            control={control}
+                            name="defaultRoomId"
+                            render={({ field }) => (
+                                <RoomSelect id="defaultRoomId" value={field.value ?? ''} onChange={field.onChange} emptyLabel="Nenhuma" vacancies={Number(watch('vacancies')) || null} />
+                            )}
+                        />
                     </Field>
 
                     <FieldRow>
