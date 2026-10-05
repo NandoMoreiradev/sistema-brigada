@@ -6,17 +6,22 @@
 // - As atividades são cadastradas uma vez; em cada grupo só se escolhe a ordem. Os horários são
 //   calculados pelo sistema (na planilha eram digitados e saíam errados).
 // - Avisos: atividade que falta num grupo, sala ocupada duas vezes, pessoa em dois lugares.
+// - A ordem se muda arrastando a atividade (mouse, toque ou teclado: Tab até a linha, espaço para
+//   pegar, setas para mover, espaço para soltar). A nova ordem e os horários aparecem na hora.
 // - Cada mudança é salva na hora; o backend gera um período de chamada por trecho entre refeições.
 // Aluno vê só a programação do grupo dele, sem os controles.
 
 import { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, X, AlertTriangle, Save, LayoutTemplate, MapPin } from 'lucide-react';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Plus, Pencil, Trash2, X, AlertTriangle, Save, LayoutTemplate, MapPin, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, HelpText } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
-import { courseScheduleApi, KIND_LABEL, type CourseActivity, type CourseGroup, type ScheduleBlock } from '@/services/schedule';
+import { courseScheduleApi, KIND_LABEL, type CourseActivity, type CourseGroup, type CourseSchedule, type ScheduleBlock } from '@/services/schedule';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { formatDateWithWeekday, toDateOnly } from '@/utils/courseDates';
@@ -65,19 +70,48 @@ const ColumnHeader = styled.div`
     }
 `;
 
-const BlockRow = styled.div<{ $kind: string; $warn?: boolean }>`
+const BlockRow = styled.div<{ $kind: string; $warn?: boolean; $dragging?: boolean }>`
     display: grid;
-    grid-template-columns: 78px 1fr auto;
+    grid-template-columns: 1fr auto;
     gap: 0.5rem;
     align-items: center;
-    padding: 0.4rem 0.75rem;
+    padding: 0.4rem 0.75rem 0.4rem 0.4rem;
     border-top: 1px solid ${({ theme }) => theme.colors.borderLight};
     font-size: 0.8125rem;
-    background: ${({ $kind }) => ($kind === 'MEAL' ? '#fffbe6' : $kind === 'BREAK' ? '#f1f8f1' : 'transparent')};
-    box-shadow: ${({ $warn }) => ($warn ? 'inset 4px 0 0 #e67700' : 'none')};
+    position: relative;
+    background: ${({ $kind, $dragging, theme }) =>
+        $kind === 'MEAL' ? '#fffbe6' : $kind === 'BREAK' ? '#f1f8f1' : $dragging ? theme.colors.white : 'transparent'};
+    box-shadow: ${({ $warn, $dragging }) =>
+        [$warn ? 'inset 4px 0 0 #e67700' : '', $dragging ? '0 6px 16px rgba(20, 23, 28, 0.18)' : ''].filter(Boolean).join(', ') || 'none'};
+    z-index: ${({ $dragging }) => ($dragging ? 2 : 'auto')};
 
     &:first-child {
         border-top: none;
+    }
+`;
+
+/** Parte da linha que se pega para arrastar: alça, horário e atividade (o X fica de fora). */
+const DragArea = styled.div<{ $enabled: boolean }>`
+    display: grid;
+    grid-template-columns: ${({ $enabled }) => ($enabled ? '16px ' : '')}78px 1fr;
+    gap: 0.4rem;
+    align-items: center;
+    min-width: 0;
+    cursor: ${({ $enabled }) => ($enabled ? 'grab' : 'default')};
+    touch-action: ${({ $enabled }) => ($enabled ? 'none' : 'auto')};
+    border-radius: ${({ theme }) => theme.radii.sm};
+
+    &:active {
+        cursor: ${({ $enabled }) => ($enabled ? 'grabbing' : 'default')};
+    }
+
+    &:focus-visible {
+        outline: 2px solid ${({ theme }) => theme.colors.primary};
+        outline-offset: 2px;
+    }
+
+    svg.grip {
+        color: ${({ theme }) => theme.colors.textMuted};
     }
 `;
 
@@ -143,6 +177,76 @@ const Warnings = styled.div`
     }
 `;
 
+/** Uma atividade na coluna de um grupo. Arrastável só para quem gerencia a turma. */
+function SortableBlock({
+    block,
+    activity,
+    warn,
+    sortable,
+    disabled,
+    onRemove,
+}: {
+    block: ScheduleBlock;
+    activity: CourseActivity;
+    warn: boolean;
+    sortable: boolean;
+    disabled: boolean;
+    onRemove: () => void;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id, disabled: !sortable || disabled });
+    const fixedRoom = activity.kind === 'ACTIVITY' ? activity.room : null;
+    const names = assigneeNames(activity);
+
+    return (
+        <BlockRow
+            ref={setNodeRef}
+            // Só desloca (Translate): com Transform a linha é esticada para a altura da vaga e fica achatada.
+            style={{ transform: CSS.Translate.toString(transform), transition }}
+            $kind={activity.kind}
+            $warn={warn}
+            $dragging={isDragging}
+            title={warn ? 'Em conflito: veja os avisos acima' : undefined}
+        >
+            <DragArea
+                $enabled={sortable}
+                {...(sortable && { ...attributes, ...listeners })}
+                {...(sortable && { 'aria-label': `${activity.title}, ${block.startTime} às ${block.endTime}. Espaço para pegar e setas para mudar a ordem.` })}
+            >
+                {sortable && <GripVertical className="grip" size={14} aria-hidden />}
+                <Time>{block.startTime}–{block.endTime}</Time>
+                <BlockInfo>
+                    <strong>{activity.title}</strong>
+                    {(fixedRoom || names) && (
+                        <Muted>
+                            {fixedRoom && <><MapPin size={11} style={{ verticalAlign: '-1px' }} /> {fixedRoom.name}{names ? ' · ' : ''}</>}
+                            {names}
+                        </Muted>
+                    )}
+                </BlockInfo>
+            </DragArea>
+            {sortable ? (
+                <IconButton type="button" aria-label={`Tirar ${activity.title}`} disabled={disabled} onClick={onRemove}>
+                    <X size={14} />
+                </IconButton>
+            ) : (
+                <span />
+            )}
+        </BlockRow>
+    );
+}
+
+/** Horários de uma sequência a partir do início do dia (mesma conta do backend), para a tela não esperar o servidor. */
+function retime(list: ScheduleBlock[], startTime: string, durationOf: (activityId: string) => number) {
+    const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    let cursor = toMin(startTime);
+    return list.map((block, order) => {
+        const start = cursor;
+        cursor += durationOf(block.activityId);
+        return { ...block, order, startTime: toTime(start), endTime: toTime(cursor) };
+    });
+}
+
 /** Coluna da programação: um grupo, ou a turma inteira quando ela não é dividida. */
 type ScheduleColumn = { key: string; groupId: string | null; title: string; subtitle?: string };
 
@@ -160,6 +264,11 @@ export function ScheduleTab({ courseId, canManage, courseStartDate, courseTitle 
     const [selectedDate, setSelectedDate] = useState('');
     // Horário de início de colunas ainda vazias (as já montadas usam o do primeiro bloco).
     const [draftStart, setDraftStart] = useState<Record<string, string>>({});
+    // Mexer o ponteiro alguns pixels antes de começar a arrastar: um clique simples não vira arraste.
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
 
     const groups = useMemo(() => schedule?.groups ?? [], [schedule]);
     const activities = useMemo(() => schedule?.activities ?? [], [schedule]);
@@ -197,7 +306,11 @@ export function ScheduleTab({ courseId, canManage, courseStartDate, courseTitle 
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['courses', courseId] });
         },
-        onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível salvar a programação.')),
+        onError: (error: unknown) => {
+            toast.error(apiErrorMessage(error, 'Não foi possível salvar a programação.'));
+            // Desfaz a ordem mostrada antes da resposta (arraste recusado, ex.: período com chamada).
+            queryClient.invalidateQueries({ queryKey: ['courses', courseId, 'schedule'] });
+        },
     });
 
     const removeGroupMutation = useMutation({
@@ -223,12 +336,21 @@ export function ScheduleTab({ courseId, canManage, courseStartDate, courseTitle 
 
     const idsOf = (list: ScheduleBlock[]) => list.map((b) => b.activityId);
 
-    const move = (column: ScheduleColumn, index: number, delta: number) => {
-        const ids = idsOf(dayBlocks(column.groupId));
-        const target = index + delta;
-        if (target < 0 || target >= ids.length) return;
-        [ids[index], ids[target]] = [ids[target], ids[index]];
-        save(column, ids);
+    /** Soltou uma atividade em outra posição: mostra a nova ordem com os horários na hora e salva. */
+    const handleDragEnd = (column: ScheduleColumn, list: ScheduleBlock[], event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        const from = list.findIndex((b) => b.id === active.id);
+        const to = list.findIndex((b) => b.id === over.id);
+        if (from < 0 || to < 0) return;
+
+        const startTime = list[0].startTime;
+        const reordered = retime(arrayMove(list, from, to), startTime, (id) => activityById.get(id)?.durationMinutes ?? 0);
+        const reorderedIds = new Set(reordered.map((b) => b.id));
+        queryClient.setQueryData<CourseSchedule>(['courses', courseId, 'schedule'], (current) =>
+            current ? { ...current, blocks: [...current.blocks.filter((b) => !reorderedIds.has(b.id)), ...reordered] } : current,
+        );
+        save(column, idsOf(reordered), startTime);
     };
 
     const copyFrom = (column: ScheduleColumn, sourceKey: string) => {
@@ -255,7 +377,7 @@ export function ScheduleTab({ courseId, canManage, courseStartDate, courseTitle 
                 <Toolbar>
                     <ToolbarGroup>
                         <Muted style={{ fontSize: '0.8125rem' }}>
-                            Monte como na planilha: grupos lado a lado, atividades em ordem. Os horários são calculados sozinhos.
+                            Monte como na planilha: grupos lado a lado, atividades em ordem (arraste para reordenar). Os horários são calculados sozinhos.
                         </Muted>
                     </ToolbarGroup>
                     <ToolbarGroup>
@@ -463,51 +585,26 @@ export function ScheduleTab({ courseId, canManage, courseStartDate, courseTitle 
                                         )}
                                     </ColumnHeader>
 
+                                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleDragEnd(column, list, event)}>
+                                        <SortableContext items={list.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+                                            {list.map((block, index) => {
+                                                const activity = activityById.get(block.activityId);
+                                                if (!activity) return null;
+                                                return (
+                                                    <SortableBlock
+                                                        key={block.id}
+                                                        block={block}
+                                                        activity={activity}
+                                                        warn={conflictBlockIds.has(block.id)}
+                                                        sortable={canManage}
+                                                        disabled={busy}
+                                                        onRemove={() => save(column, idsOf(list).filter((_, i) => i !== index))}
+                                                    />
+                                                );
+                                            })}
+                                        </SortableContext>
+                                    </DndContext>
                                     <div>
-                                        {list.map((block, index) => {
-                                            const activity = activityById.get(block.activityId);
-                                            if (!activity) return null;
-                                            const fixedRoom = activity.kind === 'ACTIVITY' ? activity.room : null;
-                                            return (
-                                                <BlockRow
-                                                    key={block.id}
-                                                    $kind={activity.kind}
-                                                    $warn={conflictBlockIds.has(block.id)}
-                                                    title={conflictBlockIds.has(block.id) ? 'Em conflito: veja os avisos acima' : undefined}
-                                                >
-                                                    <Time>{block.startTime}–{block.endTime}</Time>
-                                                    <BlockInfo>
-                                                        <strong>{activity.title}</strong>
-                                                        {(fixedRoom || assigneeNames(activity)) && (
-                                                            <Muted>
-                                                                {fixedRoom && <><MapPin size={11} style={{ verticalAlign: '-1px' }} /> {fixedRoom.name}{assigneeNames(activity) ? ' · ' : ''}</>}
-                                                                {assigneeNames(activity)}
-                                                            </Muted>
-                                                        )}
-                                                    </BlockInfo>
-                                                    {canManage ? (
-                                                        <div style={{ display: 'flex' }}>
-                                                            <IconButton type="button" aria-label="Subir" disabled={busy || index === 0} onClick={() => move(column, index, -1)}>
-                                                                <ArrowUp size={14} />
-                                                            </IconButton>
-                                                            <IconButton type="button" aria-label="Descer" disabled={busy || index === list.length - 1} onClick={() => move(column, index, 1)}>
-                                                                <ArrowDown size={14} />
-                                                            </IconButton>
-                                                            <IconButton
-                                                                type="button"
-                                                                aria-label={`Tirar ${activity.title}`}
-                                                                disabled={busy}
-                                                                onClick={() => save(column, idsOf(list).filter((_, i) => i !== index))}
-                                                            >
-                                                                <X size={14} />
-                                                            </IconButton>
-                                                        </div>
-                                                    ) : (
-                                                        <span />
-                                                    )}
-                                                </BlockRow>
-                                            );
-                                        })}
                                         {list.length === 0 && (
                                             <HelpText as="p" style={{ padding: '0.75rem', margin: 0 }}>
                                                 {canManage ? 'Nada programado neste dia. Adicione atividades abaixo ou copie de outro grupo.' : 'Nada programado neste dia.'}
