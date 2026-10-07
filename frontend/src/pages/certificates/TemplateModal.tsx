@@ -1,22 +1,19 @@
 // frontend/src/pages/certificates/TemplateModal.tsx
 //
-// "Personalizar" da tela de Certificados: logo, assinatura, cores do tema do
-// layout e pré-visualização em PDF. A pré-visualização é gerada pelo backend com
-// os valores ainda não salvos — é o mesmo gerador dos certificados de verdade.
-// O editor visual dos elementos (posição, textos) é a Fase 2.
+// "Identidade" da tela de Certificados: logo e assinatura da academia, usadas por
+// todos os modelos de certificado (o selo e a imagem "logo", a assinatura "da
+// academia"). Layout, cores e textos ficam em cada modelo (DesignsModal / editor).
 
 import { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, RotateCcw, X } from 'lucide-react';
+import { Eye, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Field, Label, Input, Select, HelpText, CheckboxField, FormActions } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, HelpText, FormActions } from '@/components/ui/FormField';
 import { ImageUploadButton } from '@/components/media/ImageUploadButton';
 import { certificateTemplateApi, type CertificateTemplate } from '@/services/certificates';
 import { coursesApi } from '@/services/courses';
-import { THEME_COLORS, type CertificateLayout, type ThemeColorKey } from './layout/types';
 import { toast } from '@/utils/toast';
 import { certificateErrorMessage, usePdfPreview } from './PdfPreview';
 
@@ -39,36 +36,6 @@ const Section = styled.section`
     }
 `;
 
-const ColorGrid = styled.div`
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.6rem;
-
-    @media (max-width: 560px) {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    label {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-size: 0.8125rem;
-        color: ${({ theme }) => theme.colors.textMedium};
-        cursor: pointer;
-    }
-
-    input[type='color'] {
-        width: 2.25rem;
-        height: 2.25rem;
-        padding: 0.15rem;
-        border: 1px solid ${({ theme }) => theme.colors.border};
-        border-radius: ${({ theme }) => theme.radii.sm};
-        background: ${({ theme }) => theme.colors.white};
-        cursor: pointer;
-        flex-shrink: 0;
-    }
-`;
-
 const PreviewRow = styled.div`
     display: flex;
     gap: 0.5rem;
@@ -86,13 +53,18 @@ interface FormState {
     logoUrl: string;
     signatureName: string;
     signatureImageUrl: string;
-    layout: CertificateLayout;
 }
 
 const brandPayload = (form: FormState) => ({
     logoUrl: form.logoUrl.trim() || null,
     signatureName: form.signatureName.trim() || null,
     signatureImageUrl: form.signatureImageUrl.trim() || null,
+});
+
+const fromTemplate = (template: CertificateTemplate): FormState => ({
+    logoUrl: template.logoUrl ?? '',
+    signatureName: template.signatureName ?? '',
+    signatureImageUrl: template.signatureImageUrl ?? '',
 });
 
 interface Props {
@@ -103,9 +75,9 @@ interface Props {
 export function TemplateModal({ open, onOpenChange }: Props) {
     const queryClient = useQueryClient();
     const [form, setForm] = useState<FormState | null>(null);
-    const [layoutDirty, setLayoutDirty] = useState(false);
     const [previewCourseId, setPreviewCourseId] = useState('');
     const filledRef = useRef(false);
+    const preview = usePdfPreview();
 
     const { data: template, isSuccess } = useQuery({
         queryKey: ['certificate-template'],
@@ -114,8 +86,8 @@ export function TemplateModal({ open, onOpenChange }: Props) {
     });
     const { data: courses } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list(), enabled: open });
 
-    // Preenche quando o modelo salvo chega — uma vez por abertura, para um refetch em
-    // segundo plano não desfazer o que está sendo editado.
+    // Preenche quando o salvo chega — uma vez por abertura, para um refetch em segundo
+    // plano não desfazer o que está sendo editado.
     useEffect(() => {
         if (!open) {
             filledRef.current = false;
@@ -124,44 +96,25 @@ export function TemplateModal({ open, onOpenChange }: Props) {
         }
         if (isSuccess && template && !filledRef.current) {
             setForm(fromTemplate(template));
-            setLayoutDirty(false);
             filledRef.current = true;
         }
     }, [open, isSuccess, template]);
 
     const update = (patch: Partial<FormState>) => setForm((current) => (current ? { ...current, ...patch } : current));
-    const updateLayout = (change: (layout: CertificateLayout) => CertificateLayout) => {
-        setForm((current) => (current ? { ...current, layout: change(current.layout) } : current));
-        setLayoutDirty(true);
-    };
 
     const saveMutation = useMutation({
-        mutationFn: (state: FormState) =>
-            certificateTemplateApi.upsert({ ...brandPayload(state), ...(layoutDirty ? { layoutConfig: state.layout } : {}) }),
-        onSuccess: () => {
-            toast.success('Personalização salva. Use "Regerar PDF" para atualizar certificados já emitidos.');
-            queryClient.invalidateQueries({ queryKey: ['certificate-template'] });
+        mutationFn: (state: FormState) => certificateTemplateApi.upsert(brandPayload(state)),
+        onSuccess: (saved) => {
+            toast.success('Identidade salva. Use "Regerar PDFs" para atualizar certificados já emitidos.');
+            queryClient.setQueryData(['certificate-template'], saved);
             onOpenChange(false);
         },
         onError: async (error) => toast.error(await certificateErrorMessage(error, 'Não foi possível salvar.')),
     });
 
-    const restoreMutation = useMutation({
-        mutationFn: () => certificateTemplateApi.upsert({ layoutConfig: null }),
-        onSuccess: (saved) => {
-            toast.success('Layout Clássico restaurado.');
-            queryClient.setQueryData(['certificate-template'], saved);
-            update({ layout: saved.layout });
-            setLayoutDirty(false);
-        },
-        onError: async (error) => toast.error(await certificateErrorMessage(error, 'Não foi possível restaurar.')),
-    });
-
-    const preview = usePdfPreview();
-
     return (
         <>
-            <Modal open={open} onOpenChange={onOpenChange} title="Personalização do certificado" width="640px">
+            <Modal open={open} onOpenChange={onOpenChange} title="Identidade da academia nos certificados" width="600px">
                 {!form ? (
                     <p>Carregando...</p>
                 ) : (
@@ -172,9 +125,9 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                         }}
                     >
                         <Section>
-                            <h3>Identidade da academia</h3>
+                            <HelpText>Valem para todos os modelos de certificado. Layout, cores e textos são editados em cada modelo.</HelpText>
                             <Field>
-                                <Label htmlFor="logoUrl">Logo (vai dentro do selo)</Label>
+                                <Label htmlFor="logoUrl">Logo (vai no selo e nas imagens "logo da academia")</Label>
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <Input id="logoUrl" placeholder="https://... (ou envie um arquivo)" value={form.logoUrl} onChange={(e) => update({ logoUrl: e.target.value })} style={{ flex: 1 }} />
                                     <ImageUploadButton context="organization-branding" pdfSafe onUploaded={(url) => update({ logoUrl: url })} disabled={saveMutation.isPending} />
@@ -217,59 +170,24 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                         </Section>
 
                         <Section>
-                            <h3>Cores</h3>
-                            <ColorGrid>
-                                {THEME_COLORS.map(({ key, label }) => (
-                                    <label key={key}>
-                                        <input
-                                            type="color"
-                                            value={form.layout.theme[key]}
-                                            onChange={(e) => updateLayout((layout) => ({ ...layout, theme: { ...layout.theme, [key as ThemeColorKey]: e.target.value.toUpperCase() } }))}
-                                        />
-                                        {label}
-                                    </label>
-                                ))}
-                            </ColorGrid>
-                            <CheckboxField>
-                                <input
-                                    type="checkbox"
-                                    checked={form.layout.syllabusPage.enabled}
-                                    onChange={(e) => updateLayout((layout) => ({ ...layout, syllabusPage: { ...layout.syllabusPage, enabled: e.target.checked } }))}
-                                />
-                                Incluir a página de conteúdo programático (quando a turma tiver um)
-                            </CheckboxField>
-                            <HelpText>
-                                Para mover elementos, trocar textos, adicionar imagens ou usar um modelo pronto, use o{' '}
-                                <Link to="/certificates/editor" onClick={() => onOpenChange(false)}>editor de layout</Link>.
-                            </HelpText>
-                            {!template?.isDefaultLayout && (
-                                <div>
-                                    <Button
-                                        type="button"
-                                        $variant="ghost"
-                                        disabled={restoreMutation.isPending}
-                                        onClick={() => window.confirm('Voltar ao layout Clássico? As cores e ajustes de layout salvos serão descartados.') && restoreMutation.mutate()}
-                                    >
-                                        <RotateCcw size={14} /> Restaurar layout Clássico
-                                    </Button>
-                                </div>
-                            )}
-                        </Section>
-
-                        <Section>
                             <h3>Pré-visualização</h3>
                             <PreviewRow>
                                 <Select aria-label="Turma usada na pré-visualização" value={previewCourseId} onChange={(e) => setPreviewCourseId(e.target.value)}>
-                                    <option value="">Turma de exemplo</option>
+                                    <option value="">Turma de exemplo (modelo padrão)</option>
                                     {(courses?.data ?? []).map((course) => (
                                         <option key={course.id} value={course.id}>{course.event.title}</option>
                                     ))}
                                 </Select>
-                                <Button type="button" $variant="secondary" onClick={() => preview.generate({ ...brandPayload(form), layout: form.layout, courseId: previewCourseId || undefined })} disabled={preview.isGenerating}>
+                                <Button
+                                    type="button"
+                                    $variant="secondary"
+                                    onClick={() => preview.generate({ ...brandPayload(form), courseId: previewCourseId || undefined })}
+                                    disabled={preview.isGenerating}
+                                >
                                     <Eye size={14} /> {preview.isGenerating ? 'Gerando...' : 'Pré-visualizar PDF'}
                                 </Button>
                             </PreviewRow>
-                            <HelpText>Mostra as alterações ainda não salvas, com um aluno de exemplo.</HelpText>
+                            <HelpText>Mostra a identidade ainda não salva, com um aluno de exemplo, no modelo que a turma usa.</HelpText>
                         </Section>
 
                         <FormActions>
@@ -279,17 +197,7 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                     </form>
                 )}
             </Modal>
-
             {preview.dialog}
         </>
     );
-}
-
-function fromTemplate(template: CertificateTemplate): FormState {
-    return {
-        logoUrl: template.logoUrl ?? '',
-        signatureName: template.signatureName ?? '',
-        signatureImageUrl: template.signatureImageUrl ?? '',
-        layout: template.layout,
-    };
 }

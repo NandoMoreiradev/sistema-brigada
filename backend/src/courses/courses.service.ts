@@ -17,6 +17,7 @@ import { ListCoursesDto } from './dto/list-courses.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 import { parseAppDateTime } from '../common/datetime';
+import { CertificateDesignsService } from '../certificates/certificate-designs.service';
 import { RoomsService } from './rooms.service';
 
 const courseInclude = {
@@ -32,10 +33,12 @@ export class CoursesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly roomsService: RoomsService,
+        private readonly certificateDesignsService: CertificateDesignsService,
     ) {}
 
     async create(dto: CreateCourseDto, organizationId: string, createdByUserId: string) {
         await this.roomsService.assertUsable(dto.defaultRoomId, organizationId);
+        if (dto.certificateDesignId) await this.certificateDesignsService.assertBelongs(dto.certificateDesignId, organizationId);
 
         return this.prisma.$transaction(async (tx) => {
             const event = await tx.event.create({
@@ -63,6 +66,7 @@ export class CoursesService {
                     syllabus: dto.syllabus,
                     certificateTitle: dto.certificateTitle?.trim() || null,
                     workloadHours: dto.workloadHours ?? null,
+                    certificateDesignId: dto.certificateDesignId || null,
                     defaultRoomId: dto.defaultRoomId,
                 },
             });
@@ -154,6 +158,7 @@ export class CoursesService {
         const course = await this.requireCourse(id, organizationId);
         const { status, ...courseFields } = dto;
         await this.roomsService.assertUsable(courseFields.defaultRoomId, organizationId, course.defaultRoomId);
+        if (courseFields.certificateDesignId) await this.certificateDesignsService.assertBelongs(courseFields.certificateDesignId, organizationId);
 
         return this.prisma.$transaction(async (tx) => {
             const eventFields = [status, courseFields.title, courseFields.location, courseFields.startDate, courseFields.endDate];
@@ -186,6 +191,7 @@ export class CoursesService {
                     // `null`/vazio limpa (volta a usar o título da turma); `undefined` mantém.
                     certificateTitle: courseFields.certificateTitle === undefined ? undefined : courseFields.certificateTitle?.trim() || null,
                     workloadHours: courseFields.workloadHours,
+                    certificateDesignId: courseFields.certificateDesignId === undefined ? undefined : courseFields.certificateDesignId || null,
                     // `null` tira a sala padrão; `undefined` mantém.
                     defaultRoomId: courseFields.defaultRoomId,
                 },

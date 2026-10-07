@@ -8,7 +8,6 @@
 
 import { useState } from 'react';
 import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, BellRing, LayoutTemplate } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { isAxiosError } from 'axios';
@@ -25,6 +24,8 @@ import {
     type CertificateStatus,
 } from '@/services/certificates';
 import { TemplateModal } from '@/pages/certificates/TemplateModal';
+import { DesignsModal } from '@/pages/certificates/DesignsModal';
+import { RegeneratePdfsModal } from '@/pages/certificates/RegeneratePdfsModal';
 import { ReminderSettingsModal } from '@/pages/certificates/ReminderSettingsModal';
 import { ReminderHistoryModal } from '@/pages/certificates/ReminderHistoryModal';
 import { toast } from '@/utils/toast';
@@ -52,7 +53,8 @@ export default function Certificates() {
     const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false);
     const [reminderHistoryFor, setReminderHistoryFor] = useState<Certificate | null>(null);
     const queryClient = useQueryClient();
-    const navigate = useNavigate();
+    const [designsOpen, setDesignsOpen] = useState(false);
+    const [regenerateOpen, setRegenerateOpen] = useState(false);
 
     const { data, isLoading } = useQuery({
         queryKey: ['certificates', { status: statusFilter }],
@@ -147,11 +149,14 @@ export default function Certificates() {
                     <Button $variant="secondary" onClick={() => setReminderSettingsOpen(true)} style={{ marginRight: '0.5rem' }}>
                         <BellRing size={16} /> Lembretes
                     </Button>
-                    <Button $variant="secondary" onClick={() => setTemplateModalOpen(true)} style={{ marginRight: '0.5rem' }}>
-                        <Settings size={16} /> Personalizar
+                    <Button $variant="secondary" onClick={() => setRegenerateOpen(true)} style={{ marginRight: '0.5rem' }}>
+                        <RefreshCw size={16} /> Regerar PDFs
                     </Button>
-                    <Button onClick={() => navigate('/certificates/editor')}>
-                        <LayoutTemplate size={16} /> Editar layout
+                    <Button $variant="secondary" onClick={() => setTemplateModalOpen(true)} style={{ marginRight: '0.5rem' }}>
+                        <Settings size={16} /> Identidade
+                    </Button>
+                    <Button onClick={() => setDesignsOpen(true)}>
+                        <LayoutTemplate size={16} /> Modelos
                     </Button>
                 </>
             }
@@ -215,6 +220,8 @@ export default function Certificates() {
             </TableWrapper>
 
             <TemplateModal open={templateModalOpen} onOpenChange={setTemplateModalOpen} />
+            <DesignsModal open={designsOpen} onOpenChange={setDesignsOpen} />
+            <RegeneratePdfsModal open={regenerateOpen} onOpenChange={setRegenerateOpen} />
 
             <ReminderSettingsModal open={reminderSettingsOpen} onOpenChange={setReminderSettingsOpen} />
             <ReminderHistoryModal certificate={reminderHistoryFor} onClose={() => setReminderHistoryFor(null)} />

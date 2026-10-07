@@ -21,7 +21,6 @@ import * as QRCode from 'qrcode';
 import {
     CertificateLayout,
     ColorValue,
-    FontFamily,
     ImageElement,
     LayoutElement,
     OrnamentElement,
@@ -33,6 +32,7 @@ import {
     TextElement,
 } from './layout/certificate-layout.types';
 import { CertificateVariables, renderCertificateText } from './layout/certificate-layout-variables';
+import { FontFamily, resolveFont } from './layout/certificate-fonts';
 
 /** Uma URL de imagem lenta não pode segurar a emissão: depois disso segue sem a imagem. */
 const IMAGE_FETCH_TIMEOUT_MS = 8000;
@@ -61,13 +61,18 @@ export interface CertificateRenderInput {
 
 type Doc = PDFKit.PDFDocument;
 
-const FONT_NAMES: Record<FontFamily, [regular: string, bold: string, italic: string, boldItalic: string]> = {
-    Helvetica: ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'],
-    Times: ['Times-Roman', 'Times-Bold', 'Times-Italic', 'Times-BoldItalic'],
-    Courier: ['Courier', 'Courier-Bold', 'Courier-Oblique', 'Courier-BoldOblique'],
-};
-
-const fontName = (family: FontFamily, bold: boolean, italic: boolean) => FONT_NAMES[family][(bold ? 1 : 0) + (italic ? 2 : 0)];
+/** Seleciona a fonte no documento, registrando o arquivo na 1ª vez quando é uma fonte embutida. */
+function useFont(doc: Doc, family: FontFamily, bold: boolean, italic: boolean) {
+    const font = resolveFont(family, bold, italic);
+    if (font.file) {
+        const registered = ((doc as Doc & { _certificateFonts?: Set<string> })._certificateFonts ??= new Set<string>());
+        if (!registered.has(font.name)) {
+            doc.registerFont(font.name, font.file);
+            registered.add(font.name);
+        }
+    }
+    return doc.font(font.name);
+}
 
 @Injectable()
 export class CertificatePdfService {
@@ -233,7 +238,7 @@ export class CertificatePdfService {
         const text = element.uppercase ? rawText.toLocaleUpperCase('pt-BR') : rawText;
         if (!text.trim() || element.w <= 0 || element.h <= 0) return;
 
-        doc.font(fontName(element.font, element.bold, element.italic));
+        useFont(doc, element.font, element.bold, element.italic);
         const options = {
             width: element.w,
             align: element.align,
@@ -294,13 +299,13 @@ export class CertificatePdfService {
         // Nome numa linha só: diminui até 8pt antes de cortar com reticências.
         const family = element.font ?? 'Helvetica';
         let nameSize = 11;
-        doc.font(fontName(family, true, false)).fontSize(nameSize);
+        useFont(doc, family, true, false).fontSize(nameSize);
         while (nameSize > 8 && doc.widthOfString(name) > w) doc.fontSize((nameSize -= 0.5));
         doc.fillColor(color(element.nameColor) ?? '#212529')
             .text(name, x, lineY + 6, { width: w, height: 14, align: 'center', ellipsis: true });
         const role = renderCertificateText(element.role, input.variables);
         if (role) {
-            doc.font(fontName(family, false, false)).fontSize(9).fillColor(color(element.roleColor) ?? '#6C757D')
+            useFont(doc, family, false, false).fontSize(9).fillColor(color(element.roleColor) ?? '#6C757D')
                 .text(role, x, lineY + 22, { width: w, height: 12, align: 'center', ellipsis: true });
         }
     }

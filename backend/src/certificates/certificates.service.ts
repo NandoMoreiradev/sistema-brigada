@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { CertificatePdfService } from './certificate-pdf.service';
 import { CertificateTemplatesService } from './certificate-templates.service';
+import { CertificateDesignsService } from './certificate-designs.service';
 import { buildRenderInput } from './layout/certificate-render-input';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
@@ -41,15 +42,26 @@ interface EligibilityResult {
     enrollment: Prisma.EnrollmentGetPayload<{ include: { course: true; certificate: true; studentProfile: true } }>;
 }
 
+export interface BulkRegenerationJob {
+    total: number;
+    done: number;
+    failed: number;
+    startedAt: Date;
+    finishedAt: Date | null;
+}
+
 @Injectable()
 export class CertificatesService {
     private readonly logger = new Logger(CertificatesService.name);
+    /** Progresso da regeração em lote, por academia (em memória — ver startBulkRegeneration). */
+    private readonly bulkJobs = new Map<string, BulkRegenerationJob>();
 
     constructor(
         private readonly prisma: PrismaService,
         private readonly mediaService: MediaService,
         private readonly certificatePdfService: CertificatePdfService,
         private readonly certificateTemplatesService: CertificateTemplatesService,
+        private readonly certificateDesignsService: CertificateDesignsService,
         private readonly notificationsService: NotificationsService,
         private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
@@ -406,7 +418,8 @@ export class CertificatesService {
         };
     }
 
-    private async generateAndAttachPdf(certificateId: string) {
+    /** Gera o PDF, sobe para o storage e apaga o anterior. Nunca lança: devolve se deu certo (a emissão não pode cair por causa do PDF). */
+    private async generateAndAttachPdf(certificateId: string): Promise<boolean> {
         try {
             const certificate = await this.prisma.certificate.findUniqueOrThrow({
                 where: { id: certificateId },
@@ -445,7 +458,7 @@ export class CertificatesService {
                     expiresAt: certificate.expiresAt,
                     code: certificate.code,
                 },
-                this.certificateTemplatesService.resolveLayout(template),
+                (await this.certificateDesignsService.resolveLayout(certificate.organizationId, course.certificateDesignId)).layout,
                 { logoUrl: template?.logoUrl, signatureName: template?.signatureName, signatureImageUrl: template?.signatureImageUrl },
                 this.certificateTemplatesService.frontendUrl,
             );
@@ -458,9 +471,70 @@ export class CertificatesService {
             );
 
             await this.prisma.certificate.update({ where: { id: certificateId }, data: { pdfKey: key } });
+
+            // Cada geração sobe um arquivo novo; sem isto, todo "Regerar PDF" deixava o anterior
+            // esquecido no storage. Só depois de gravar a chave nova — se apagar falhar, sobra lixo, não um link quebrado.
+            if (certificate.pdfKey && certificate.pdfKey !== key) {
+                await this.mediaService.deleteObject(certificate.pdfKey).catch((error) =>
+                    this.logger.warn(`PDF antigo ${certificate.pdfKey} do certificado ${certificateId} não foi apagado: ${error.message}`),
+                );
+            }
+            return true;
         } catch (error) {
             this.logger.warn(`Não foi possível gerar/subir o PDF do certificado ${certificateId}: ${error.message}`);
+            return false;
         }
+    }
+
+    // ------------------------------------------------------------------ regeração em lote
+
+    /**
+     * "Regerar PDFs" depois de mudar o layout/a identidade: roda em segundo plano (pode
+     * levar minutos) e o progresso fica em memória — se o servidor reiniciar no meio, é
+     * só disparar de novo (regerar é idempotente). Uma por academia de cada vez.
+     */
+    async startBulkRegeneration(organizationId: string, scope: { courseId?: string; designId?: string }) {
+        const running = this.bulkJobs.get(organizationId);
+        if (running && !running.finishedAt) {
+            throw new ConflictException('Já existe uma regeração de PDFs em andamento nesta academia.');
+        }
+
+        const where: Prisma.CertificateWhereInput = { organizationId, status: { not: CertificateStatus.REVOKED } };
+        if (scope.courseId) {
+            where.enrollment = { courseId: scope.courseId };
+        } else if (scope.designId) {
+            // "Certificados que usam este modelo": turmas que o escolheram e, se ele é o padrão, as que não escolheram nenhum.
+            const design = await this.certificateDesignsService.findOne(scope.designId, organizationId);
+            where.enrollment = {
+                course: design.isDefault
+                    ? { OR: [{ certificateDesignId: design.id }, { certificateDesignId: null }] }
+                    : { certificateDesignId: design.id },
+            };
+        }
+
+        const ids = (await this.prisma.certificate.findMany({ where, select: { id: true } })).map((c) => c.id);
+        const job: BulkRegenerationJob = { total: ids.length, done: 0, failed: 0, startedAt: new Date(), finishedAt: null };
+        this.bulkJobs.set(organizationId, job);
+        void this.runBulkRegeneration(ids, job);
+        return job;
+    }
+
+    getBulkRegenerationStatus(organizationId: string): BulkRegenerationJob | null {
+        return this.bulkJobs.get(organizationId) ?? null;
+    }
+
+    private async runBulkRegeneration(ids: string[], job: BulkRegenerationJob) {
+        // 2 de cada vez: gerar PDF e subir para o storage pesa, e isto roda no mesmo processo da API.
+        const queue = [...ids];
+        const worker = async () => {
+            for (let id = queue.shift(); id; id = queue.shift()) {
+                if (await this.generateAndAttachPdf(id)) job.done++;
+                else job.failed++;
+            }
+        };
+        await Promise.all([worker(), worker()]);
+        job.finishedAt = new Date();
+        this.logger.log(`Regeração de PDFs: ${job.done} ok, ${job.failed} com falha (de ${job.total}).`);
     }
 
     /**

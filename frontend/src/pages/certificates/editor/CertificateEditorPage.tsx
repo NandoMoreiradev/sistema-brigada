@@ -1,14 +1,14 @@
 // frontend/src/pages/certificates/editor/CertificateEditorPage.tsx
 //
-// Editor visual do layout do certificado (/certificates/editor). Edita o mesmo
+// Editor visual de um modelo de certificado (/certificates/designs/:designId). Edita o mesmo
 // formato que o backend guarda e desenha (layout/types.ts); o canvas é uma
 // aproximação em HTML, e "Pré-visualizar PDF" mostra o resultado exato.
 //
 // Atalhos: Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y), Ctrl+S, Ctrl+D (duplicar),
 // Delete, setas (1pt; Shift = 10pt), Esc (tira a seleção).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,13 +31,14 @@ import {
     UserRound,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { certificateTemplateApi, type LayoutPreset } from '@/services/certificates';
+import { certificateDesignsApi, certificateTemplateApi, type LayoutPreset } from '@/services/certificates';
 import { coursesApi } from '@/services/courses';
 import { toast } from '@/utils/toast';
-import { PAGE_SIZE, type CertificateLayout, type LayoutElement } from '../layout/types';
+import type { CertificateLayout, LayoutElement } from '../layout/types';
 import { certificateErrorMessage, usePdfPreview } from '../PdfPreview';
 import { EditorCanvas } from './EditorCanvas';
-import { ElementView, type RenderContext } from './ElementView';
+import { MiniLayout } from './MiniLayout';
+import { useCertificateRenderContext } from './useCertificateRenderContext';
 import { LayersPanel } from './LayersPanel';
 import { ElementProperties, PageProperties, type ElementPatch } from './PropertiesPanel';
 import { createElement, duplicateElement, NEW_ELEMENT_OPTIONS, type NewElementKind } from './elementFactory';
@@ -198,39 +199,9 @@ const ADD_ICONS: Record<NewElementKind, typeof Type> = {
 };
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
-const SAMPLE_CODE = 'AB3K9X2MQ7TD';
 
 const isTyping = (target: EventTarget | null) =>
     target instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable);
-
-/** Miniatura estática de um layout (cartões dos modelos prontos). */
-function MiniLayout({ layout, ctx, width }: { layout: CertificateLayout; ctx: Omit<RenderContext, 'scale' | 'layout'>; width: number }) {
-    const page = PAGE_SIZE[layout.orientation];
-    const scale = width / page.width;
-    const renderCtx: RenderContext = { ...ctx, layout, scale, showVariables: false, thumbnail: true };
-    return (
-        <div style={{ position: 'relative', width, height: page.height * scale, overflow: 'hidden', background: layout.background.color, boxShadow: '0 1px 3px rgba(0,0,0,.15)', pointerEvents: 'none' }}>
-            {layout.elements.map((element) =>
-                element.hidden ? null : (
-                    <div
-                        key={element.id}
-                        style={{
-                            position: 'absolute',
-                            left: element.x * scale,
-                            top: element.y * scale,
-                            width: element.w * scale,
-                            height: element.h * scale,
-                            opacity: element.opacity ?? 1,
-                            transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
-                        }}
-                    >
-                        <ElementView element={element} ctx={renderCtx} />
-                    </div>
-                ),
-            )}
-        </div>
-    );
-}
 
 export default function CertificateEditorPage() {
     const navigate = useNavigate();
@@ -255,20 +226,30 @@ export default function CertificateEditorPage() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const preview = usePdfPreview();
 
-    const { data: template } = useQuery({ queryKey: ['certificate-template'], queryFn: () => certificateTemplateApi.get() });
-    const { data: variables = [] } = useQuery({ queryKey: ['certificate-variables'], queryFn: () => certificateTemplateApi.variables() });
+    const { designId = '' } = useParams<{ designId: string }>();
+    const [name, setName] = useState('');
+    const { ctx, template, variables } = useCertificateRenderContext(showVariables);
+    const { data: design, error: designError } = useQuery({
+        queryKey: ['certificate-designs', designId],
+        queryFn: () => certificateDesignsApi.get(designId),
+        enabled: !!designId,
+        retry: false,
+    });
     const { data: presets = [] } = useQuery({ queryKey: ['certificate-presets'], queryFn: () => certificateTemplateApi.presets() });
     const { data: courses } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list() });
 
-    // Carrega o layout salvo uma vez; depois disso o editor é a fonte da verdade até salvar.
+    // Carrega o modelo salvo uma vez; depois disso o editor é a fonte da verdade até salvar.
+    const savedName = useRef('');
     useEffect(() => {
-        if (template && savedJson.current === null) {
-            savedJson.current = JSON.stringify(template.layout);
-            resetLayout(template.layout);
+        if (design && savedJson.current === null) {
+            savedJson.current = JSON.stringify(design.layout);
+            savedName.current = design.name;
+            setName(design.name);
+            resetLayout(design.layout);
         }
-    }, [template, resetLayout]);
+    }, [design, resetLayout]);
 
-    const dirty = !!layout && savedJson.current !== null && JSON.stringify(layout) !== savedJson.current;
+    const dirty = !!layout && savedJson.current !== null && (JSON.stringify(layout) !== savedJson.current || name.trim() !== savedName.current);
 
     // Aviso do navegador ao fechar/recarregar com alterações não salvas.
     useEffect(() => {
@@ -277,23 +258,6 @@ export default function CertificateEditorPage() {
         window.addEventListener('beforeunload', warn);
         return () => window.removeEventListener('beforeunload', warn);
     }, [dirty]);
-
-    const ctx = useMemo<Omit<RenderContext, 'scale' | 'layout'>>(() => {
-        const sample = Object.fromEntries(variables.map((variable) => [variable.key, variable.example]));
-        if (template?.organizationName) sample['academia.nome'] = template.organizationName;
-        const host = window.location.host;
-        return {
-            variables: sample,
-            showVariables,
-            brand: {
-                organizationName: template?.organizationName ?? '',
-                logoUrl: template?.logoUrl ?? null,
-                signatureName: template?.signatureName ?? null,
-                signatureImageUrl: template?.signatureImageUrl ?? null,
-            },
-            verification: { url: `${window.location.origin}/validar/${SAMPLE_CODE}`, code: 'AB3K-9X2M-Q7TD', pageUrl: `${host}/validar` },
-        };
-    }, [variables, template, showVariables]);
 
     const selected = layout?.elements.find((element) => element.id === selectedId) ?? null;
 
@@ -351,12 +315,15 @@ export default function CertificateEditorPage() {
     // ---------------------------------------------------------------- salvar
 
     const saveMutation = useMutation({
-        mutationFn: (value: CertificateLayout) => certificateTemplateApi.upsert({ layoutConfig: value }),
+        mutationFn: (value: CertificateLayout) => certificateDesignsApi.update(designId, { name: name.trim() || savedName.current, layout: value }),
         onSuccess: (saved) => {
             savedJson.current = JSON.stringify(saved.layout);
+            savedName.current = saved.name;
+            setName(saved.name);
             resetLayout(saved.layout);
-            queryClient.setQueryData(['certificate-template'], saved);
-            toast.success('Layout salvo. Os próximos certificados já saem assim; use "Regerar PDF" para os já emitidos.');
+            queryClient.setQueryData(['certificate-designs', designId], saved);
+            queryClient.invalidateQueries({ queryKey: ['certificate-designs'], exact: true });
+            toast.success('Modelo salvo. Os próximos certificados já saem assim; use "Regerar PDFs" para os já emitidos.');
         },
         onError: async (error) => toast.error(await certificateErrorMessage(error, 'Não foi possível salvar o layout.')),
     });
@@ -409,6 +376,15 @@ export default function CertificateEditorPage() {
         navigate('/certificates');
     };
 
+    if (designError) {
+        return (
+            <Shell style={{ alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+                Modelo de certificado não encontrado.
+                <Button type="button" $variant="secondary" onClick={() => navigate('/certificates')}>Voltar para Certificados</Button>
+            </Shell>
+        );
+    }
+
     if (!layout || !template) {
         return <Shell style={{ alignItems: 'center', justifyContent: 'center' }}>Carregando editor...</Shell>;
     }
@@ -421,7 +397,14 @@ export default function CertificateEditorPage() {
                 <Button type="button" $variant="ghost" onClick={goBack} aria-label="Voltar para Certificados" title="Voltar para Certificados">
                     <ArrowLeft size={16} />
                 </Button>
-                <h1>Editor do certificado</h1>
+                <h1>Modelo:</h1>
+                <input
+                    aria-label="Nome do modelo"
+                    value={name}
+                    maxLength={80}
+                    onChange={(e) => setName(e.target.value)}
+                    style={{ fontSize: '0.9rem', fontWeight: 600, padding: '0.3rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 0, width: 220 }}
+                />
                 <span className="dirty">{dirty ? 'Alterações não salvas' : 'Tudo salvo'}</span>
                 <span className="spacer" />
                 <Button type="button" $variant="ghost" onClick={undo} disabled={!canUndo} title="Desfazer (Ctrl+Z)" aria-label="Desfazer">

@@ -7,6 +7,8 @@ import { CertificatePdfService } from './certificate-pdf.service';
 import { CertificateExpirationScheduler } from './certificate-expiration.scheduler';
 import { CertificateRemindersService } from './certificate-reminders.service';
 import { CertificateRemindersController } from './certificate-reminders.controller';
+import { CertificateDesignsService } from './certificate-designs.service';
+import { CertificateDesignsController } from './certificate-designs.controller';
 import { PublicBadgeController } from './public-badge.controller';
 import { PublicCertificateVerificationController } from './public-certificate-verification.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -28,6 +30,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
         CertificatesController,
         CertificateTemplatesController,
         CertificateRemindersController,
+        CertificateDesignsController,
         PublicBadgeController,
         PublicCertificateVerificationController,
     ],
@@ -36,8 +39,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
         CertificateTemplatesService,
         CertificatePdfService,
         CertificateRemindersService,
+        CertificateDesignsService,
         CertificateExpirationScheduler,
     ],
-    exports: [CertificatesService],
+    exports: [CertificatesService, CertificateDesignsService],
 })
 export class CertificatesModule {}

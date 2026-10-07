@@ -6,6 +6,7 @@
 // a palavra final é sempre a pré-visualização em PDF.
 
 import type { CertificateLayout, ColorValue, FontFamily, LayoutElement } from '../layout/types';
+import { FONTS } from './fonts';
 
 const VARIABLE = /\{\{\s*([\w.]+)\s*\}\}/g;
 const CONDITIONAL = /\{\{#if\s+([\w.]+)\s*\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g;
@@ -17,29 +18,26 @@ export function renderCertificateText(template: string, variables: Record<string
         .replace(VARIABLE, (_, key: string) => variables[key] ?? '');
 }
 
-/** Fonte do navegador mais próxima da fonte padrão do PDF. */
-export const CSS_FONT: Record<FontFamily, string> = {
-    Helvetica: 'Helvetica, Arial, "Liberation Sans", sans-serif',
-    Times: '"Times New Roman", Times, "Liberation Serif", serif',
-    Courier: '"Courier New", Courier, "Liberation Mono", monospace',
-};
+/** Fonte CSS equivalente a cada fonte do PDF (ver fonts.ts). */
+export const CSS_FONT = Object.fromEntries(Object.entries(FONTS).map(([id, font]) => [id, font.css])) as Record<FontFamily, string>;
+
+/** Altura de linha do pdfkit, para as quebras de linha do editor baterem com as do PDF. */
+export const LINE_HEIGHT = Object.fromEntries(Object.entries(FONTS).map(([id, font]) => [id, font.lineHeight])) as Record<FontFamily, number>;
 
 /**
- * Altura de linha do pdfkit para cada fonte padrão, em múltiplos do tamanho
- * ((ascendente + entrelinha − descendente) / 1000, das métricas AFM). Usar o mesmo
- * valor no CSS faz as quebras de linha do editor baterem com as do PDF.
+ * O pdfkit põe a linha de base da 1ª linha em `topo + ascendente`; o navegador põe mais
+ * abaixo quando a fonte tem entrelinha (meia entrelinha + ascendente). Subir o texto por
+ * esta fração do tamanho alinha as duas.
  */
-export const LINE_HEIGHT: Record<FontFamily, number> = { Helvetica: 1.156, Times: 1.116, Courier: 1.055 };
+export const BASELINE_SHIFT = Object.fromEntries(Object.entries(FONTS).map(([id, font]) => [id, font.baselineShift])) as Record<FontFamily, number>;
 
-/**
- * O pdfkit põe a linha de base da 1ª linha em `topo + ascendente` (0,718 do tamanho na
- * Helvetica); o navegador a põe mais abaixo (meia entrelinha + ascendente da Arial etc.).
- * Subir o texto por esta fração do tamanho alinha as duas. Calculado com as métricas das
- * fontes equivalentes: Arial, Times New Roman e Courier New.
- */
-export const BASELINE_SHIFT: Record<FontFamily, number> = { Helvetica: 0.206, Times: 0.212, Courier: 0.165 };
+export const FONT_LABEL = Object.fromEntries(Object.entries(FONTS).map(([id, font]) => [id, font.label])) as Record<FontFamily, string>;
 
-export const FONT_LABEL: Record<FontFamily, string> = { Helvetica: 'Helvetica (sem serifa)', Times: 'Times (serifada)', Courier: 'Courier (máquina de escrever)' };
+/** O PDF troca a variante que a fonte não tem pela mais próxima; o editor imita para não mostrar um negrito falso. */
+export const effectiveStyle = (font: FontFamily, bold: boolean, italic: boolean) => ({
+    bold: bold && FONTS[font].hasBold,
+    italic: italic && FONTS[font].hasItalic,
+});
 
 export function resolveColor(value: ColorValue | null | undefined, layout: CertificateLayout): string | null {
     if (!value) return null;

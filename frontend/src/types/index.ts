@@ -172,6 +172,8 @@ export interface Course {
     certificateTitle?: string | null;
     /** Carga horária em horas ({{curso.cargaHoraria}}). */
     workloadHours?: number | null;
+    /** Modelo de certificado da turma; vazio = o padrão da academia. */
+    certificateDesignId?: string | null;
     /** Sala pré-selecionada ao agendar uma aula nova. */
     defaultRoomId?: string | null;
     defaultRoom?: Room | null;

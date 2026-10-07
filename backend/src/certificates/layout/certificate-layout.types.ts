@@ -26,8 +26,8 @@ export const THEME_COLOR_KEYS = ['primary', 'primaryLight', 'accent', 'accentLig
 export type ThemeColorKey = (typeof THEME_COLOR_KEYS)[number];
 export type LayoutTheme = Record<ThemeColorKey, string>;
 
-export const FONT_FAMILIES = ['Helvetica', 'Times', 'Courier'] as const;
-export type FontFamily = (typeof FONT_FAMILIES)[number];
+export { FONT_FAMILIES, type FontFamily } from './certificate-fonts';
+import type { FontFamily } from './certificate-fonts';
 
 interface BaseElement {
     id: string;

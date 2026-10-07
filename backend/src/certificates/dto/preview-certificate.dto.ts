@@ -20,6 +20,11 @@ export class PreviewCertificateDto {
     @IsUrl({}, { message: 'A URL da assinatura fornecida é inválida.' })
     signatureImageUrl?: string | null;
 
+    /** Usa este modelo salvo (quando `layout` não vier) */
+    @IsString()
+    @IsOptional()
+    designId?: string;
+
     /** Usa os dados reais desta turma (com um aluno de exemplo) */
     @IsString()
     @IsOptional()

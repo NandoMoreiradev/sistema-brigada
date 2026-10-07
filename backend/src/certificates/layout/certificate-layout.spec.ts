@@ -4,6 +4,7 @@ import { buildClassicLayout } from './classic-layout';
 import { buildCertificateVariables, buildRenderInput, CertificateRenderSource } from './certificate-render-input';
 import { CertificatePdfService } from '../certificate-pdf.service';
 import { getLayoutPresets } from './layout-presets';
+import { FONT_FAMILIES } from './certificate-fonts';
 
 describe('renderCertificateText', () => {
     const vars = { 'aluno.nome': 'Ana', 'curso.local': '', 'curso.cargaHoraria': '20 horas' };
@@ -134,6 +135,21 @@ describe('CertificatePdfService', () => {
         const pages = pageCount(pdf);
         expect(pages).toBeGreaterThanOrEqual(4);
         expect(pages).toBeLessThan(10);
+    });
+
+    it('embute as fontes do catálogo, inclusive variante que não existe (cai na mais próxima)', async () => {
+        const layout = buildClassicLayout();
+        for (const family of FONT_FAMILIES) {
+            layout.elements.push({
+                id: `font-${family}`, type: 'text', x: 40, y: 40, w: 300, h: 30, content: 'Formação — Ação ÃÉÇ {{aluno.nome}}',
+                font: family, size: 14, bold: true, italic: true, color: '$text', align: 'left', valign: 'top', autoShrink: true,
+            });
+        }
+        const pdf = await service.generate(buildRenderInput(source, layout, {}, 'https://app.exemplo.com'));
+        const text = pdf.toString('latin1');
+        expect(text).toMatch(/Montserrat/);
+        expect(text).toMatch(/GreatVibes/);
+        expect(pageCount(pdf)).toBe(1);
     });
 
     it('texto enorme num elemento pequeno não cria página nova', async () => {

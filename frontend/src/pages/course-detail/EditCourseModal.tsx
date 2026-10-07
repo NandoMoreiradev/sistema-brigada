@@ -13,7 +13,9 @@ import styled from 'styled-components';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow, CheckboxField } from '@/components/ui/FormField';
-import { coursesApi } from '@/services/courses';
+import { classSessionsApi, coursesApi } from '@/services/courses';
+import { certificateDesignsApi } from '@/services/certificates';
+import { suggestWorkloadHours } from '@/utils/workload';
 import { peopleApi } from '@/services/people';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
@@ -44,6 +46,7 @@ interface FormData {
     syllabus: string;
     certificateTitle: string;
     workloadHours: string;
+    certificateDesignId: string;
 }
 
 const SectionTitle = styled.h3`
@@ -102,11 +105,16 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
     const queryClient = useQueryClient();
     const courseId = course.id;
 
-    const { register, handleSubmit, reset, watch, control, formState: { errors } } = useForm<FormData>();
+    const { register, handleSubmit, reset, watch, control, setValue, formState: { errors } } = useForm<FormData>();
 
     const { data: allCoursesData } = useQuery({ queryKey: ['courses'], queryFn: () => coursesApi.list(), enabled: open });
     // Lista enxuta (id + nome) aberta a qualquer usuário da escola: não exige acesso ao cadastro de pessoas.
     const { data: roster } = useQuery({ queryKey: ['people', 'roster'], queryFn: () => peopleApi.roster(), enabled: open });
+    // Mesma consulta da aba de aulas (fica em cache): base da sugestão de carga horária.
+    const { data: sessions } = useQuery({ queryKey: ['courses', courseId, 'sessions'], queryFn: () => classSessionsApi.list(courseId), enabled: open });
+    // Modelos exigem `certificates:manage`; sem a permissão a consulta falha e o campo some.
+    const { data: designs } = useQuery({ queryKey: ['certificate-designs'], queryFn: () => certificateDesignsApi.list(), enabled: open, retry: false });
+    const suggestedWorkload = suggestWorkloadHours(sessions ?? []);
 
     // Reinicia o formulário sempre que o modal abre (ou a turma é recarregada com dados novos).
     useEffect(() => {
@@ -127,6 +135,7 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
             syllabus: course.syllabus ?? '',
             certificateTitle: course.certificateTitle ?? '',
             workloadHours: course.workloadHours ? String(course.workloadHours) : '',
+            certificateDesignId: course.certificateDesignId ?? '',
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, course.id]);
@@ -149,6 +158,8 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 syllabus: emptyToNull(input.syllabus),
                 certificateTitle: emptyToNull(input.certificateTitle),
                 workloadHours: numberOrNull(input.workloadHours),
+                // Sem acesso aos modelos o campo nem aparece: não mexe no que está salvo.
+                certificateDesignId: designs ? emptyToNull(input.certificateDesignId) : undefined,
             }),
         onSuccess: () => {
             toast.success('Turma atualizada.');
@@ -283,6 +294,17 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 </div>
 
                 <SectionTitle>Certificado</SectionTitle>
+                {designs && (
+                    <Field>
+                        <Label htmlFor="editCertificateDesignId">Modelo do certificado</Label>
+                        <Select id="editCertificateDesignId" {...register('certificateDesignId')}>
+                            <option value="">Padrão da academia{designs.some((d) => d.isDefault) ? ` (${designs.find((d) => d.isDefault)!.name})` : ' (Clássico)'}</option>
+                            {designs.map((design) => (
+                                <option key={design.id} value={design.id}>{design.name}</option>
+                            ))}
+                        </Select>
+                    </Field>
+                )}
                 <Field>
                     <Label htmlFor="editCertificateTitle">Nome no certificado (opcional)</Label>
                     <Input id="editCertificateTitle" maxLength={200} placeholder={course.event.title} {...register('certificateTitle')} />
@@ -300,6 +322,16 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                     <Field>
                         <Label htmlFor="editWorkloadHours">Carga horária (horas)</Label>
                         <Input id="editWorkloadHours" type="number" min={1} max={2000} placeholder="não informar" {...register('workloadHours')} />
+                        {suggestedWorkload && String(suggestedWorkload) !== watch('workloadHours') && (
+                            <Button
+                                type="button"
+                                $variant="ghost"
+                                style={{ alignSelf: 'flex-start', padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}
+                                onClick={() => setValue('workloadHours', String(suggestedWorkload), { shouldDirty: true })}
+                            >
+                                Usar a soma das aulas: {suggestedWorkload} h
+                            </Button>
+                        )}
                     </Field>
                 </FieldRow>
                 <CheckboxField>

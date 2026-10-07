@@ -58,6 +58,7 @@ model Organization {
   scheduleTemplates           ScheduleTemplate[]
   certificateTemplate         CertificateTemplate?
   certificateReminderSettings CertificateReminderSettings?
+  certificateDesigns          CertificateDesign[]
   emailTemplates              EmailTemplate[]
   communications              Communication[]
   registrationRequests        RegistrationRequest[]
@@ -260,6 +261,8 @@ model Course {
   certificateTitle             String?
   /// Carga horária em horas ({{curso.cargaHoraria}} no certificado)
   workloadHours                Int?
+  /// Modelo de certificado desta turma; vazio = o modelo padrão da academia
+  certificateDesignId          String?
   /// Sala onde a turma costuma ter aula: vem pré-selecionada ao agendar uma aula nova.
   /// Cada aula guarda a própria sala (`ClassSession.roomId`), então trocar aqui não mexe nas já agendadas.
   defaultRoomId                String?
@@ -273,6 +276,7 @@ model Course {
   recommendedRecyclingCourse Course?            @relation("RecyclingCourse", fields: [recommendedRecyclingCourseId], references: [id])
   recycledByCourses          Course[]           @relation("RecyclingCourse")
   defaultRoom                Room?              @relation(fields: [defaultRoomId], references: [id], onDelete: SetNull)
+  certificateDesign          CertificateDesign? @relation(fields: [certificateDesignId], references: [id], onDelete: SetNull)
   groups                     CourseGroup[]
   activities                 CourseActivity[]
   scheduleBlocks             ScheduleBlock[]
@@ -1063,9 +1067,27 @@ model CertificateTemplate {
   logoUrl           String?
   signatureName     String?
   signatureImageUrl String?
-  layoutConfig      Json?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Modelo (layout) de certificado da academia — formato em
+/// src/certificates/layout/certificate-layout.types.ts. Um deles é o padrão
+/// (`isDefault`, garantido único pelo service); a turma pode escolher outro
+/// (Course.certificateDesignId). Academia sem nenhum usa o Clássico embutido.
+model CertificateDesign {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  layout         Json
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courses      Course[]
+
+  @@index([organizationId])
 }
 
 // ================================= INTEGRAÇÕES E NOTIFICAÇÕES =================================

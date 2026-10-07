@@ -76,6 +76,11 @@ export class CreateCourseDto {
     @IsOptional()
     certificateTitle?: string | null;
 
+    /** Modelo de certificado da turma; `null`/ausente = modelo padrão da academia. */
+    @IsString()
+    @IsOptional()
+    certificateDesignId?: string | null;
+
     /** Carga horária em horas, impressa no certificado. `null` limpa. */
     @IsInt()
     @Min(1)
