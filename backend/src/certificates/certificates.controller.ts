@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, UseGuards, Query, BadRequestExcepti
 import { CertificatesService } from './certificates.service';
 import { ListCertificatesDto } from './dto/list-certificates.dto';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
+import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -51,5 +52,22 @@ export class CertificatesController {
     @RequirePermission('certificates:manage')
     regeneratePdf(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.certificatesService.regeneratePdf(id, this.requireOrganizationId(organizationId));
+    }
+
+    @Post(':id/revoke')
+    @RequirePermission('certificates:manage')
+    revoke(
+        @Param('id') id: string,
+        @Body() dto: RevokeCertificateDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.certificatesService.revoke(id, this.requireOrganizationId(organizationId), user.id, dto.reason);
+    }
+
+    @Post(':id/reinstate')
+    @RequirePermission('certificates:manage')
+    reinstate(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.certificatesService.reinstate(id, this.requireOrganizationId(organizationId));
     }
 }

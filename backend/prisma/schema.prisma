@@ -970,6 +970,13 @@ model Certificate {
   /// Decisão 16: emissão automática por critérios da turma
   issuedAutomatically       Boolean           @default(true)
   recycledFromCertificateId String?
+  /// Código de verificação impresso no PDF e usado na página pública /validar/:code.
+  /// Aleatório (base32 Crockford, 12 caracteres, guardado sem hífens) e não sequencial,
+  /// para não dar pra enumerar os certificados — e com eles os nomes dos alunos.
+  code                      String            @unique
+  revokedAt                 DateTime?
+  revokedReason             String?
+  revokedByUserId           String?
 
   enrollment               Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
   recycledFromCertificate  Certificate?  @relation("Recycling", fields: [recycledFromCertificateId], references: [id])

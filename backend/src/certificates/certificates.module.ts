@@ -6,14 +6,23 @@ import { CertificateTemplatesController } from './certificate-templates.controll
 import { CertificatePdfService } from './certificate-pdf.service';
 import { CertificateExpirationScheduler } from './certificate-expiration.scheduler';
 import { PublicBadgeController } from './public-badge.controller';
+import { PublicCertificateVerificationController } from './public-certificate-verification.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MediaModule } from '../media/media.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TransactionalEmailModule } from '../transactional-email/transactional-email.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
-    imports: [PrismaModule, MediaModule, NotificationsModule, TransactionalEmailModule],
-    controllers: [CertificatesController, CertificateTemplatesController, PublicBadgeController],
+    imports: [
+        PrismaModule,
+        MediaModule,
+        NotificationsModule,
+        TransactionalEmailModule,
+        // Escopo local, igual auth.module.ts — não há ThrottlerGuard global neste projeto.
+        ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
+    ],
+    controllers: [CertificatesController, CertificateTemplatesController, PublicBadgeController, PublicCertificateVerificationController],
     providers: [CertificatesService, CertificateTemplatesService, CertificatePdfService, CertificateExpirationScheduler],
     exports: [CertificatesService],
 })

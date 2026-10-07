@@ -4,7 +4,8 @@
 // maskotCrmEdu (aquele tinha ~150+ rotas de CRM/WhatsApp/marketing que não
 // existem aqui). Estrutura:
 //   - Pública: /login, /forgot-password, /reset-password, /badge/:token
-//     (validação de crachá, sem exigir login)
+//     (validação de crachá, sem exigir login), /validar[/:code] (validação
+//     de um certificado pelo código impresso no PDF)
 //   - Privada (qualquer autenticado): /dashboard, /courses/:id, /events,
 //     /events/:id, /roles, /my-courses, /my-certificates, /my-designations
 //   - Privada + permissão de módulo (Fase 3, docs/decisoes.md): /courses,
@@ -19,6 +20,7 @@ import Login from '@/pages/Login';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import BadgePage from '@/pages/public/BadgePage';
+import VerifyCertificatePage from '@/pages/public/VerifyCertificatePage';
 import RegistrationFormPage from '@/pages/public/RegistrationFormPage';
 import Dashboard from '@/pages/Dashboard';
 import Courses from '@/pages/Courses';
@@ -49,6 +51,8 @@ export function Router() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/badge/:token" element={<BadgePage />} />
+            <Route path="/validar" element={<VerifyCertificatePage />} />
+            <Route path="/validar/:code" element={<VerifyCertificatePage />} />
             <Route path="/register/:token" element={<RegistrationFormPage />} />
             <Route path="/convite/:token" element={<RegistrationFormPage mode="invite" />} />
 

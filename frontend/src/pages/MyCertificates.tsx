@@ -16,7 +16,7 @@ import { meApi } from '@/services/me';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/utils/toast';
 import { Muted, Toolbar, ToolbarGroup } from '@/pages/course-detail/styles';
-import type { CertificateStatus } from '@/services/certificates';
+import { formatCertificateCode, type CertificateStatus } from '@/services/certificates';
 
 const STATUS_LABEL: Record<CertificateStatus, string> = {
     VALID: 'Válido',
@@ -72,6 +72,7 @@ export default function MyCertificates() {
                     <Thead>
                         <tr>
                             <Th>Turma</Th>
+                            <Th>Código</Th>
                             <Th>Emitido em</Th>
                             <Th>Validade</Th>
                             <Th>Status</Th>
@@ -82,6 +83,11 @@ export default function MyCertificates() {
                         {certificates.map((certificate) => (
                             <Tr key={certificate.id}>
                                 <Td>{certificate.enrollment.course.event.title}</Td>
+                                <Td style={{ whiteSpace: 'nowrap' }}>
+                                    <a href={`/validar/${certificate.code}`} target="_blank" rel="noreferrer" title="Abrir a validação pública deste certificado" style={{ fontFamily: 'monospace' }}>
+                                        {formatCertificateCode(certificate.code)}
+                                    </a>
+                                </Td>
                                 <Td>{format(new Date(certificate.issuedAt), 'dd/MM/yyyy')}</Td>
                                 <Td>{certificate.expiresAt ? format(new Date(certificate.expiresAt), 'dd/MM/yyyy') : 'Sem vencimento'}</Td>
                                 <Td><Badge $tone={STATUS_TONE[certificate.status]}>{STATUS_LABEL[certificate.status]}</Badge></Td>
