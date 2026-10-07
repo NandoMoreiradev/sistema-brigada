@@ -5,7 +5,9 @@
 // para cada certificado emitido), cores e URLs. Devolve uma cópia só com os campos
 // conhecidos — nada de propriedade extra indo parar no banco.
 
+import { buildClassicBackPage } from './back-pages';
 import {
+    BackPage,
     CertificateLayout,
     FONT_FAMILIES,
     LAYOUT_VERSION,
@@ -209,12 +211,49 @@ function readElement(raw: Raw, index: number, pageWidth: number, pageHeight: num
                 accentColor: r.color(raw, 'accentColor'),
             };
             break;
+        case 'syllabus':
+            element = {
+                ...base,
+                type: 'syllabus',
+                font: r.oneOf(raw, 'font', FONT_FAMILIES, 'Helvetica'),
+                size: r.number(raw, 'size', 4, 72),
+                minSize: r.number(raw, 'minSize', 4, 72, 8),
+                autoShrink: r.boolean(raw, 'autoShrink', false),
+                color: r.color(raw, 'color'),
+                align: r.oneOf(raw, 'align', ['left', 'justify'] as const, 'left'),
+                lineGap: r.number(raw, 'lineGap', 0, 50, 0),
+                columns: Math.round(r.number(raw, 'columns', 1, 3, 1)),
+                columnGap: r.number(raw, 'columnGap', 0, 200, 24),
+            };
+            break;
         default:
             r.problems.push(`Elemento ${index + 1}: tipo desconhecido.`);
     }
 
     reader.problems.push(...r.problems);
     return element;
+}
+
+/** Lê a lista de elementos de uma página (frente ou verso); ids repetidos ganham sufixo. */
+function readElements(input: unknown, page: string, width: number, height: number, r: Reader): LayoutElement[] {
+    const rawElements = Array.isArray(input) ? input : [];
+    if (rawElements.length > MAX_ELEMENTS) r.problems.push(`${page}: use no máximo ${MAX_ELEMENTS} elementos.`);
+
+    const elements: LayoutElement[] = [];
+    const ids = new Set<string>();
+    rawElements.slice(0, MAX_ELEMENTS).forEach((item, index) => {
+        const rawElement = asObject(item);
+        if (!rawElement) {
+            r.problems.push(`${page}, elemento ${index + 1}: formato inválido.`);
+            return;
+        }
+        const element = readElement(rawElement, index, width, height, r);
+        if (!element) return;
+        if (ids.has(element.id)) element.id = `${element.id}-${index + 1}`;
+        ids.add(element.id);
+        elements.push(element);
+    });
+    return elements;
 }
 
 /** Lança LayoutValidationError com a lista de problemas, em português, para mostrar ao usuário. */
@@ -239,26 +278,36 @@ export function parseCertificateLayout(input: unknown): CertificateLayout {
     ) as CertificateLayout['theme'];
 
     const rawBackground = asObject(raw.background) ?? {};
-    const rawSyllabus = asObject(raw.syllabusPage) ?? {};
+    if (!Array.isArray(raw.elements)) r.problems.push('Layout: a lista de elementos da frente é obrigatória.');
+    const elements = readElements(raw.elements, 'Frente', width, height, r);
+    if (elements.some((element) => element.type === 'syllabus')) {
+        r.problems.push('Frente: o conteúdo programático só pode ficar no verso.');
+    }
 
-    const rawElements = Array.isArray(raw.elements) ? raw.elements : [];
-    if (!Array.isArray(raw.elements)) r.problems.push('Layout: a lista de elementos é obrigatória.');
-    if (rawElements.length > MAX_ELEMENTS) r.problems.push(`Layout: use no máximo ${MAX_ELEMENTS} elementos.`);
-
-    const elements: LayoutElement[] = [];
-    const ids = new Set<string>();
-    rawElements.slice(0, MAX_ELEMENTS).forEach((item, index) => {
-        const rawElement = asObject(item);
-        if (!rawElement) {
-            r.problems.push(`Elemento ${index + 1}: formato inválido.`);
-            return;
+    let backPage: BackPage;
+    const rawBack = asObject(raw.backPage);
+    if (rawBack) {
+        const rawBackBackground = asObject(rawBack.background) ?? {};
+        const backElements = readElements(rawBack.elements, 'Verso', width, height, r);
+        if (backElements.filter((element) => element.type === 'syllabus').length > 1) {
+            r.problems.push('Verso: use só um bloco de conteúdo programático.');
         }
-        const element = readElement(rawElement, index, width, height, r);
-        if (!element) return;
-        if (ids.has(element.id)) element.id = `${element.id}-${index + 1}`;
-        ids.add(element.id);
-        elements.push(element);
-    });
+        backPage = {
+            enabled: r.boolean(rawBack, 'enabled', true),
+            onlyWithSyllabus: r.boolean(rawBack, 'onlyWithSyllabus', true),
+            background: { color: r.color(rawBackBackground, 'color'), imageUrl: r.url(rawBackBackground, 'imageUrl') },
+            elements: backElements,
+        };
+    } else {
+        // Layout v1: o verso era fixo (`syllabusPage: { enabled, title }`). Vira o verso
+        // Clássico editável equivalente, com o título que a academia tinha escolhido.
+        const rawSyllabus = asObject(raw.syllabusPage) ?? {};
+        backPage = buildClassicBackPage(
+            orientation,
+            r.string(rawSyllabus, 'title', 120, 'CONTEÚDO PROGRAMÁTICO'),
+            r.boolean(rawSyllabus, 'enabled', true),
+        );
+    }
 
     const layout: CertificateLayout = {
         version: LAYOUT_VERSION,
@@ -266,10 +315,7 @@ export function parseCertificateLayout(input: unknown): CertificateLayout {
         theme,
         background: { color: r.color(rawBackground, 'color'), imageUrl: r.url(rawBackground, 'imageUrl') },
         elements,
-        syllabusPage: {
-            enabled: r.boolean(rawSyllabus, 'enabled', true),
-            title: r.string(rawSyllabus, 'title', 120, 'CONTEÚDO PROGRAMÁTICO'),
-        },
+        backPage,
     };
 
     if (r.problems.length) throw new LayoutValidationError(r.problems);

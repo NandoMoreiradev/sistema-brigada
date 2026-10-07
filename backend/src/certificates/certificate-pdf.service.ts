@@ -8,12 +8,11 @@
 // Academia sem layout salvo usa o "Clássico" (layout/classic-layout.ts), que
 // reproduz o desenho fixo que existia antes desta versão.
 //
-// Cuidados com o pdfkit que já causaram bug aqui:
-// - `text()` sem `height` que passa da margem inferior abre uma página nova sozinho.
-//   Todo texto da 1ª página é desenhado com `height` (corta em vez de quebrar página).
-// - Na página de conteúdo programático é o contrário: o texto PRECISA fluir para
-//   páginas novas (não tem tamanho previsível); o listener `pageAdded` redesenha o
-//   fundo e a moldura em cada página extra.
+// Cuidado com o pdfkit que já causou bug aqui: `text()` sem `height` que passa da
+// margem inferior abre uma página nova sozinho. Todo texto é desenhado com `height`
+// (corta em vez de quebrar página). O conteúdo programático do verso, que não tem
+// tamanho previsível, é dividido em colunas/páginas ANTES de desenhar, medindo com o
+// próprio pdfkit (paginateSyllabus); cada página extra repete o desenho do verso.
 
 import { Injectable, Logger } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
@@ -29,6 +28,7 @@ import {
     SealElement,
     ShapeElement,
     SignatureElement,
+    SyllabusElement,
     TextElement,
 } from './layout/certificate-layout.types';
 import { CertificateVariables, renderCertificateText } from './layout/certificate-layout-variables';
@@ -60,6 +60,31 @@ export interface CertificateRenderInput {
 }
 
 type Doc = PDFKit.PDFDocument;
+
+/** O que cada página precisa para desenhar (frente ou verso). */
+interface PageContext {
+    doc: Doc;
+    input: CertificateRenderInput;
+    images: Map<string, Buffer | null>;
+    qrCodes: Map<string, Buffer>;
+    color: (value: ColorValue | null | undefined) => string | null;
+    width: number;
+    height: number;
+}
+
+interface PageBackground {
+    color: ColorValue;
+    imageUrl?: string | null;
+}
+
+/** Pedaço do conteúdo programático de uma página do verso, já dividido em colunas. */
+interface SyllabusPageChunk {
+    size: number;
+    columns: string[];
+}
+
+/** Proteção contra ementa gigante colada por engano (um certificado com dezenas de páginas). */
+const MAX_SYLLABUS_PAGES = 10;
 
 /** Seleciona a fonte no documento, registrando o arquivo na 1ª vez quando é uma fonte embutida. */
 function useFont(doc: Doc, family: FontFamily, bold: boolean, italic: boolean) {
@@ -96,26 +121,13 @@ export class CertificatePdfService {
 
             const color = (value: ColorValue | null | undefined) => this.resolveColor(value, layout);
 
-            this.drawBackground(doc, layout, images, width, height);
-            for (const element of layout.elements) {
-                if (element.hidden) continue;
-                doc.save();
-                if (element.opacity !== undefined && element.opacity < 1) doc.opacity(element.opacity);
-                if (element.rotation) {
-                    doc.rotate(element.rotation, { origin: [element.x + element.w / 2, element.y + element.h / 2] });
-                }
-                try {
-                    this.drawElement(doc, element, input, images, qrCodes, color);
-                } catch (error) {
-                    // Um elemento com problema (imagem corrompida...) não derruba o certificado inteiro.
-                    this.logger.warn(`Elemento "${element.id}" não pôde ser desenhado: ${error.message}`);
-                }
-                doc.restore();
-            }
+            const page: PageContext = { doc, input, images, qrCodes, color, width, height };
+            this.drawPage(page, layout.background, layout.elements, null);
 
-            const syllabus = input.syllabus?.trim();
-            if (layout.syllabusPage.enabled && syllabus) {
-                this.drawSyllabusPages(doc, input, syllabus, images, width, height, color);
+            const back = layout.backPage;
+            const syllabus = input.syllabus?.trim() ?? '';
+            if (back.enabled && (syllabus || !back.onlyWithSyllabus)) {
+                this.drawBackPages(page, syllabus);
             }
 
             doc.end();
@@ -140,7 +152,8 @@ export class CertificatePdfService {
         const add = (url: string | null | undefined) => url && urls.add(url);
 
         add(layout.background.imageUrl);
-        for (const element of layout.elements) {
+        add(layout.backPage.enabled ? layout.backPage.background.imageUrl : null);
+        for (const element of this.allElements(layout)) {
             if (element.hidden) continue;
             if (element.type === 'image') add(element.source === 'logo' ? brand.logoUrl : element.url);
             if (element.type === 'seal' && element.content === 'logo') add(brand.logoUrl);
@@ -163,9 +176,13 @@ export class CertificatePdfService {
         }
     }
 
+    private allElements(layout: CertificateLayout): LayoutElement[] {
+        return layout.backPage.enabled ? [...layout.elements, ...layout.backPage.elements] : layout.elements;
+    }
+
     private async renderQrCodes(layout: CertificateLayout, url: string): Promise<Map<string, Buffer>> {
         const colors = new Set(
-            layout.elements.filter((e): e is QrCodeElement => e.type === 'qrcode' && !e.hidden).map((e) => this.resolveColor(e.color, layout) ?? '#000000'),
+            this.allElements(layout).filter((e): e is QrCodeElement => e.type === 'qrcode' && !e.hidden).map((e) => this.resolveColor(e.color, layout) ?? '#000000'),
         );
         const entries = await Promise.all(
             [...colors].map(async (dark) => [dark, await QRCode.toBuffer(url, { margin: 1, width: 300, color: { dark, light: '#FFFFFF' } })] as const),
@@ -195,13 +212,38 @@ export class CertificatePdfService {
 
     // ------------------------------------------------------------------ página
 
-    private drawBackground(doc: Doc, layout: CertificateLayout, images: Map<string, Buffer | null>, width: number, height: number) {
-        const background = this.resolveColor(layout.background.color, layout);
-        if (background && background.toUpperCase() !== '#FFFFFF') {
-            doc.rect(0, 0, width, height).fill(background);
+    /**
+     * Fundo + elementos de uma página. `syllabus`: o pedaço do conteúdo programático
+     * que cabe nesta página, já dividido por coluna (só no verso).
+     */
+    private drawPage(page: PageContext, background: PageBackground, elements: LayoutElement[], syllabus: SyllabusPageChunk | null) {
+        const { doc, images, width, height, color } = page;
+        const backgroundColor = color(background.color);
+        if (backgroundColor && backgroundColor.toUpperCase() !== '#FFFFFF') {
+            doc.rect(0, 0, width, height).fill(backgroundColor);
         }
-        if (layout.background.imageUrl) {
-            this.image(doc, images.get(layout.background.imageUrl), 0, 0, width, height, 'cover');
+        if (background.imageUrl) {
+            this.image(doc, images.get(background.imageUrl), 0, 0, width, height, 'cover');
+        }
+
+        for (const element of elements) {
+            if (element.hidden) continue;
+            doc.save();
+            if (element.opacity !== undefined && element.opacity < 1) doc.opacity(element.opacity);
+            if (element.rotation) {
+                doc.rotate(element.rotation, { origin: [element.x + element.w / 2, element.y + element.h / 2] });
+            }
+            try {
+                if (element.type === 'syllabus') {
+                    if (syllabus) this.drawSyllabusColumns(doc, element, syllabus, color);
+                } else {
+                    this.drawElement(doc, element, page.input, images, page.qrCodes, color);
+                }
+            } catch (error) {
+                // Um elemento com problema (imagem corrompida...) não derruba o certificado inteiro.
+                this.logger.warn(`Elemento "${element.id}" não pôde ser desenhado: ${error.message}`);
+            }
+            doc.restore();
         }
     }
 
@@ -425,54 +467,125 @@ export class CertificatePdfService {
         doc.polygon([ox, oy], [ox + dx * w * inner, oy], [ox, oy + dy * h * inner]).fillOpacity(1).fill(color(element.color) ?? '#1B2A4A');
     }
 
-    // ------------------------------------------------------------------ conteúdo programático
+    // ------------------------------------------------------------------ verso e conteúdo programático
 
     /**
-     * Texto livre (não a grade de 3 colunas da referência) — turmas de brigada variam
-     * demais de formato pra uma estrutura rígida valer a pena (decisão 17).
+     * Verso: uma página com o desenho do verso e, se o conteúdo programático não couber
+     * na caixa dele, outras páginas iguais com a continuação. Texto livre (não uma grade
+     * rígida) — turmas de brigada variam demais de formato (decisão 17).
      */
-    private drawSyllabusPages(
-        doc: Doc,
-        input: CertificateRenderInput,
-        syllabus: string,
-        images: Map<string, Buffer | null>,
-        width: number,
-        height: number,
-        color: (value: ColorValue) => string | null,
-    ) {
-        const decorate = () => {
-            // O rodapé abaixo é um text() e move o cursor; sem restaurar, o texto que está
-            // quebrando de página continuaria do rodapé — e quebraria página de novo, sem fim.
-            const cursor = { x: doc.x, y: doc.y };
-            this.drawBackground(doc, input.layout, images, width, height);
-            doc.rect(20, 20, width - 40, height - 40).lineWidth(1.5).strokeColor(color('$accent') ?? '#C9A227').stroke();
-            doc.rect(28, 28, width - 56, height - 56).lineWidth(1).strokeColor(color('$primary') ?? '#1B2A4A').stroke();
-            doc.font('Helvetica').fontSize(7).fillColor(color('$muted') ?? '#6C757D').text(
-                `Certificado ${input.verification.code} · valide em ${input.verification.pageUrl}`,
-                40,
-                height - 44,
-                { width: width - 80, height: 10, align: 'center' },
-            );
-            // Este listener roda NO MEIO da quebra de página do texto do conteúdo programático:
-            // fonte e cor são estado do pdfkit e seguiriam no resto do texto. Restaura as dele.
-            doc.font('Helvetica').fontSize(11).fillColor(color('$text') ?? '#212529');
-            doc.x = cursor.x;
-            doc.y = cursor.y;
+    private drawBackPages(page: PageContext, syllabus: string) {
+        const { doc, input, width, height } = page;
+        const back = input.layout.backPage;
+        const box = back.elements.find((element): element is SyllabusElement => element.type === 'syllabus' && !element.hidden);
+        const chunks: Array<SyllabusPageChunk | null> = box && syllabus ? this.paginateSyllabus(doc, box, syllabus) : [null];
+
+        for (const chunk of chunks) {
+            doc.addPage({ size: [width, height], margin: 50 });
+            this.drawPage(page, back.background, back.elements, chunk);
+        }
+    }
+
+    /**
+     * Divide o texto em páginas e colunas medindo com o próprio pdfkit (mesma fonte e
+     * largura do desenho). Com `autoShrink`, tenta caber em uma página diminuindo a
+     * fonte até `minSize` antes de continuar em outra.
+     */
+    private paginateSyllabus(doc: Doc, box: SyllabusElement, text: string): SyllabusPageChunk[] {
+        const sizes: number[] = [];
+        if (box.autoShrink) {
+            for (let size = box.size; size > box.minSize; size -= 0.5) sizes.push(size);
+            sizes.push(Math.min(box.size, box.minSize));
+        } else {
+            sizes.push(box.size);
+        }
+
+        let result: SyllabusPageChunk[] = [];
+        for (const size of sizes) {
+            result = this.splitIntoPages(doc, box, text, size);
+            if (result.length === 1) break;
+        }
+        if (result.length > MAX_SYLLABUS_PAGES) {
+            this.logger.warn(`Conteúdo programático longo demais: cortado em ${MAX_SYLLABUS_PAGES} páginas de verso.`);
+            result = result.slice(0, MAX_SYLLABUS_PAGES);
+        }
+        return result;
+    }
+
+    /** Parágrafo por parágrafo e, quando um parágrafo sozinho não cabe numa coluna, palavra por palavra. */
+    private splitIntoPages(doc: Doc, box: SyllabusElement, text: string, size: number): SyllabusPageChunk[] {
+        useFont(doc, box.font, false, false).fontSize(size);
+        const options = { width: this.syllabusColumnWidth(box), lineGap: box.lineGap, align: box.align };
+        const fits = (candidate: string) => doc.heightOfString(candidate, options) <= box.h + 0.5;
+
+        const columns: string[] = [];
+        const queue = text.replace(/\r\n/g, '\n').split('\n');
+        let current: string[] = [];
+        const closeColumn = () => {
+            columns.push(current.join('\n'));
+            current = [];
         };
 
-        doc.on('pageAdded', decorate);
-        doc.addPage({ size: [width, height], margin: 50 });
+        while (queue.length) {
+            const paragraph = queue.shift()!;
+            // Coluna nova não começa com linha em branco.
+            if (!current.length && !paragraph.trim()) continue;
 
-        doc.font('Helvetica-Bold').fontSize(26).fillColor(color('$accent') ?? '#C9A227')
-            .text(input.layout.syllabusPage.title, 60, 55, { width: width - 120, height: 32, align: 'center' });
-        doc.font('Helvetica').fontSize(12).fillColor(color('$muted') ?? '#6C757D')
-            .text(input.variables['curso.nome'] ?? '', 60, 90, { width: width - 120, height: 16, align: 'center' });
+            if (fits([...current, paragraph].join('\n'))) {
+                current.push(paragraph);
+                continue;
+            }
+            if (current.length) {
+                closeColumn();
+                queue.unshift(paragraph);
+                continue;
+            }
 
-        // Sem `height` de propósito: o texto flui para páginas novas (ver comentário no topo).
-        doc.font('Helvetica').fontSize(11).fillColor(color('$text') ?? '#212529').text(syllabus, 90, 140, {
-            width: width - 180,
-            align: 'left',
-            lineGap: 4,
+            // Parágrafo sozinho maior que a coluna: o máximo de palavras que cabe fica aqui.
+            const words = paragraph.split(' ');
+            let low = 1;
+            let high = words.length - 1;
+            let take = 1;
+            while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                if (fits(words.slice(0, mid).join(' '))) {
+                    take = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            current.push(words.slice(0, take).join(' '));
+            closeColumn();
+            const rest = words.slice(take).join(' ');
+            if (rest) queue.unshift(rest);
+        }
+        if (current.length) closeColumn();
+        if (!columns.length) columns.push('');
+
+        const pages: SyllabusPageChunk[] = [];
+        for (let i = 0; i < columns.length; i += box.columns) {
+            pages.push({ size, columns: columns.slice(i, i + box.columns) });
+        }
+        return pages;
+    }
+
+    private syllabusColumnWidth(box: SyllabusElement) {
+        return Math.max(10, (box.w - box.columnGap * (box.columns - 1)) / box.columns);
+    }
+
+    private drawSyllabusColumns(doc: Doc, box: SyllabusElement, chunk: SyllabusPageChunk, color: (value: ColorValue) => string | null) {
+        useFont(doc, box.font, false, false).fontSize(chunk.size).fillColor(color(box.color) ?? '#212529');
+        const columnWidth = this.syllabusColumnWidth(box);
+        chunk.columns.forEach((columnText, index) => {
+            if (!columnText) return;
+            // Com `height`: o que passar (não deveria — já foi medido) é cortado, nunca abre página sozinho.
+            doc.text(columnText, box.x + index * (columnWidth + box.columnGap), box.y, {
+                width: columnWidth,
+                height: box.h + 1,
+                lineGap: box.lineGap,
+                align: box.align,
+            });
         });
     }
 }

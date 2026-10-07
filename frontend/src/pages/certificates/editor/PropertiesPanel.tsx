@@ -26,7 +26,9 @@ import { ImageUploadButton } from '@/components/media/ImageUploadButton';
 import {
     PAGE_SIZE,
     THEME_COLORS,
+    type BackPage,
     type CertificateLayout,
+    type PageBackground,
     type CertificateVariable,
     type FontFamily,
     type LayoutElement,
@@ -349,6 +351,65 @@ export const ElementProperties = forwardRef<HTMLTextAreaElement, ElementProps>(f
                     </>
                 )}
 
+                {element.type === 'syllabus' && (
+                    <>
+                        <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>
+                            Mostra o conteúdo programático cadastrado na turma. O que não couber na caixa continua numa página seguinte, com o mesmo desenho do verso.
+                        </p>
+                        <Row>
+                            <Field label="Fonte">
+                                <select value={element.font} onChange={(e) => onChange({ font: e.target.value as FontFamily })}>
+                                    {FONT_OPTIONS.map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Tamanho">
+                                <NumberInput value={element.size} min={4} max={72} onCommit={(size) => onChange({ size })} suffix="pt" />
+                            </Field>
+                            <Field label="Colunas">
+                                <Toggles
+                                    ariaLabel="Colunas"
+                                    value={String(element.columns) as '1' | '2' | '3'}
+                                    onChange={(value) => onChange({ columns: Number(value) })}
+                                    options={[
+                                        { value: '1', label: '1', title: 'Uma coluna' },
+                                        { value: '2', label: '2', title: 'Duas colunas' },
+                                        { value: '3', label: '3', title: 'Três colunas' },
+                                    ]}
+                                />
+                            </Field>
+                            <Field label="Espaço entre colunas">
+                                <NumberInput value={element.columnGap} min={0} max={200} onCommit={(columnGap) => onChange({ columnGap })} suffix="pt" />
+                            </Field>
+                            <Field label="Espaço entre linhas">
+                                <NumberInput value={element.lineGap} min={0} max={50} onCommit={(lineGap) => onChange({ lineGap })} suffix="pt" />
+                            </Field>
+                            <Field label="Alinhamento">
+                                <Toggles
+                                    ariaLabel="Alinhamento do conteúdo"
+                                    value={element.align}
+                                    onChange={(align) => onChange({ align })}
+                                    options={[
+                                        { value: 'left', label: <AlignLeft size={14} />, title: 'À esquerda' },
+                                        { value: 'justify', label: <AlignJustify size={14} />, title: 'Justificado' },
+                                    ]}
+                                />
+                            </Field>
+                        </Row>
+                        <Check2>
+                            <input type="checkbox" checked={element.autoShrink} onChange={(e) => onChange({ autoShrink: e.target.checked })} />
+                            Diminuir a fonte para caber numa página só
+                        </Check2>
+                        {element.autoShrink && (
+                            <Field label="Até no mínimo">
+                                <NumberInput value={element.minSize} min={4} max={element.size} onCommit={(minSize) => onChange({ minSize })} suffix="pt" />
+                            </Field>
+                        )}
+                        <ColorField label="Cor" value={element.color} layout={layout} onChange={(color) => onChange({ color: color ?? '#212529' })} />
+                    </>
+                )}
+
                 {element.type === 'ornament' && (
                     <>
                         <Field label="Canto">
@@ -368,59 +429,88 @@ export const ElementProperties = forwardRef<HTMLTextAreaElement, ElementProps>(f
     );
 });
 
+export type EditorSide = 'front' | 'back';
+
 interface PageProps {
     layout: CertificateLayout;
+    side: EditorSide;
     onChange: (change: (layout: CertificateLayout) => CertificateLayout) => void;
 }
 
-export function PageProperties({ layout, onChange }: PageProps) {
-    /** Troca a orientação mantendo cada elemento na mesma posição relativa da página. */
+/** Troca a orientação mantendo cada elemento na mesma posição relativa da página. */
+function reorient(elements: LayoutElement[], from: Orientation, to: Orientation): LayoutElement[] {
+    const a = PAGE_SIZE[from];
+    const b = PAGE_SIZE[to];
+    return elements.map((element) => {
+        const w = Math.min(element.w, b.width);
+        const h = Math.min(element.h, b.height);
+        const cx = ((element.x + element.w / 2) / a.width) * b.width;
+        const cy = ((element.y + element.h / 2) / a.height) * b.height;
+        return { ...element, w, h, x: Math.round((cx - w / 2) * 10) / 10, y: Math.round((cy - h / 2) * 10) / 10 };
+    });
+}
+
+export function PageProperties({ layout, side, onChange }: PageProps) {
+    const background = side === 'front' ? layout.background : layout.backPage.background;
+    const setBackground = (patch: Partial<PageBackground>) =>
+        onChange((l) =>
+            side === 'front'
+                ? { ...l, background: { ...l.background, ...patch } }
+                : { ...l, backPage: { ...l.backPage, background: { ...l.backPage.background, ...patch } } },
+        );
+    const setBack = (patch: Partial<BackPage>) => onChange((l) => ({ ...l, backPage: { ...l.backPage, ...patch } }));
+
     const changeOrientation = (orientation: Orientation) => {
         if (orientation === layout.orientation) return;
-        const from = PAGE_SIZE[layout.orientation];
-        const to = PAGE_SIZE[orientation];
         onChange((current) => ({
             ...current,
             orientation,
-            elements: current.elements.map((element) => {
-                const w = Math.min(element.w, to.width);
-                const h = Math.min(element.h, to.height);
-                const cx = ((element.x + element.w / 2) / from.width) * to.width;
-                const cy = ((element.y + element.h / 2) / from.height) * to.height;
-                return { ...element, w, h, x: Math.round((cx - w / 2) * 10) / 10, y: Math.round((cy - h / 2) * 10) / 10 };
-            }),
+            elements: reorient(current.elements, current.orientation, orientation),
+            backPage: { ...current.backPage, elements: reorient(current.backPage.elements, current.orientation, orientation) },
         }));
     };
 
     return (
         <>
+            {side === 'back' && (
+                <PanelSection>
+                    <h4>Verso</h4>
+                    <Check2>
+                        <input type="checkbox" checked={layout.backPage.enabled} onChange={(e) => setBack({ enabled: e.target.checked })} />
+                        Imprimir o verso
+                    </Check2>
+                    {layout.backPage.enabled && (
+                        <Check2>
+                            <input type="checkbox" checked={layout.backPage.onlyWithSyllabus} onChange={(e) => setBack({ onlyWithSyllabus: e.target.checked })} />
+                            Só quando a turma tiver conteúdo programático
+                        </Check2>
+                    )}
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>
+                        Os textos do verso aceitam as mesmas variáveis da frente — por exemplo {'{{curso.cargaHoraria}}'}. O conteúdo programático vem do cadastro da turma.
+                    </p>
+                </PanelSection>
+            )}
+
             <PanelSection>
-                <h4>Página</h4>
-                <Field label="Orientação">
-                    <Toggles
-                        ariaLabel="Orientação da página"
-                        value={layout.orientation}
-                        onChange={changeOrientation}
-                        options={[
-                            { value: 'landscape', label: 'Deitada', title: 'A4 deitado (paisagem)' },
-                            { value: 'portrait', label: 'Em pé', title: 'A4 em pé (retrato)' },
-                        ]}
-                    />
-                </Field>
-                <ColorField label="Cor de fundo" value={layout.background.color} layout={layout} onChange={(color) => onChange((l) => ({ ...l, background: { ...l.background, color: color ?? '#FFFFFF' } }))} />
+                <h4>{side === 'front' ? 'Página (frente)' : 'Página (verso)'}</h4>
+                {side === 'front' && (
+                    <Field label="Orientação (frente e verso)">
+                        <Toggles
+                            ariaLabel="Orientação da página"
+                            value={layout.orientation}
+                            onChange={changeOrientation}
+                            options={[
+                                { value: 'landscape', label: 'Deitada', title: 'A4 deitado (paisagem)' },
+                                { value: 'portrait', label: 'Em pé', title: 'A4 em pé (retrato)' },
+                            ]}
+                        />
+                    </Field>
+                )}
+                <ColorField label="Cor de fundo" value={background.color} layout={layout} onChange={(color) => setBackground({ color: color ?? '#FFFFFF' })} />
                 <Field label="Arte de fundo (página inteira, PNG ou JPG)">
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
-                        <input
-                            value={layout.background.imageUrl ?? ''}
-                            placeholder="https://..."
-                            onChange={(e) => onChange((l) => ({ ...l, background: { ...l.background, imageUrl: e.target.value || null } }))}
-                        />
-                        <ImageUploadButton
-                            context="organization-branding"
-                            pdfSafe
-                            label="Enviar"
-                            onUploaded={(imageUrl) => onChange((l) => ({ ...l, background: { ...l.background, imageUrl } }))}
-                        />
+                        <input value={background.imageUrl ?? ''} placeholder="https://..." onChange={(e) => setBackground({ imageUrl: e.target.value || null })} />
+                        <ImageUploadButton context="organization-branding" pdfSafe label="Enviar" onUploaded={(imageUrl) => setBackground({ imageUrl })} />
                     </div>
                 </Field>
                 <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>
@@ -430,7 +520,7 @@ export function PageProperties({ layout, onChange }: PageProps) {
 
             <PanelSection>
                 <h4>Cores do tema</h4>
-                <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>Elementos que usam uma cor do tema mudam juntos quando ela muda.</p>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>Valem para a frente e o verso: elementos que usam uma cor do tema mudam juntos.</p>
                 <Row>
                     {THEME_COLORS.map(({ key, label }) => (
                         <Field key={key} label={label}>
@@ -443,27 +533,6 @@ export function PageProperties({ layout, onChange }: PageProps) {
                         </Field>
                     ))}
                 </Row>
-            </PanelSection>
-
-            <PanelSection>
-                <h4>Conteúdo programático</h4>
-                <Check2>
-                    <input
-                        type="checkbox"
-                        checked={layout.syllabusPage.enabled}
-                        onChange={(e) => onChange((l) => ({ ...l, syllabusPage: { ...l.syllabusPage, enabled: e.target.checked } }))}
-                    />
-                    Incluir a 2ª página quando a turma tiver conteúdo programático
-                </Check2>
-                {layout.syllabusPage.enabled && (
-                    <Field label="Título da página">
-                        <input
-                            value={layout.syllabusPage.title}
-                            maxLength={120}
-                            onChange={(e) => onChange((l) => ({ ...l, syllabusPage: { ...l.syllabusPage, title: e.target.value } }))}
-                        />
-                    </Field>
-                )}
             </PanelSection>
         </>
     );

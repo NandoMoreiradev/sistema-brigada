@@ -58,6 +58,7 @@ export const ELEMENT_TYPE_LABEL: Record<LayoutElement['type'], string> = {
     shape: 'Forma',
     seal: 'Selo',
     ornament: 'Ornamento de canto',
+    syllabus: 'Conteúdo programático',
 };
 
 export function elementLabel(element: LayoutElement): string {

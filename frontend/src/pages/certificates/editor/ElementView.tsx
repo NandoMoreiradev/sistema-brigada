@@ -16,6 +16,7 @@ import type {
     SealElement,
     ShapeElement,
     SignatureElement,
+    SyllabusElement,
     TextElement,
 } from '../layout/types';
 import { BASELINE_SHIFT, CSS_FONT, LINE_HEIGHT, effectiveStyle, renderCertificateText, resolveColor } from './layoutUtils';
@@ -30,6 +31,8 @@ export interface RenderContext {
     verification: { url: string; code: string; pageUrl: string };
     /** Miniatura (cartões de modelos): sem os avisos de "imagem não cadastrada" */
     thumbnail?: boolean;
+    /** Ementa de exemplo para o bloco de conteúdo programático do verso */
+    sampleSyllabus?: string;
 }
 
 const MIN_FONT_SIZE = 5;
@@ -305,6 +308,87 @@ function OrnamentView({ element, ctx }: { element: OrnamentElement; ctx: RenderC
     );
 }
 
+/**
+ * Conteúdo programático: o texto de exemplo em colunas. O que não cabe na caixa vai,
+ * no PDF, para outra página de verso igual — aqui só avisa que vai continuar.
+ */
+function SyllabusView({ element, ctx }: { element: SyllabusElement; ctx: RenderContext }) {
+    const { scale } = ctx;
+    const innerRef = useRef<HTMLDivElement>(null);
+    const [overflows, setOverflows] = useState(false);
+    const [size, setSize] = useState(element.size);
+    const text = ctx.sampleSyllabus ?? '';
+
+    useLayoutEffect(() => {
+        const inner = innerRef.current;
+        if (!inner) return;
+        const lineHeight = (s: number) => String(LINE_HEIGHT[element.font] + element.lineGap / s);
+        let next = element.size;
+        const apply = () => {
+            inner.style.fontSize = `${next * scale}px`;
+            inner.style.lineHeight = lineHeight(next);
+        };
+        apply();
+        // Colunas CSS transbordam para a direita (mais colunas), não para baixo.
+        const overflowing = () => inner.scrollWidth > inner.clientWidth + 1 || inner.scrollHeight > inner.clientHeight + 1;
+        if (element.autoShrink) {
+            while (next > element.minSize && overflowing()) {
+                next = Math.max(element.minSize, next - 0.5);
+                apply();
+            }
+        }
+        setSize(next);
+        setOverflows(overflowing());
+    }, [text, element.size, element.minSize, element.autoShrink, element.font, element.lineGap, element.columns, element.columnGap, element.w, element.h, scale]);
+
+    if (!text) {
+        return <div style={placeholderStyle(scale)}>Conteúdo programático da turma</div>;
+    }
+
+    return (
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <div
+                ref={innerRef}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'hidden',
+                    columnCount: element.columns,
+                    columnGap: element.columnGap * scale,
+                    columnFill: 'auto',
+                    fontFamily: CSS_FONT[element.font],
+                    fontSize: size * scale,
+                    lineHeight: LINE_HEIGHT[element.font] + element.lineGap / size,
+                    color: resolveColor(element.color, ctx.layout) ?? '#000',
+                    textAlign: element.align,
+                    whiteSpace: 'pre-wrap',
+                    overflowWrap: 'break-word',
+                    fontSynthesis: 'none',
+                }}
+            >
+                {text}
+            </div>
+            {overflows && !ctx.thumbnail && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        right: 0,
+                        bottom: 0,
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        background: '#2563eb',
+                        color: '#fff',
+                        fontSize: 11,
+                        fontFamily: 'system-ui, sans-serif',
+                    }}
+                >
+                    continua em outra página do verso
+                </div>
+            )}
+        </div>
+    );
+}
+
 export const ElementView = memo(function ElementView({ element, ctx }: { element: LayoutElement; ctx: RenderContext }) {
     switch (element.type) {
         case 'text':
@@ -321,5 +405,7 @@ export const ElementView = memo(function ElementView({ element, ctx }: { element
             return <SealView element={element} ctx={ctx} />;
         case 'ornament':
             return <OrnamentView element={element} ctx={ctx} />;
+        case 'syllabus':
+            return <SyllabusView element={element} ctx={ctx} />;
     }
 });

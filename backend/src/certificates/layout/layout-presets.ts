@@ -6,6 +6,7 @@
 
 import { CertificateLayout, LAYOUT_VERSION, PAGE_SIZE } from './certificate-layout.types';
 import { buildClassicLayout } from './classic-layout';
+import { buildElegantBackPage, buildModernBackPage } from './back-pages';
 
 const { width: W, height: H } = PAGE_SIZE.landscape;
 
@@ -22,7 +23,7 @@ function buildModernLayout(): CertificateLayout {
         orientation: 'landscape',
         theme: { primary: '#0F3D5E', primaryLight: '#1E6091', accent: '#E76F51', accentLight: '#F4A261', text: '#1F2933', muted: '#6B7280' },
         background: { color: '#FFFFFF', imageUrl: null },
-        syllabusPage: { enabled: true, title: 'CONTEÚDO PROGRAMÁTICO' },
+        backPage: buildModernBackPage(),
         elements: [
             { id: 'band', name: 'Faixa lateral', type: 'shape', shape: 'rect', x: 0, y: 0, w: 200, h: H, fill: '$primary', stroke: null, strokeWidth: 0 },
             { id: 'band-accent', name: 'Filete da faixa', type: 'shape', shape: 'rect', x: 200, y: 0, w: 6, h: H, fill: '$accent', stroke: null, strokeWidth: 0 },
@@ -78,7 +79,7 @@ function buildElegantLayout(): CertificateLayout {
         orientation: 'landscape',
         theme: { primary: '#3B2F2F', primaryLight: '#6B4F4F', accent: '#B08D57', accentLight: '#D8C3A5', text: '#2B2B2B', muted: '#7A6F66' },
         background: { color: '#FFFDF7', imageUrl: null },
-        syllabusPage: { enabled: true, title: 'Conteúdo programático' },
+        backPage: buildElegantBackPage(),
         elements: [
             { id: 'frame-outer', name: 'Moldura externa', type: 'shape', shape: 'rect', x: 24, y: 24, w: W - 48, h: H - 48, stroke: '$accent', strokeWidth: 2, fill: null },
             { id: 'frame-inner', name: 'Moldura interna', type: 'shape', shape: 'rect', x: 32, y: 32, w: W - 64, h: H - 64, stroke: '$accent', strokeWidth: 0.75, fill: null },
