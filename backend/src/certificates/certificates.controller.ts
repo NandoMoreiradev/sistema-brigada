@@ -3,6 +3,7 @@ import { CertificatesService } from './certificates.service';
 import { ListCertificatesDto } from './dto/list-certificates.dto';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
+import { RegeneratePdfsDto } from './dto/regenerate-pdfs.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -29,6 +30,19 @@ export class CertificatesController {
     @RequirePermission('certificates:manage')
     findAll(@Query() query: ListCertificatesDto, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.certificatesService.findAll(this.requireOrganizationId(organizationId), query);
+    }
+
+    /** Regera em segundo plano os PDFs (depois de mudar o layout ou a identidade). */
+    @Post('regenerate-pdfs')
+    @RequirePermission('certificates:manage')
+    regeneratePdfs(@Body() dto: RegeneratePdfsDto, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.certificatesService.startBulkRegeneration(this.requireOrganizationId(organizationId), dto);
+    }
+
+    @Get('regenerate-pdfs/status')
+    @RequirePermission('certificates:manage')
+    regeneratePdfsStatus(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.certificatesService.getBulkRegenerationStatus(this.requireOrganizationId(organizationId));
     }
 
     @Get(':id')

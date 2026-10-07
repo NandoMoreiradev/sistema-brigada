@@ -34,6 +34,8 @@ export interface CreateCourseInput {
     certificateTitle?: string;
     /** Carga horária em horas, impressa no certificado. */
     workloadHours?: number;
+    /** Modelo de certificado da turma; vazio = o padrão da academia. */
+    certificateDesignId?: string;
     /** Sala pré-selecionada ao agendar uma aula nova desta turma. */
     defaultRoomId?: string;
     instructorUserIds?: string[];

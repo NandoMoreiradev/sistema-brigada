@@ -82,7 +82,8 @@ export function Router() {
             </Route>
             <Route element={<PermissionRoute permission="certificates:manage" />}>
                 <Route path="/certificates" element={<Certificates />} />
-                <Route path="/certificates/editor" element={<CertificateEditorPage />} />
+                <Route path="/certificates/designs/:designId" element={<CertificateEditorPage />} />
+                <Route path="/certificates/editor" element={<Navigate to="/certificates" replace />} />
             </Route>
             <Route element={<PermissionRoute permission="registrations:manage" />}>
                 <Route path="/registrations" element={<Registrations />} />

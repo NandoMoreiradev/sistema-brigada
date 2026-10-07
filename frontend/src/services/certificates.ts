@@ -34,17 +34,34 @@ export interface CertificateTemplate {
     logoUrl: string | null;
     signatureName: string | null;
     signatureImageUrl: string | null;
-    /** Layout efetivo: o salvo, ou o "Clássico" quando a academia nunca salvou um */
-    layout: CertificateLayout;
-    isDefaultLayout: boolean;
+    /** Modelo padrão da academia; null = nenhum salvo, vale o Clássico embutido */
+    defaultDesignId: string | null;
 }
 
 export interface CertificateTemplateInput {
     logoUrl?: string | null;
     signatureName?: string | null;
     signatureImageUrl?: string | null;
-    /** `null` volta para o layout Clássico */
-    layoutConfig?: CertificateLayout | null;
+}
+
+/** Modelo de certificado da academia (vários; um é o padrão; a turma pode escolher outro). */
+export interface CertificateDesign {
+    id: string;
+    name: string;
+    isDefault: boolean;
+    layout: CertificateLayout;
+    /** Turmas que escolheram este modelo explicitamente */
+    coursesCount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface BulkRegenerationStatus {
+    total: number;
+    done: number;
+    failed: number;
+    startedAt: string;
+    finishedAt: string | null;
 }
 
 /** Resposta da validação pública (`/validar/:code`). */
@@ -82,6 +99,14 @@ export const certificatesApi = {
     revoke: async (id: string, reason: string) => {
         const { data } = await api.post<Certificate>(`/certificates/${id}/revoke`, { reason });
         return data;
+    },
+    regenerateAll: async (scope: { courseId?: string; designId?: string }) => {
+        const { data } = await api.post<BulkRegenerationStatus>('/certificates/regenerate-pdfs', scope);
+        return data;
+    },
+    regenerationStatus: async () => {
+        const { data } = await api.get<BulkRegenerationStatus | null>('/certificates/regenerate-pdfs/status');
+        return data || null;
     },
     reinstate: async (id: string) => {
         const { data } = await api.post<Certificate>(`/certificates/${id}/reinstate`);
@@ -177,7 +202,7 @@ export const certificateTemplateApi = {
         return data;
     },
     /** PDF de exemplo (Blob) com valores ainda não salvos; o que não for enviado usa o salvo. */
-    preview: async (input: Omit<CertificateTemplateInput, 'layoutConfig'> & { layout?: CertificateLayout; courseId?: string }) => {
+    preview: async (input: CertificateTemplateInput & { layout?: CertificateLayout; designId?: string; courseId?: string }) => {
         const { data } = await api.post<Blob>('/certificate-templates/preview', input, { responseType: 'blob' });
         return data;
     },
@@ -188,5 +213,31 @@ export const certificateTemplateApi = {
     presets: async () => {
         const { data } = await api.get<LayoutPreset[]>('/certificate-templates/presets');
         return data;
+    },
+};
+
+export const certificateDesignsApi = {
+    list: async () => {
+        const { data } = await api.get<CertificateDesign[]>('/certificate-designs');
+        return data;
+    },
+    get: async (id: string) => {
+        const { data } = await api.get<CertificateDesign>(`/certificate-designs/${id}`);
+        return data;
+    },
+    create: async (input: { name: string; presetId?: string; duplicateFromId?: string; layout?: CertificateLayout }) => {
+        const { data } = await api.post<CertificateDesign>('/certificate-designs', input);
+        return data;
+    },
+    update: async (id: string, input: { name?: string; layout?: CertificateLayout }) => {
+        const { data } = await api.put<CertificateDesign>(`/certificate-designs/${id}`, input);
+        return data;
+    },
+    setDefault: async (id: string) => {
+        const { data } = await api.post<CertificateDesign[]>(`/certificate-designs/${id}/default`);
+        return data;
+    },
+    remove: async (id: string) => {
+        await api.delete(`/certificate-designs/${id}`);
     },
 };

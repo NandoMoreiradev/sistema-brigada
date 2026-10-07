@@ -29,43 +29,43 @@ function buildModernLayout(): CertificateLayout {
             { id: 'logo', name: 'Logo', type: 'image', source: 'logo', url: null, fit: 'contain', x: 40, y: 50, w: 120, h: 120 },
             {
                 id: 'organization', name: 'Nome da academia', type: 'text', x: 20, y: 185, w: 160, h: 44,
-                content: '{{academia.nome}}', font: 'Helvetica', size: 11, bold: true, italic: false, color: '#FFFFFF', align: 'center', valign: 'top', uppercase: true, letterSpacing: 1, autoShrink: true,
+                content: '{{academia.nome}}', font: 'Montserrat', size: 11, bold: true, italic: false, color: '#FFFFFF', align: 'center', valign: 'top', uppercase: true, letterSpacing: 1, autoShrink: true,
             },
             {
                 id: 'title', name: 'Título', type: 'text', x: 250, y: 60, w: 540, h: 46,
-                content: 'CERTIFICADO', font: 'Helvetica', size: 40, bold: true, italic: false, color: '$primary', align: 'left', valign: 'top', letterSpacing: 4, autoShrink: true,
+                content: 'CERTIFICADO', font: 'Montserrat', size: 40, bold: true, italic: false, color: '$primary', align: 'left', valign: 'top', letterSpacing: 4, autoShrink: true,
             },
             {
                 id: 'subtitle', name: 'Subtítulo', type: 'text', x: 250, y: 108, w: 540, h: 20,
-                content: 'DE CONCLUSÃO', font: 'Helvetica', size: 13, bold: true, italic: false, color: '$accent', align: 'left', valign: 'top', letterSpacing: 3, autoShrink: true,
+                content: 'DE CONCLUSÃO', font: 'Montserrat', size: 13, bold: true, italic: false, color: '$accent', align: 'left', valign: 'top', letterSpacing: 3, autoShrink: true,
             },
             { id: 'divider', name: 'Divisor', type: 'shape', shape: 'line', x: 250, y: 142, w: 60, h: 0, stroke: '$accent', strokeWidth: 3, fill: null },
             {
                 id: 'intro', name: 'Abertura', type: 'text', x: 250, y: 172, w: 540, h: 18,
-                content: 'Certificamos que', font: 'Helvetica', size: 13, bold: false, italic: false, color: '$muted', align: 'left', valign: 'top', autoShrink: true,
+                content: 'Certificamos que', font: 'Montserrat', size: 13, bold: false, italic: false, color: '$muted', align: 'left', valign: 'top', autoShrink: true,
             },
             {
                 id: 'student-name', name: 'Nome do aluno', type: 'text', x: 250, y: 194, w: 540, h: 44,
-                content: '{{aluno.nome}}', font: 'Helvetica', size: 30, bold: true, italic: false, color: '$text', align: 'left', valign: 'middle', autoShrink: true,
+                content: '{{aluno.nome}}', font: 'Montserrat', size: 30, bold: true, italic: false, color: '$text', align: 'left', valign: 'middle', autoShrink: true,
             },
             {
                 id: 'body', name: 'Texto principal', type: 'text', x: 250, y: 248, w: 540, h: 70,
                 content:
                     'concluiu o curso {{curso.nome}}{{#if curso.cargaHoraria}}, com carga horária de {{curso.cargaHoraria}}{{/if}}, realizado {{curso.periodo}}{{#if curso.local}}, em {{curso.local}}{{/if}}.',
-                font: 'Helvetica', size: 12.5, bold: false, italic: false, color: '$text', align: 'left', valign: 'top', lineGap: 4, autoShrink: true,
+                font: 'Montserrat', size: 12.5, bold: false, italic: false, color: '$text', align: 'left', valign: 'top', lineGap: 4, autoShrink: true,
             },
             {
                 id: 'issue', name: 'Local e data', type: 'text', x: 250, y: 330, w: 540, h: 30,
                 content: '{{academia.nome}}, {{certificado.emissaoExtenso}}.{{#if certificado.validade}} Válido até {{certificado.validade}}.{{/if}}',
-                font: 'Helvetica', size: 10, bold: false, italic: false, color: '$muted', align: 'left', valign: 'top', autoShrink: true,
+                font: 'Montserrat', size: 10, bold: false, italic: false, color: '$muted', align: 'left', valign: 'top', autoShrink: true,
             },
             {
                 id: 'signature-academy', name: 'Assinatura da academia', type: 'signature', source: 'template', x: 250, y: H - 160, w: 210, h: 84,
-                role: 'Direção', lineColor: '$primary', nameColor: '$text', roleColor: '$muted',
+                role: 'Direção', lineColor: '$primary', nameColor: '$text', roleColor: '$muted', font: 'Montserrat',
             },
             {
                 id: 'signature-student', name: 'Assinatura do aluno', type: 'signature', source: 'student', x: 480, y: H - 160, w: 170, h: 84,
-                role: 'Aluno(a)', lineColor: '$primary', nameColor: '$text', roleColor: '$muted',
+                role: 'Aluno(a)', lineColor: '$primary', nameColor: '$text', roleColor: '$muted', font: 'Montserrat',
             },
             { id: 'qrcode', name: 'QR de validação', type: 'qrcode', x: W - 175, y: H - 175, w: 130, h: 124, showCode: true, color: '#000000', labelColor: '$muted' },
         ],
@@ -84,39 +84,39 @@ function buildElegantLayout(): CertificateLayout {
             { id: 'frame-inner', name: 'Moldura interna', type: 'shape', shape: 'rect', x: 32, y: 32, w: W - 64, h: H - 64, stroke: '$accent', strokeWidth: 0.75, fill: null },
             {
                 id: 'organization', name: 'Nome da academia', type: 'text', x: 100, y: 62, w: W - 200, h: 18,
-                content: '{{academia.nome}}', font: 'Times', size: 12, bold: false, italic: false, color: '$muted', align: 'center', valign: 'top', uppercase: true, letterSpacing: 3, autoShrink: true,
+                content: '{{academia.nome}}', font: 'Lora', size: 12, bold: false, italic: false, color: '$muted', align: 'center', valign: 'top', uppercase: true, letterSpacing: 3, autoShrink: true,
             },
             {
                 id: 'title', name: 'Título', type: 'text', x: 100, y: 88, w: W - 200, h: 60,
-                content: 'Certificado', font: 'Times', size: 46, bold: true, italic: true, color: '$primary', align: 'center', valign: 'middle', autoShrink: true,
+                content: 'Certificado', font: 'PlayfairDisplay', size: 46, bold: true, italic: true, color: '$primary', align: 'center', valign: 'middle', autoShrink: true,
             },
             { id: 'divider', name: 'Divisor', type: 'shape', shape: 'line', x: W / 2 - 60, y: 158, w: 120, h: 0, stroke: '$accent', strokeWidth: 1, fill: null },
             {
                 id: 'intro', name: 'Abertura', type: 'text', x: 100, y: 176, w: W - 200, h: 20,
-                content: 'Certificamos que', font: 'Times', size: 14, bold: false, italic: true, color: '$text', align: 'center', valign: 'top', autoShrink: true,
+                content: 'Certificamos que', font: 'Lora', size: 14, bold: false, italic: true, color: '$text', align: 'center', valign: 'top', autoShrink: true,
             },
             {
                 id: 'student-name', name: 'Nome do aluno', type: 'text', x: 100, y: 200, w: W - 200, h: 44,
-                content: '{{aluno.nome}}', font: 'Times', size: 30, bold: true, italic: false, color: '$primary', align: 'center', valign: 'middle', autoShrink: true,
+                content: '{{aluno.nome}}', font: 'PlayfairDisplay', size: 30, bold: true, italic: false, color: '$primary', align: 'center', valign: 'middle', autoShrink: true,
             },
             {
                 id: 'body', name: 'Texto principal', type: 'text', x: 110, y: 254, w: W - 220, h: 64,
                 content:
                     'por haver concluído com êxito o curso de {{curso.nome}}{{#if curso.cargaHoraria}}, com carga horária de {{curso.cargaHoraria}}{{/if}}, realizado {{curso.periodo}}.',
-                font: 'Times', size: 14, bold: false, italic: false, color: '$text', align: 'center', valign: 'top', lineGap: 4, autoShrink: true,
+                font: 'Lora', size: 14, bold: false, italic: false, color: '$text', align: 'center', valign: 'top', lineGap: 4, autoShrink: true,
             },
             {
                 id: 'issue', name: 'Local e data', type: 'text', x: 100, y: 326, w: W - 200, h: 18,
                 content: '{{#if curso.local}}{{curso.local}}, {{/if}}{{certificado.emissaoExtenso}}{{#if certificado.validade}} · válido até {{certificado.validade}}{{/if}}',
-                font: 'Times', size: 12, bold: false, italic: true, color: '$muted', align: 'center', valign: 'top', autoShrink: true,
+                font: 'Lora', size: 12, bold: false, italic: true, color: '$muted', align: 'center', valign: 'top', autoShrink: true,
             },
             {
                 id: 'signature-academy', name: 'Assinatura da academia', type: 'signature', source: 'template', x: 110, y: H - 215, w: 220, h: 84,
-                role: 'Direção', lineColor: '$accent', nameColor: '$text', roleColor: '$muted', font: 'Times',
+                role: 'Direção', lineColor: '$accent', nameColor: '$text', roleColor: '$muted', font: 'Lora',
             },
             {
                 id: 'signature-student', name: 'Assinatura do aluno', type: 'signature', source: 'student', x: W - 330, y: H - 215, w: 220, h: 84,
-                role: 'Aluno(a)', lineColor: '$accent', nameColor: '$text', roleColor: '$muted', font: 'Times',
+                role: 'Aluno(a)', lineColor: '$accent', nameColor: '$text', roleColor: '$muted', font: 'Lora',
             },
             { id: 'seal', name: 'Selo', type: 'seal', x: W / 2 - 40, y: H - 220, w: 80, h: 108, color: '$primary', ringColor: '$accent', ribbonColor: '$accent', showRibbon: true, content: 'logo' },
             { id: 'qrcode', name: 'QR de validação', type: 'qrcode', x: W - 150, y: 46, w: 100, h: 104, showCode: true, color: '$primary', labelColor: '$muted' },
@@ -127,7 +127,7 @@ function buildElegantLayout(): CertificateLayout {
 export function getLayoutPresets(): LayoutPreset[] {
     return [
         { id: 'classic', name: 'Clássico', description: 'Selo com fita, faixa com o nome do curso e moldura dupla.', layout: buildClassicLayout() },
-        { id: 'modern', name: 'Moderno', description: 'Faixa lateral com a logo, título grande alinhado à esquerda.', layout: buildModernLayout() },
-        { id: 'elegant', name: 'Elegante', description: 'Fonte serifada, moldura fina e selo centralizado.', layout: buildElegantLayout() },
+        { id: 'modern', name: 'Moderno', description: 'Faixa lateral com a logo, título grande em Montserrat.', layout: buildModernLayout() },
+        { id: 'elegant', name: 'Elegante', description: 'Playfair Display e Lora, moldura fina e selo centralizado.', layout: buildElegantLayout() },
     ];
 }

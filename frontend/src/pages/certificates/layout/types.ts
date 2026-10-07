@@ -26,7 +26,8 @@ export const THEME_COLORS = [
 export type ThemeColorKey = (typeof THEME_COLORS)[number]['key'];
 export type LayoutTheme = Record<ThemeColorKey, string>;
 
-export type FontFamily = 'Helvetica' | 'Times' | 'Courier';
+/** Ids do catálogo de fontes (backend: layout/certificate-fonts.ts; frontend: editor/fonts.ts) */
+export type FontFamily = 'Helvetica' | 'Times' | 'Courier' | 'Montserrat' | 'OpenSans' | 'Lora' | 'PlayfairDisplay' | 'RobotoSlab' | 'GreatVibes';
 
 interface BaseElement {
     id: string;

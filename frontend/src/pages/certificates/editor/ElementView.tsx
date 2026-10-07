@@ -18,7 +18,7 @@ import type {
     SignatureElement,
     TextElement,
 } from '../layout/types';
-import { BASELINE_SHIFT, CSS_FONT, LINE_HEIGHT, renderCertificateText, resolveColor } from './layoutUtils';
+import { BASELINE_SHIFT, CSS_FONT, LINE_HEIGHT, effectiveStyle, renderCertificateText, resolveColor } from './layoutUtils';
 
 export interface RenderContext {
     layout: CertificateLayout;
@@ -56,6 +56,7 @@ function TextView({ element, ctx }: { element: TextElement; ctx: RenderContext }
     const boxRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
     const [size, setSize] = useState(element.size);
+    const style = effectiveStyle(element.font, element.bold, element.italic);
 
     // Mesmo "autoShrink" do PDF: diminui de 0,5 em 0,5 até o texto caber na caixa.
     useLayoutEffect(() => {
@@ -100,8 +101,9 @@ function TextView({ element, ctx }: { element: TextElement; ctx: RenderContext }
                     fontFamily: CSS_FONT[element.font],
                     fontSize: size * scale,
                     lineHeight: LINE_HEIGHT[element.font] + (element.lineGap ?? 0) / size,
-                    fontWeight: element.bold ? 700 : 400,
-                    fontStyle: element.italic ? 'italic' : 'normal',
+                    fontWeight: style.bold ? 700 : 400,
+                    fontStyle: style.italic ? 'italic' : 'normal',
+                    fontSynthesis: 'none',
                     color: resolveColor(element.color, ctx.layout) ?? '#000',
                     textAlign: element.align,
                     letterSpacing: (element.letterSpacing ?? 0) * scale,
@@ -157,7 +159,8 @@ function SignatureView({ element, ctx }: { element: SignatureElement; ctx: Rende
         fontFamily: font,
         fontSize: size * scale,
         lineHeight: 1.15,
-        fontWeight: bold ? 700 : 400,
+        fontWeight: bold && effectiveStyle(element.font ?? 'Helvetica', true, false).bold ? 700 : 400,
+        fontSynthesis: 'none',
         color: color ?? '#000',
         textAlign: 'center',
         whiteSpace: 'nowrap',

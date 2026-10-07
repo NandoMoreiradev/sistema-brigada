@@ -1,13 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CertificateTemplate, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertCertificateTemplateDto } from './dto/upsert-certificate-template.dto';
 import { PreviewCertificateDto } from './dto/preview-certificate.dto';
 import { CertificatePdfService } from './certificate-pdf.service';
-import { CertificateLayout } from './layout/certificate-layout.types';
-import { LayoutValidationError, parseCertificateLayout } from './layout/certificate-layout.validation';
-import { buildClassicLayout } from './layout/classic-layout';
+import { CertificateDesignsService } from './certificate-designs.service';
 import { CERTIFICATE_VARIABLES } from './layout/certificate-layout-variables';
 import { getLayoutPresets } from './layout/layout-presets';
 import { CertificateRenderSource, buildRenderInput } from './layout/certificate-render-input';
@@ -16,11 +13,10 @@ const PREVIEW_CODE = 'AB3K9X2MQ7TD';
 
 @Injectable()
 export class CertificateTemplatesService {
-    private readonly logger = new Logger(CertificateTemplatesService.name);
-
     constructor(
         private readonly prisma: PrismaService,
         private readonly pdfService: CertificatePdfService,
+        private readonly designsService: CertificateDesignsService,
         private readonly configService: ConfigService,
     ) {}
 
@@ -28,11 +24,12 @@ export class CertificateTemplatesService {
         return this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
     }
 
-    /** Personalização + layout efetivo (o salvo, ou o Clássico quando não há). */
+    /** Identidade da academia usada pelos certificados (logo, assinatura) — o layout fica nos modelos (CertificateDesign). */
     async findOne(organizationId: string) {
-        const [template, organization] = await Promise.all([
+        const [template, organization, defaultDesign] = await Promise.all([
             this.prisma.certificateTemplate.findUnique({ where: { organizationId } }),
             this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+            this.prisma.certificateDesign.findFirst({ where: { organizationId, isDefault: true }, select: { id: true } }),
         ]);
         return {
             organizationId,
@@ -41,45 +38,17 @@ export class CertificateTemplatesService {
             logoUrl: template?.logoUrl ?? null,
             signatureName: template?.signatureName ?? null,
             signatureImageUrl: template?.signatureImageUrl ?? null,
-            layout: this.resolveLayout(template),
-            isDefaultLayout: !template?.layoutConfig,
+            defaultDesignId: defaultDesign?.id ?? null,
         };
     }
 
     async upsert(organizationId: string, dto: UpsertCertificateTemplateDto) {
-        const { layoutConfig, ...fields } = dto;
-        // `null` volta para o Clássico; ausente mantém o que estiver salvo.
-        const layout =
-            layoutConfig === undefined ? undefined : layoutConfig === null ? Prisma.DbNull : (this.parseLayout(layoutConfig) as unknown as Prisma.InputJsonValue);
-
         await this.prisma.certificateTemplate.upsert({
             where: { organizationId },
-            create: { organizationId, ...fields, layoutConfig: layout },
-            update: { ...fields, layoutConfig: layout },
+            create: { organizationId, ...dto },
+            update: dto,
         });
         return this.findOne(organizationId);
-    }
-
-    /** Layout salvo, validado de novo na leitura: se algo inválido chegou ao banco, cai no Clássico em vez de quebrar a emissão. */
-    resolveLayout(template: Pick<CertificateTemplate, 'organizationId' | 'layoutConfig'> | null): CertificateLayout {
-        if (!template?.layoutConfig) return buildClassicLayout();
-        try {
-            return parseCertificateLayout(template.layoutConfig);
-        } catch (error) {
-            this.logger.warn(`Layout de certificado inválido na academia ${template.organizationId}, usando o Clássico: ${error.message}`);
-            return buildClassicLayout();
-        }
-    }
-
-    private parseLayout(input: unknown): CertificateLayout {
-        try {
-            return parseCertificateLayout(input);
-        } catch (error) {
-            if (error instanceof LayoutValidationError) {
-                throw new BadRequestException(error.problems);
-            }
-            throw error;
-        }
     }
 
     getVariables() {
@@ -100,7 +69,7 @@ export class CertificateTemplatesService {
             this.prisma.certificateTemplate.findUnique({ where: { organizationId } }),
             this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } }),
         ]);
-        const layout = dto.layout ? this.parseLayout(dto.layout) : this.resolveLayout(template);
+        const layout = await this.previewLayout(organizationId, dto);
         const brand = {
             logoUrl: dto.logoUrl !== undefined ? dto.logoUrl : template?.logoUrl,
             signatureName: dto.signatureName !== undefined ? dto.signatureName : template?.signatureName,
@@ -109,6 +78,16 @@ export class CertificateTemplatesService {
 
         const source = dto.courseId ? await this.previewSourceFromCourse(organizationId, dto.courseId, organization.name) : this.sampleSource(organization.name);
         return this.pdfService.generate(buildRenderInput(source, layout, brand, this.frontendUrl));
+    }
+
+    /** O layout enviado (não salvo) → o modelo escolhido → o modelo da turma → o padrão. */
+    private async previewLayout(organizationId: string, dto: PreviewCertificateDto) {
+        if (dto.layout) return this.designsService.parseLayout(dto.layout);
+        if (dto.designId) return (await this.designsService.findOne(dto.designId, organizationId)).layout;
+        const course = dto.courseId
+            ? await this.prisma.course.findFirst({ where: { id: dto.courseId, organizationId }, select: { certificateDesignId: true } })
+            : null;
+        return (await this.designsService.resolveLayout(organizationId, course?.certificateDesignId)).layout;
     }
 
     private sampleSource(organizationName: string): CertificateRenderSource {
