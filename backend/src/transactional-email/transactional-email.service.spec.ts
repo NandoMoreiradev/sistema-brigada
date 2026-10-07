@@ -52,6 +52,20 @@ describe('TransactionalEmailService — templates padrão renderizam completos',
     const person = { name: 'Ana Souza', email: 'ana@x.com' };
     const course = { name: 'Brigada Turma 1', startDate: '15/03/2026', location: 'Sede', link: 'https://app/courses/1' };
     const event = { name: 'Simulado', date: '15/03/2026 08:00', location: 'Pátio', link: 'https://app/events/1' };
+    const reminder = {
+        student: person,
+        organizationId: 'o1',
+        organizationName: 'JB',
+        courseName: 'Brigada Turma 1',
+        certificate: {
+            expiresAt: '15/03/2026',
+            daysLeft: '30',
+            code: 'AB3K-9X2M-Q7TD',
+            link: 'https://app/my-certificates#c1',
+            verifyLink: 'https://app/validar/AB3K9X2MQ7TD',
+        },
+        recycling: { courseName: 'Reciclagem Brigada — Abril', startDate: '10/04/2026' },
+    };
 
     const senders: Record<string, (s: TransactionalEmailService) => Promise<unknown>> = {
         ORGANIZATION_ADMIN_WELCOME: (s) => s.sendOrganizationAdminWelcomeEmail({ ...person, organizationId: 'o1' }, 'JB', LINK),
@@ -60,7 +74,8 @@ describe('TransactionalEmailService — templates padrão renderizam completos',
         REGISTRATION_APPROVED: (s) => s.sendRegistrationApprovedEmail(person, 'o1', 'JB', LINK),
         REGISTRATION_REJECTED: (s) => s.sendRegistrationRejectedEmail(person, 'o1', 'JB', 'Documentação incompleta'),
         REGISTRATION_INVITE: (s) => s.sendRegistrationInviteEmail(person, 'o1', 'JB', 'Aluno', 'https://app/convite/t'),
-        CERTIFICATE_EXPIRING: (s) => s.sendCertificateExpiringEmail(person, 'o1', 'JB', 'Brigada Turma 1', '15/03/2026', 'https://app/my-certificates#c1'),
+        CERTIFICATE_EXPIRING: (s) => s.sendCertificateReminderEmail({ ...reminder, expired: false }),
+        CERTIFICATE_EXPIRED: (s) => s.sendCertificateReminderEmail({ ...reminder, expired: true, recycling: null }),
         CERTIFICATE_ISSUED: (s) => s.sendCertificateIssuedEmail(person, 'o1', 'JB', 'Brigada Turma 1', 'https://app/my-certificates'),
         ENROLLMENT_CONFIRMED: (s) => s.sendEnrollmentConfirmedEmail(person, 'o1', 'JB', course),
         DESIGNATION_ASSIGNED: (s) => s.sendDesignationAssignedEmail(person, 'o1', 'JB', event, 'Brigadista'),

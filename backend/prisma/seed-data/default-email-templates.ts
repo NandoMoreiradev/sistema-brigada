@@ -99,13 +99,29 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultEmailTemplate[] = [
     {
         name: 'Padrão — Certificado vencendo',
         trigger: EmailTriggerType.CERTIFICATE_EXPIRING,
-        subject: 'Seu certificado está vencendo',
+        subject: 'Seu certificado vence em {{certificate.expiresAt}}',
         body: `
             <p>Olá, {{user.name | firstname}}.</p>
-            <p>Seu certificado da turma <strong>{{course.name}}</strong> vence em {{certificate.expiresAt}}. Verifique se é preciso fazer a reciclagem.</p>
+            <p>Seu certificado da turma <strong>{{course.name}}</strong> vence em <strong>{{certificate.expiresAt}}</strong> (faltam {{certificate.daysLeft}} dias). Para continuar habilitado(a), faça a reciclagem antes dessa data.</p>
+            {{#if recycling.courseName}}<p>Próxima turma de reciclagem: <strong>{{recycling.courseName}}</strong>, com início em {{recycling.startDate}}. Fale com a {{organization_name}} para garantir sua vaga.</p>{{/if}}
             <p style="text-align: center; margin: 24px 0;">
                 <a href="{{certificate.link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Ver meus certificados</a>
             </p>
+            <p style="font-size: 12px; color: #6c757d;">Código do certificado: {{certificate.code}}</p>
+        `.trim(),
+    },
+    {
+        name: 'Padrão — Certificado vencido',
+        trigger: EmailTriggerType.CERTIFICATE_EXPIRED,
+        subject: 'Seu certificado de {{course.name}} venceu',
+        body: `
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>Seu certificado da turma <strong>{{course.name}}</strong> venceu em <strong>{{certificate.expiresAt}}</strong> e não comprova mais a sua habilitação. Para regularizar, é preciso fazer a reciclagem.</p>
+            {{#if recycling.courseName}}<p>Próxima turma de reciclagem: <strong>{{recycling.courseName}}</strong>, com início em {{recycling.startDate}}.</p>{{/if}}
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{certificate.link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Ver meus certificados</a>
+            </p>
+            <p>Fale com a {{organization_name}} para saber das próximas turmas.</p>
         `.trim(),
     },
     {

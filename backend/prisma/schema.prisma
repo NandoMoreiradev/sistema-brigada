@@ -46,21 +46,22 @@ model Organization {
   updatedAt                          DateTime  @updatedAt
   deletedAt                          DateTime?
 
-  parentOrganization   Organization?            @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
-  childOrganizations   Organization[]           @relation("OrgHierarchy")
-  users                User[]
-  roleAssignments      RoleAssignment[]
-  userAccess           UserOrganizationAccess[]
-  courses              Course[]
-  events               Event[]
-  rooms                Room[]
-  instructorTeams      InstructorTeam[]
-  scheduleTemplates    ScheduleTemplate[]
-  certificateTemplate  CertificateTemplate?
-  emailTemplates       EmailTemplate[]
-  communications       Communication[]
-  registrationRequests RegistrationRequest[]
-  registrationInvites  RegistrationInvite[]
+  parentOrganization          Organization?                @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id])
+  childOrganizations          Organization[]               @relation("OrgHierarchy")
+  users                       User[]
+  roleAssignments             RoleAssignment[]
+  userAccess                  UserOrganizationAccess[]
+  courses                     Course[]
+  events                      Event[]
+  rooms                       Room[]
+  instructorTeams             InstructorTeam[]
+  scheduleTemplates           ScheduleTemplate[]
+  certificateTemplate         CertificateTemplate?
+  certificateReminderSettings CertificateReminderSettings?
+  emailTemplates              EmailTemplate[]
+  communications              Communication[]
+  registrationRequests        RegistrationRequest[]
+  registrationInvites         RegistrationInvite[]
 
   @@index([parentOrganizationId])
 }
@@ -978,12 +979,76 @@ model Certificate {
   revokedReason             String?
   revokedByUserId           String?
 
-  enrollment               Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  recycledFromCertificate  Certificate?  @relation("Recycling", fields: [recycledFromCertificateId], references: [id])
-  recycledIntoCertificates Certificate[] @relation("Recycling")
+  enrollment               Enrollment            @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  recycledFromCertificate  Certificate?          @relation("Recycling", fields: [recycledFromCertificateId], references: [id])
+  recycledIntoCertificates Certificate[]         @relation("Recycling")
+  reminders                CertificateReminder[]
 
   @@index([organizationId])
   @@index([expiresAt])
+}
+
+enum CertificateReminderDigestFrequency {
+  OFF
+  DAILY
+  /// Às segundas-feiras
+  WEEKLY
+}
+
+/// Lembretes de vencimento de certificado, configurados por academia (ver
+/// certificate-reminders.service.ts). Academia sem registro usa os defaults abaixo —
+/// que reproduzem o comportamento anterior: um aviso 30 dias antes, às 8h.
+model CertificateReminderSettings {
+  id                         String                             @id @default(cuid())
+  organizationId             String                             @unique
+  enabled                    Boolean                            @default(true)
+  /// Dias antes do vencimento em que o aluno é lembrado (0 = no próprio dia)
+  daysBefore                 Int[]                              @default([30])
+  /// Dias depois do vencimento (e-mail CERTIFICATE_EXPIRED)
+  daysAfter                  Int[]                              @default([])
+  /// Hora do envio, 0–23, no fuso America/Sao_Paulo
+  sendHour                   Int                                @default(8)
+  includeRecyclingSuggestion Boolean                            @default(true)
+  /// Resumo para a gestão: lista de quem vence nos próximos `digestWindowDays` dias
+  digestFrequency            CertificateReminderDigestFrequency @default(OFF)
+  /// Pessoas da academia (User.id) que recebem o resumo
+  digestRecipientUserIds     String[]                           @default([])
+  digestWindowDays           Int                                @default(30)
+  lastDigestSentAt           DateTime?
+  updatedAt                  DateTime                           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum CertificateReminderStatus {
+  /// Em envio (também serve de trava contra duas instâncias enviando o mesmo lembrete)
+  SENDING
+  SENT
+  FAILED
+  /// Não enviado de propósito (ex.: o aluno já tem um certificado mais novo e válido)
+  SKIPPED
+}
+
+/// Um lembrete por certificado e etapa. `stage`: "before:30", "after:7" ou "manual:<timestamp>".
+/// A chave única é o que impede reenvio; FAILED é tentado de novo nas rodadas seguintes.
+model CertificateReminder {
+  id                String                    @id @default(cuid())
+  certificateId     String
+  organizationId    String
+  stage             String
+  status            CertificateReminderStatus
+  attempts          Int                       @default(1)
+  error             String?
+  sentAt            DateTime?
+  /// Preenchido só no envio manual
+  triggeredByUserId String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  certificate Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  @@unique([certificateId, stage])
+  @@index([organizationId])
 }
 
 /// Decisão 21: personalização visual (logo, assinatura) por organização já no MVP
@@ -1048,6 +1113,7 @@ enum EmailTriggerType {
   ORGANIZATION_ADMIN_WELCOME
   PASSWORD_RESET
   CERTIFICATE_EXPIRING
+  CERTIFICATE_EXPIRED
   USER_WELCOME
   CERTIFICATE_ISSUED
   ENROLLMENT_CONFIRMED

@@ -89,8 +89,30 @@ export const MERGE_TAGS: MergeTagGroup[] = [
             {
                 value: '{{certificate.expiresAt}}',
                 label: 'Data de vencimento do certificado',
-                description: 'Usado no e-mail de vencimento de certificado.',
+                description: 'Usado nos e-mails de certificado vencendo e vencido.',
             },
+        ],
+    },
+    {
+        label: 'Lembrete de vencimento',
+        tags: [
+            {
+                value: '{{certificate.daysLeft}}',
+                label: 'Dias até vencer / desde que venceu',
+                description: 'No e-mail de certificado vencendo, quantos dias faltam; no de vencido, há quantos dias venceu.',
+            },
+            { value: '{{certificate.code}}', label: 'Código do certificado', description: 'Código de verificação impresso no PDF.' },
+            {
+                value: '{{certificate.verifyLink}}',
+                label: 'Link de validação',
+                description: 'Página pública que confirma a autenticidade e o status do certificado.',
+            },
+            {
+                value: '{{recycling.courseName}}',
+                label: 'Turma de reciclagem sugerida',
+                description: 'Próxima turma de reciclagem (pode estar vazio — use {{#if recycling.courseName}}...{{/if}}).',
+            },
+            { value: '{{recycling.startDate}}', label: 'Início da reciclagem sugerida', description: 'Data de início da turma de reciclagem sugerida.' },
         ],
     },
 ];

@@ -7,7 +7,7 @@
 // ainda não tem UI dedicada — o fluxo principal é automático.
 
 import { useEffect, useRef, useState } from 'react';
-import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, X } from 'lucide-react';
+import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, X, BellRing } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -26,6 +26,8 @@ import {
     type CertificateStatus,
 } from '@/services/certificates';
 import { ImageUploadButton } from '@/components/media/ImageUploadButton';
+import { ReminderSettingsModal } from '@/pages/certificates/ReminderSettingsModal';
+import { ReminderHistoryModal } from '@/pages/certificates/ReminderHistoryModal';
 import { toast } from '@/utils/toast';
 
 const STATUS_LABEL: Record<CertificateStatus, string> = {
@@ -55,6 +57,8 @@ export default function Certificates() {
     const [templateModalOpen, setTemplateModalOpen] = useState(false);
     const [revoking, setRevoking] = useState<Certificate | null>(null);
     const [revokeReason, setRevokeReason] = useState('');
+    const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false);
+    const [reminderHistoryFor, setReminderHistoryFor] = useState<Certificate | null>(null);
     const queryClient = useQueryClient();
 
     const { data, isLoading } = useQuery({
@@ -158,6 +162,7 @@ export default function Certificates() {
             onSelect: () => window.open(`/validar/${certificate.code}`, '_blank', 'noopener'),
         },
         { label: 'Copiar código', icon: <Copy size={14} />, onSelect: () => copyCode(certificate.code) },
+        { label: 'Lembretes de vencimento', icon: <BellRing size={14} />, onSelect: () => setReminderHistoryFor(certificate) },
         {
             label: 'Regerar PDF',
             icon: <RefreshCw size={14} />,
@@ -191,6 +196,9 @@ export default function Certificates() {
                         <option value="EXPIRED">Vencidos</option>
                         <option value="REVOKED">Revogados</option>
                     </Select>
+                    <Button $variant="secondary" onClick={() => setReminderSettingsOpen(true)} style={{ marginRight: '0.5rem' }}>
+                        <BellRing size={16} /> Lembretes
+                    </Button>
                     <Button $variant="secondary" onClick={() => setTemplateModalOpen(true)}>
                         <Settings size={16} /> Personalizar
                     </Button>
@@ -311,6 +319,9 @@ export default function Certificates() {
                     </Form>
                 )}
             </Modal>
+
+            <ReminderSettingsModal open={reminderSettingsOpen} onOpenChange={setReminderSettingsOpen} />
+            <ReminderHistoryModal certificate={reminderHistoryFor} onClose={() => setReminderHistoryFor(null)} />
 
             <Modal open={!!revoking} onOpenChange={(open) => !open && setRevoking(null)} title="Revogar certificado">
                 {revoking && (

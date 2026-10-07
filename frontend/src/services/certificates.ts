@@ -73,6 +73,79 @@ export const certificatesApi = {
     },
 };
 
+export type DigestFrequency = 'OFF' | 'DAILY' | 'WEEKLY';
+
+export interface ReminderSettingsInput {
+    enabled: boolean;
+    /** Dias antes do vencimento (0 = no dia) */
+    daysBefore: number[];
+    daysAfter: number[];
+    /** 0–23, horário de Brasília */
+    sendHour: number;
+    includeRecyclingSuggestion: boolean;
+    digestFrequency: DigestFrequency;
+    digestRecipientUserIds: string[];
+    digestWindowDays: number;
+}
+
+export interface ReminderSettings extends ReminderSettingsInput {
+    organizationId: string;
+    /** true = a academia nunca salvou; valores padrão */
+    isDefault: boolean;
+}
+
+export interface ReminderPreview {
+    horizonDays: number;
+    total: number;
+    skippedAlreadyRenewed: number;
+    items: Array<{
+        date: string;
+        certificateId: string;
+        studentName: string;
+        courseName: string;
+        expiresAt: string;
+        stage: string;
+        stageLabel: string;
+    }>;
+}
+
+export type ReminderStatus = 'SENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+
+export interface CertificateReminderEntry {
+    id: string;
+    stage: string;
+    stageLabel: string;
+    status: ReminderStatus;
+    attempts: number;
+    error: string | null;
+    sentAt: string | null;
+    triggeredByUserId: string | null;
+    createdAt: string;
+}
+
+export const certificateRemindersApi = {
+    getSettings: async () => {
+        const { data } = await api.get<ReminderSettings>('/certificate-reminders/settings');
+        return data;
+    },
+    saveSettings: async (input: ReminderSettingsInput) => {
+        const { data } = await api.put<ReminderSettings>('/certificate-reminders/settings', input);
+        return data;
+    },
+    preview: async (input: ReminderSettingsInput) => {
+        const { data } = await api.post<ReminderPreview>('/certificate-reminders/preview', input);
+        return data;
+    },
+    listForCertificate: async (certificateId: string) => {
+        const { data } = await api.get<CertificateReminderEntry[]>(`/certificate-reminders/certificates/${certificateId}`);
+        return data;
+    },
+    sendNow: async (certificateId: string) => {
+        const { data } = await api.post<CertificateReminderEntry>(`/certificate-reminders/certificates/${certificateId}/send`);
+        return data;
+    },
+};
+
 export const certificateTemplateApi = {
     get: async () => {
         const { data } = await api.get<CertificateTemplate | null>('/certificate-templates');
