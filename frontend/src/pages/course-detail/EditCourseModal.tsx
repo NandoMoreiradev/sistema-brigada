@@ -42,6 +42,8 @@ interface FormData {
     requireAllLessonsWatched: boolean;
     recommendedRecyclingCourseId: string;
     syllabus: string;
+    certificateTitle: string;
+    workloadHours: string;
 }
 
 const SectionTitle = styled.h3`
@@ -123,6 +125,8 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
             requireAllLessonsWatched: course.requireAllLessonsWatched,
             recommendedRecyclingCourseId: course.recommendedRecyclingCourseId ?? '',
             syllabus: course.syllabus ?? '',
+            certificateTitle: course.certificateTitle ?? '',
+            workloadHours: course.workloadHours ? String(course.workloadHours) : '',
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, course.id]);
@@ -143,6 +147,8 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 recyclingValidityMonths: numberOrNull(input.recyclingValidityMonths),
                 recommendedRecyclingCourseId: emptyToNull(input.recommendedRecyclingCourseId),
                 syllabus: emptyToNull(input.syllabus),
+                certificateTitle: emptyToNull(input.certificateTitle),
+                workloadHours: numberOrNull(input.workloadHours),
             }),
         onSuccess: () => {
             toast.success('Turma atualizada.');
@@ -277,6 +283,11 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 </div>
 
                 <SectionTitle>Certificado</SectionTitle>
+                <Field>
+                    <Label htmlFor="editCertificateTitle">Nome no certificado (opcional)</Label>
+                    <Input id="editCertificateTitle" maxLength={200} placeholder={course.event.title} {...register('certificateTitle')} />
+                    <HelpText>Como o curso aparece no certificado e na validação pública. Vazio = usa o título da turma.</HelpText>
+                </Field>
                 <FieldRow>
                     <Field>
                         <Label htmlFor="editMinAttendancePercent">Presença mínima (%)</Label>
@@ -285,6 +296,10 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                     <Field>
                         <Label htmlFor="editRecyclingValidityMonths">Validade (meses)</Label>
                         <Input id="editRecyclingValidityMonths" type="number" min={1} placeholder="sem vencimento" {...register('recyclingValidityMonths')} />
+                    </Field>
+                    <Field>
+                        <Label htmlFor="editWorkloadHours">Carga horária (horas)</Label>
+                        <Input id="editWorkloadHours" type="number" min={1} max={2000} placeholder="não informar" {...register('workloadHours')} />
                     </Field>
                 </FieldRow>
                 <CheckboxField>

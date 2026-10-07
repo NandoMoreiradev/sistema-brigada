@@ -15,6 +15,7 @@ import {
     Max,
     IsBoolean,
     IsArray,
+    MaxLength,
 } from 'class-validator';
 
 export class CreateCourseDto {
@@ -68,6 +69,19 @@ export class CreateCourseDto {
     @IsString()
     @IsOptional()
     syllabus?: string;
+
+    /** Nome do curso no certificado; vazio = usa o título da turma. `null` limpa. */
+    @IsString()
+    @MaxLength(200)
+    @IsOptional()
+    certificateTitle?: string | null;
+
+    /** Carga horária em horas, impressa no certificado. `null` limpa. */
+    @IsInt()
+    @Min(1)
+    @Max(2000)
+    @IsOptional()
+    workloadHours?: number | null;
 
     /** Sala pré-selecionada ao agendar uma aula nova desta turma. */
     @IsString()
