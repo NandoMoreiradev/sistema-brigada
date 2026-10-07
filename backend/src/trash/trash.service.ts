@@ -289,12 +289,13 @@ export class TrashService {
         switch (entity) {
             case 'courses': {
                 const course = await this.requireDeletedCourse(db as Db, id, organizationId);
-                const [certificates, sessions, modules, lessons, videos, pdfs] = await Promise.all([
+                const [certificates, sessions, modules, lessons, videos, materials, pdfs] = await Promise.all([
                     db.certificate.count({ where: { enrollment: { courseId: id } } }),
                     db.classSession.count({ where: { courseId: id } }),
                     db.courseModule.count({ where: { courseId: id } }),
                     db.courseLesson.count({ where: { module: { courseId: id } } }),
-                    db.courseLesson.findMany({ where: { module: { courseId: id }, videoKey: { not: null } }, select: { videoKey: true } }),
+                    db.courseLessonVideo.findMany({ where: { lesson: { module: { courseId: id } }, storageKey: { not: null } }, select: { storageKey: true } }),
+                    db.courseLessonFile.findMany({ where: { lesson: { module: { courseId: id } }, storageKey: { not: null } }, select: { storageKey: true } }),
                     db.certificate.findMany({ where: { enrollment: { courseId: id }, pdfKey: { not: null } }, select: { pdfKey: true } }),
                 ]);
                 return {
@@ -307,7 +308,9 @@ export class TrashService {
                         { label: 'módulos', count: modules },
                         { label: 'videoaulas e conteúdos', count: lessons },
                     ],
-                    fileKeys: [...videos.map((v) => v.videoKey), ...pdfs.map((p) => p.pdfKey)].filter((k): k is string => !!k),
+                    fileKeys: [...videos.map((v) => v.storageKey), ...materials.map((m) => m.storageKey), ...pdfs.map((p) => p.pdfKey)].filter(
+                        (k): k is string => !!k,
+                    ),
                     // Apagar o Event leva Course, sessões, módulos, matrículas e certificados pelo `onDelete: Cascade`.
                     execute: () => this.prisma.event.delete({ where: hard({ id: course.eventId }) }),
                 };

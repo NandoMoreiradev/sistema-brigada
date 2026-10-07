@@ -16,11 +16,13 @@
 // admin ou de um responsável explícito pelo módulo — módulo "livre" não deixa qualquer
 // instrutor apagar conteúdo.
 
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { CreateCourseLessonDto } from './dto/create-course-lesson.dto';
 import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
+import { CreateCourseLessonFileDto } from './dto/create-course-lesson-file.dto';
+import { UpdateLessonProgressDto } from './dto/update-lesson-progress.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 import { INSTRUCTOR_USER_SELECT } from './course-instructors.util';
@@ -91,18 +93,48 @@ export class CourseLessonsService {
                 moduleId: dto.moduleId,
                 title: dto.title,
                 content: dto.content,
-                videoUrl: dto.videoUrl,
-                videoKey: dto.videoKey,
                 duration: dto.duration,
                 order: dto.order ?? 0,
+                videos: {
+                    create: (dto.videos ?? []).map((video, index) => ({
+                        title: video.title || null,
+                        url: video.url,
+                        storageKey: video.storageKey || null,
+                        order: index,
+                    })),
+                },
             },
+            include: { videos: { orderBy: { order: 'asc' } } },
         });
     }
 
     async update(courseId: string, organizationId: string, lessonId: string, dto: UpdateCourseLessonDto, user: AuthenticatedUser) {
         const lesson = await this.requireLesson(courseId, organizationId, lessonId);
         await this.assertCanEditLessonsInModule(courseId, lesson.moduleId, user);
-        return this.prisma.courseLesson.update({ where: { id: lessonId }, data: dto });
+        const { videos, ...data } = dto;
+
+        return this.prisma.$transaction(async (tx) => {
+            if (videos) {
+                // `videos` é a lista completa: o que não veio sai, o que tem id é atualizado, o resto é criado.
+                const existing = await tx.courseLessonVideo.findMany({ where: { lessonId }, select: { id: true } });
+                const existingIds = new Set(existing.map((v) => v.id));
+                const keptIds = videos.map((v) => v.id).filter((id): id is string => !!id && existingIds.has(id));
+                await tx.courseLessonVideo.deleteMany({ where: { lessonId, id: { notIn: keptIds } } });
+                for (const [index, video] of videos.entries()) {
+                    const fields = { title: video.title || null, url: video.url, storageKey: video.storageKey || null, order: index };
+                    if (video.id && existingIds.has(video.id)) {
+                        await tx.courseLessonVideo.update({ where: { id: video.id }, data: fields });
+                    } else {
+                        await tx.courseLessonVideo.create({ data: { lessonId, ...fields } });
+                    }
+                }
+            }
+            return tx.courseLesson.update({
+                where: { id: lessonId },
+                data,
+                include: { videos: { orderBy: { order: 'asc' } } },
+            });
+        });
     }
 
     async remove(courseId: string, organizationId: string, lessonId: string, user: AuthenticatedUser) {
@@ -117,16 +149,73 @@ export class CourseLessonsService {
         return { id: lessonId };
     }
 
-    async markProgress(courseId: string, organizationId: string, lessonId: string, userId: string, completed: boolean) {
+    /** Anexar material de apoio segue a mesma regra de editar a aula (responsáveis do módulo / instrutores / admin). */
+    async addFile(courseId: string, organizationId: string, lessonId: string, dto: CreateCourseLessonFileDto, user: AuthenticatedUser) {
+        const lesson = await this.requireLesson(courseId, organizationId, lessonId);
+        await this.assertCanEditLessonsInModule(courseId, lesson.moduleId, user);
+        return this.prisma.courseLessonFile.create({
+            data: {
+                lessonId,
+                name: dto.name,
+                storageKey: dto.storageKey,
+                externalUrl: dto.externalUrl,
+                mimeType: dto.mimeType,
+                size: dto.size,
+                uploadedByUserId: user.id,
+            },
+        });
+    }
+
+    async removeFile(courseId: string, organizationId: string, lessonId: string, fileId: string, user: AuthenticatedUser) {
+        const lesson = await this.requireLesson(courseId, organizationId, lessonId);
+        await this.assertCanEditLessonsInModule(courseId, lesson.moduleId, user);
+        const file = await this.prisma.courseLessonFile.findFirst({ where: { id: fileId, lessonId } });
+        if (!file) {
+            throw new NotFoundException(`Arquivo com ID ${fileId} não encontrado nesta aula.`);
+        }
+        await this.prisma.courseLessonFile.delete({ where: { id: fileId } });
+        return { id: fileId };
+    }
+
+    /**
+     * `completed` marca/desmarca a aula à mão (aula só com links externos). `watchedVideoId` registra
+     * que um vídeo enviado tocou até o fim; a aula conclui sozinha quando todos os vídeos enviados
+     * dela foram assistidos.
+     */
+    async markProgress(courseId: string, organizationId: string, lessonId: string, userId: string, dto: UpdateLessonProgressDto) {
         await this.requireLesson(courseId, organizationId, lessonId);
 
-        const progress = await this.prisma.lessonProgress.upsert({
-            where: { userId_lessonId: { userId, lessonId } },
-            create: { userId, lessonId, completed, completedAt: completed ? new Date() : undefined },
-            update: { completed, completedAt: completed ? new Date() : null },
-        });
+        let progress;
+        if (dto.watchedVideoId) {
+            const uploadedVideos = await this.prisma.courseLessonVideo.findMany({
+                where: { lessonId, storageKey: { not: null } },
+                select: { id: true },
+            });
+            if (!uploadedVideos.some((v) => v.id === dto.watchedVideoId)) {
+                throw new NotFoundException(`Vídeo com ID ${dto.watchedVideoId} não encontrado nesta aula.`);
+            }
+            const current = await this.prisma.lessonProgress.findUnique({ where: { userId_lessonId: { userId, lessonId } } });
+            const watchedVideoIds = [...new Set([...(current?.watchedVideoIds ?? []), dto.watchedVideoId])];
+            const allWatched = uploadedVideos.every((v) => watchedVideoIds.includes(v.id));
+            const completed = (current?.completed ?? false) || allWatched;
+            const completedAt = current?.completedAt ?? (completed ? new Date() : null);
+            progress = await this.prisma.lessonProgress.upsert({
+                where: { userId_lessonId: { userId, lessonId } },
+                create: { userId, lessonId, watchedVideoIds, completed, completedAt },
+                update: { watchedVideoIds, completed, completedAt },
+            });
+        } else if (dto.completed !== undefined) {
+            const { completed } = dto;
+            progress = await this.prisma.lessonProgress.upsert({
+                where: { userId_lessonId: { userId, lessonId } },
+                create: { userId, lessonId, completed, completedAt: completed ? new Date() : undefined },
+                update: { completed, completedAt: completed ? new Date() : null },
+            });
+        } else {
+            throw new BadRequestException('Informe completed ou watchedVideoId.');
+        }
 
-        if (completed) {
+        if (progress.completed) {
             const enrollment = await this.prisma.enrollment.findFirst({
                 where: { courseId, studentProfile: { userId } },
                 select: { id: true },

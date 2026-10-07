@@ -32,10 +32,23 @@ const DOCUMENT_TYPES = [
 // audio/webm é o formato padrão do MediaRecorder no Chrome/Firefox; audio/mp4
 // é o do Safari. mpeg/ogg/wav cobrem upload manual de um áudio já gravado.
 const AUDIO_TYPES = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg', 'audio/wav'];
+// Material de apoio de vídeo-aula: além de PDF/Word, apostilas costumam vir em planilha, slides, texto ou zip.
+const LESSON_MATERIAL_TYPES = [
+    ...DOCUMENT_TYPES,
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'text/csv',
+    'application/zip',
+    'application/x-zip-compressed',
+];
 
 const allowedMimeTypes: Record<UploadContext, string[]> = {
     'organization-branding': IMAGE_TYPES,
     'course-lessons': [...VIDEO_TYPES, ...IMAGE_TYPES],
+    'course-lesson-files': [...LESSON_MATERIAL_TYPES, ...IMAGE_TYPES, ...AUDIO_TYPES],
     certificates: ['application/pdf'],
     'external-certifications': [...DOCUMENT_TYPES, ...IMAGE_TYPES],
     'event-files': [...DOCUMENT_TYPES, ...IMAGE_TYPES, ...AUDIO_TYPES],
@@ -50,6 +63,7 @@ const DEFAULT_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
 // Vídeo-aula é o único contexto que plausivelmente excede o padrão de 25MB.
 const maxFileSizeBytesByContext: Partial<Record<UploadContext, number>> = {
     'course-lessons': 500 * 1024 * 1024, // 500MB
+    'course-lesson-files': 100 * 1024 * 1024, // 100MB — apostila/slides com imagem passam fácil de 25MB
 };
 
 @Injectable()

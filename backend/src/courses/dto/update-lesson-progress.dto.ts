@@ -1,6 +1,12 @@
-import { IsBoolean } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class UpdateLessonProgressDto {
     @IsBoolean()
-    completed: boolean;
+    @IsOptional()
+    completed?: boolean;
+
+    /** Vídeo enviado que terminou de tocar: registra e conclui a aula se era o último que faltava. */
+    @IsString()
+    @IsOptional()
+    watchedVideoId?: string;
 }

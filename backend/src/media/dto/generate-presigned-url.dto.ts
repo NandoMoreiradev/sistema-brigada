@@ -9,8 +9,10 @@ import { IsNotEmpty, IsString, IsIn, IsNumber, Min } from 'class-validator';
 const allowedContexts = [
     // Organization.logoUrl / CertificateTemplate.logoUrl e signatureImageUrl
     'organization-branding',
-    // CourseLesson.videoUrl / videoKey (vídeo-aulas)
+    // CourseLessonVideo.url / storageKey (vídeos das vídeo-aulas)
     'course-lessons',
+    // CourseLessonFile.storageKey (material de apoio da vídeo-aula: PDF, slides, planilha...)
+    'course-lesson-files',
     // Certificate.pdfKey
     'certificates',
     // ExternalCertification.proofFileKey

@@ -18,6 +18,7 @@ import { CourseLessonsService } from './course-lessons.service';
 import { CreateCourseLessonDto } from './dto/create-course-lesson.dto';
 import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
 import { UpdateLessonProgressDto } from './dto/update-lesson-progress.dto';
+import { CreateCourseLessonFileDto } from './dto/create-course-lesson-file.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -75,6 +76,30 @@ export class CourseLessonsController {
         return this.courseLessonsService.remove(courseId, this.requireOrganizationId(organizationId), lessonId, user);
     }
 
+    @Post(':lessonId/files')
+    @Roles(...ALL_ORG_ROLES)
+    addFile(
+        @Param('courseId') courseId: string,
+        @Param('lessonId') lessonId: string,
+        @Body() dto: CreateCourseLessonFileDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.courseLessonsService.addFile(courseId, this.requireOrganizationId(organizationId), lessonId, dto, user);
+    }
+
+    @Delete(':lessonId/files/:fileId')
+    @Roles(...ALL_ORG_ROLES)
+    removeFile(
+        @Param('courseId') courseId: string,
+        @Param('lessonId') lessonId: string,
+        @Param('fileId') fileId: string,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.courseLessonsService.removeFile(courseId, this.requireOrganizationId(organizationId), lessonId, fileId, user);
+    }
+
     @Put(':lessonId/progress')
     @Roles(...ALL_ORG_ROLES)
     markProgress(
@@ -89,7 +114,7 @@ export class CourseLessonsController {
             this.requireOrganizationId(organizationId),
             lessonId,
             user.id,
-            dto.completed,
+            dto,
         );
     }
 }

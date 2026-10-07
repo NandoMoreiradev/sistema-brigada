@@ -10,6 +10,7 @@ import { api } from './api';
 export type UploadContext =
     | 'organization-branding'
     | 'course-lessons'
+    | 'course-lesson-files'
     | 'certificates'
     | 'external-certifications'
     | 'event-files'

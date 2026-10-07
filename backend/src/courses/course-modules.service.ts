@@ -31,7 +31,11 @@ export class CourseModulesService {
                 lessons: {
                     where: { active: true },
                     orderBy: { order: 'asc' },
-                    include: { progress: { where: { userId: currentUserId } } },
+                    include: {
+                        progress: { where: { userId: currentUserId } },
+                        videos: { orderBy: { order: 'asc' } },
+                        files: { orderBy: { createdAt: 'asc' } },
+                    },
                 },
             },
             orderBy: { order: 'asc' },
