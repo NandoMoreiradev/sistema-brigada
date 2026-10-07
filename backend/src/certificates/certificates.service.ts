@@ -14,6 +14,8 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException, 
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { CertificatePdfService } from './certificate-pdf.service';
+import { CertificateTemplatesService } from './certificate-templates.service';
+import { buildRenderInput } from './layout/certificate-render-input';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { Prisma, AttendanceStatus, EnrollmentStatus, CertificateStatus } from '@prisma/client';
@@ -47,6 +49,7 @@ export class CertificatesService {
         private readonly prisma: PrismaService,
         private readonly mediaService: MediaService,
         private readonly certificatePdfService: CertificatePdfService,
+        private readonly certificateTemplatesService: CertificateTemplatesService,
         private readonly notificationsService: NotificationsService,
         private readonly transactionalEmailService: TransactionalEmailService,
     ) {}
@@ -393,7 +396,8 @@ export class CertificatesService {
             code: certificate.code,
             status: effectiveStatus(certificate),
             studentName: certificate.enrollment.studentProfile.user.name,
-            courseName: course.event.title,
+            // O mesmo nome impresso no certificado, para quem confere bater com o papel.
+            courseName: course.certificateTitle?.trim() || course.event.title,
             courseCategory: course.category,
             organizationName: course.organization.name,
             issuedAt: certificate.issuedAt,
@@ -407,7 +411,12 @@ export class CertificatesService {
             const certificate = await this.prisma.certificate.findUniqueOrThrow({
                 where: { id: certificateId },
                 include: {
-                    enrollment: { include: { course: { include: { event: true } }, studentProfile: { include: { user: true } } } },
+                    enrollment: {
+                        include: {
+                            course: { include: { event: true, instructors: { include: { user: { select: { name: true } } } } } },
+                            studentProfile: { include: { user: { select: { name: true } } } },
+                        },
+                    },
                 },
             });
 
@@ -416,7 +425,31 @@ export class CertificatesService {
                 this.prisma.organization.findUniqueOrThrow({ where: { id: certificate.organizationId }, select: { name: true } }),
             ]);
 
-            const pdfBuffer = await this.certificatePdfService.generate({ ...certificate, organization }, template);
+            const { course } = certificate.enrollment;
+            const input = buildRenderInput(
+                {
+                    studentName: certificate.enrollment.studentProfile.user.name,
+                    organizationName: organization.name,
+                    course: {
+                        title: course.event.title,
+                        certificateTitle: course.certificateTitle,
+                        category: course.category,
+                        workloadHours: course.workloadHours,
+                        location: course.event.location,
+                        startDate: course.event.startDate,
+                        endDate: course.event.endDate,
+                        syllabus: course.syllabus,
+                        instructorNames: course.instructors.map((instructor) => instructor.user.name),
+                    },
+                    issuedAt: certificate.issuedAt,
+                    expiresAt: certificate.expiresAt,
+                    code: certificate.code,
+                },
+                this.certificateTemplatesService.resolveLayout(template),
+                { logoUrl: template?.logoUrl, signatureName: template?.signatureName, signatureImageUrl: template?.signatureImageUrl },
+                this.certificateTemplatesService.frontendUrl,
+            );
+            const pdfBuffer = await this.certificatePdfService.generate(input);
             const { key } = await this.mediaService.uploadFileFromBuffer(
                 pdfBuffer,
                 `certificado-${certificateId}.pdf`,

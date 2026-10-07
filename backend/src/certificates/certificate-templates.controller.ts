@@ -1,6 +1,7 @@
-import { Controller, Get, Put, Body, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, UseGuards, BadRequestException, StreamableFile, Header, HttpCode } from '@nestjs/common';
 import { CertificateTemplatesService } from './certificate-templates.service';
 import { UpsertCertificateTemplateDto } from './dto/upsert-certificate-template.dto';
+import { PreviewCertificateDto } from './dto/preview-certificate.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -30,5 +31,23 @@ export class CertificateTemplatesController {
     @RequirePermission('certificates:manage')
     upsert(@Body() dto: UpsertCertificateTemplateDto, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.certificateTemplatesService.upsert(this.requireOrganizationId(organizationId), dto);
+    }
+
+    /** Variáveis que os textos do certificado aceitam ({{aluno.nome}}...). */
+    @Get('variables')
+    @RequirePermission('certificates:manage')
+    variables() {
+        return this.certificateTemplatesService.getVariables();
+    }
+
+    /** PDF de exemplo com o layout informado (ainda não salvo) ou o salvo. */
+    @Post('preview')
+    @HttpCode(200)
+    @RequirePermission('certificates:manage')
+    @Header('Content-Type', 'application/pdf')
+    @Header('Content-Disposition', 'inline; filename="certificado-exemplo.pdf"')
+    async preview(@Body() dto: PreviewCertificateDto, @ActiveOrganizationId() organizationId: string | undefined) {
+        const pdf = await this.certificateTemplatesService.preview(this.requireOrganizationId(organizationId), dto);
+        return new StreamableFile(pdf);
     }
 }

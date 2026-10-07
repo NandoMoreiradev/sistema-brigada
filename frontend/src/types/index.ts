@@ -168,6 +168,10 @@ export interface Course {
     recyclingValidityMonths?: number | null;
     recommendedRecyclingCourseId?: string | null;
     syllabus?: string | null;
+    /** Nome do curso no certificado ({{curso.nome}}); vazio = título da turma. */
+    certificateTitle?: string | null;
+    /** Carga horária em horas ({{curso.cargaHoraria}}). */
+    workloadHours?: number | null;
     /** Sala pré-selecionada ao agendar uma aula nova. */
     defaultRoomId?: string | null;
     defaultRoom?: Room | null;

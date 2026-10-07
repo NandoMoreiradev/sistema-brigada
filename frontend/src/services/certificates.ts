@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { Paginated } from '@/types';
+import type { CertificateLayout, CertificateVariable } from '@/pages/certificates/layout/types';
 
 export type CertificateStatus = 'VALID' | 'EXPIRED' | 'REVOKED';
 
@@ -25,6 +26,17 @@ export interface CertificateTemplate {
     logoUrl: string | null;
     signatureName: string | null;
     signatureImageUrl: string | null;
+    /** Layout efetivo: o salvo, ou o "Clássico" quando a academia nunca salvou um */
+    layout: CertificateLayout;
+    isDefaultLayout: boolean;
+}
+
+export interface CertificateTemplateInput {
+    logoUrl?: string | null;
+    signatureName?: string | null;
+    signatureImageUrl?: string | null;
+    /** `null` volta para o layout Clássico */
+    layoutConfig?: CertificateLayout | null;
 }
 
 /** Resposta da validação pública (`/validar/:code`). */
@@ -152,8 +164,17 @@ export const certificateTemplateApi = {
         return data;
     },
     /** `null` apaga o campo; ausente mantém o valor salvo. */
-    upsert: async (input: Partial<Pick<CertificateTemplate, 'logoUrl' | 'signatureName' | 'signatureImageUrl'>>) => {
+    upsert: async (input: CertificateTemplateInput) => {
         const { data } = await api.put<CertificateTemplate>('/certificate-templates', input);
+        return data;
+    },
+    /** PDF de exemplo (Blob) com valores ainda não salvos; o que não for enviado usa o salvo. */
+    preview: async (input: Omit<CertificateTemplateInput, 'layoutConfig'> & { layout?: CertificateLayout; courseId?: string }) => {
+        const { data } = await api.post<Blob>('/certificate-templates/preview', input, { responseType: 'blob' });
+        return data;
+    },
+    variables: async () => {
+        const { data } = await api.get<CertificateVariable[]>('/certificate-templates/variables');
         return data;
     },
 };

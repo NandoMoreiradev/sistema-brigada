@@ -16,7 +16,7 @@ import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { TrashButton } from '@/components/trash/TrashModal';
-import { Field, Label, Input, Select, Textarea, ErrorText, Form, FormActions, FieldRow, CheckboxField } from '@/components/ui/FormField';
+import { Field, Label, Input, Select, Textarea, ErrorText, HelpText, Form, FormActions, FieldRow, CheckboxField } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import { coursesApi, type CreateCourseInput } from '@/services/courses';
 import { peopleApi } from '@/services/people';
@@ -41,6 +41,8 @@ const schema = z.object({
     recyclingValidityMonths: z.string().optional(),
     recommendedRecyclingCourseId: z.string().optional(),
     syllabus: z.string().optional(),
+    certificateTitle: z.string().max(200, 'Use no máximo 200 caracteres').optional(),
+    workloadHours: z.string().optional(),
     instructorUserIds: z.array(z.string()).optional(),
 });
 
@@ -91,6 +93,8 @@ export default function Courses() {
             recyclingValidityMonths: '',
             recommendedRecyclingCourseId: '',
             syllabus: '',
+            certificateTitle: '',
+            workloadHours: '',
             instructorUserIds: [],
         });
         setModalOpen(true);
@@ -123,6 +127,8 @@ export default function Courses() {
             recyclingValidityMonths: formData.recyclingValidityMonths ? Number(formData.recyclingValidityMonths) : undefined,
             recommendedRecyclingCourseId: formData.recommendedRecyclingCourseId || undefined,
             syllabus: formData.syllabus || undefined,
+            certificateTitle: formData.certificateTitle?.trim() || undefined,
+            workloadHours: formData.workloadHours ? Number(formData.workloadHours) : undefined,
             instructorUserIds: formData.instructorUserIds,
         });
     };
@@ -285,7 +291,17 @@ export default function Courses() {
                             <Label htmlFor="recyclingValidityMonths">Validade do certificado (meses, opcional)</Label>
                             <Input id="recyclingValidityMonths" type="number" min={1} placeholder="sem vencimento" {...register('recyclingValidityMonths')} />
                         </Field>
+                        <Field>
+                            <Label htmlFor="workloadHours">Carga horária (horas, opcional)</Label>
+                            <Input id="workloadHours" type="number" min={1} max={2000} placeholder="não informar" {...register('workloadHours')} />
+                        </Field>
                     </FieldRow>
+
+                    <Field>
+                        <Label htmlFor="certificateTitle">Nome no certificado (opcional)</Label>
+                        <Input id="certificateTitle" maxLength={200} placeholder="ex: Formação de Brigada de Incêndio — Nível Intermediário" {...register('certificateTitle')} />
+                        <HelpText>Como o curso aparece no certificado. Vazio = usa o título da turma.</HelpText>
+                    </Field>
 
                     <CheckboxField>
                         <input type="checkbox" {...register('requireAllLessonsWatched')} />

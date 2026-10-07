@@ -6,9 +6,8 @@
 // (`POST /certificates/issue`) existe na API para casos excepcionais, mas
 // ainda não tem UI dedicada — o fluxo principal é automático.
 
-import { useEffect, useRef, useState } from 'react';
-import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, X, BellRing } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useState } from 'react';
+import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, BellRing } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { isAxiosError } from 'axios';
@@ -16,16 +15,15 @@ import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ActionMenu, MoreButton, type MenuEntry } from '@/components/ui/ActionMenu';
-import { Field, Label, Input, Select, Textarea, HelpText, Form, FormActions } from '@/components/ui/FormField';
+import { Field, Label, Select, Textarea, HelpText, Form, FormActions } from '@/components/ui/FormField';
 import { Table, TableWrapper, Thead, Tr, Th, Td, EmptyState, Badge } from '@/components/ui/Table';
 import {
     certificatesApi,
-    certificateTemplateApi,
     formatCertificateCode,
     type Certificate,
     type CertificateStatus,
 } from '@/services/certificates';
-import { ImageUploadButton } from '@/components/media/ImageUploadButton';
+import { TemplateModal } from '@/pages/certificates/TemplateModal';
 import { ReminderSettingsModal } from '@/pages/certificates/ReminderSettingsModal';
 import { ReminderHistoryModal } from '@/pages/certificates/ReminderHistoryModal';
 import { toast } from '@/utils/toast';
@@ -42,13 +40,6 @@ const STATUS_TONE: Record<CertificateStatus, 'success' | 'warning' | 'danger'> =
     REVOKED: 'danger',
 };
 
-const imagePreviewStyle = { maxHeight: 60, border: '1px solid #dee2e6', borderRadius: 6, padding: 4 };
-
-interface TemplateFormData {
-    logoUrl: string;
-    signatureName: string;
-    signatureImageUrl: string;
-}
 
 const errorMessage = (error: unknown, fallback: string) => (isAxiosError(error) && error.response?.data?.message) || fallback;
 
@@ -64,51 +55,6 @@ export default function Certificates() {
     const { data, isLoading } = useQuery({
         queryKey: ['certificates', { status: statusFilter }],
         queryFn: () => certificatesApi.list({ status: statusFilter || undefined }),
-    });
-
-    const { data: template, isSuccess: templateLoaded } = useQuery({
-        queryKey: ['certificate-template'],
-        queryFn: () => certificateTemplateApi.get(),
-        enabled: templateModalOpen,
-    });
-
-    const { register, handleSubmit, reset, watch, setValue } = useForm<TemplateFormData>();
-    const logoUrl = watch('logoUrl');
-    const signatureImageUrl = watch('signatureImageUrl');
-
-    // Preenche o formulário quando o modelo salvo chega — não ao clicar em "Personalizar",
-    // quando a busca ainda nem começou (o modal abria vazio na primeira vez). Uma vez por
-    // abertura, para um refetch em segundo plano não apagar o que está sendo editado.
-    const formFilledRef = useRef(false);
-    useEffect(() => {
-        if (!templateModalOpen) {
-            formFilledRef.current = false;
-            return;
-        }
-        if (templateLoaded && !formFilledRef.current) {
-            reset({
-                logoUrl: template?.logoUrl || '',
-                signatureName: template?.signatureName || '',
-                signatureImageUrl: template?.signatureImageUrl || '',
-            });
-            formFilledRef.current = true;
-        }
-    }, [templateModalOpen, templateLoaded, template, reset]);
-
-    const saveTemplateMutation = useMutation({
-        // Campo vazio vai como `null` (apaga); sem isso não havia como remover a logo.
-        mutationFn: (input: TemplateFormData) =>
-            certificateTemplateApi.upsert({
-                logoUrl: input.logoUrl.trim() || null,
-                signatureName: input.signatureName.trim() || null,
-                signatureImageUrl: input.signatureImageUrl.trim() || null,
-            }),
-        onSuccess: () => {
-            toast.success('Personalização do certificado salva. Use "Regerar PDF" para atualizar certificados já emitidos.');
-            queryClient.invalidateQueries({ queryKey: ['certificate-template'] });
-            setTemplateModalOpen(false);
-        },
-        onError: (error) => toast.error(errorMessage(error, 'Não foi possível salvar.')),
     });
 
     const invalidateCertificates = () => queryClient.invalidateQueries({ queryKey: ['certificates'] });
@@ -263,62 +209,7 @@ export default function Certificates() {
                 )}
             </TableWrapper>
 
-            <Modal open={templateModalOpen} onOpenChange={setTemplateModalOpen} title="Personalização do certificado">
-                {!templateLoaded ? (
-                    <p>Carregando...</p>
-                ) : (
-                    <Form onSubmit={handleSubmit((data) => saveTemplateMutation.mutate(data))}>
-                        <Field>
-                            <Label htmlFor="logoUrl">Logo da academia</Label>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <Input id="logoUrl" placeholder="https://... (ou envie um arquivo)" {...register('logoUrl')} style={{ flex: 1 }} />
-                                <ImageUploadButton
-                                    context="organization-branding"
-                                    onUploaded={(url) => setValue('logoUrl', url)}
-                                    disabled={saveTemplateMutation.isPending}
-                                />
-                            </div>
-                            {logoUrl && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                    <img src={logoUrl} alt="Pré-visualização do logo" style={imagePreviewStyle} />
-                                    <Button type="button" $variant="ghost" onClick={() => setValue('logoUrl', '')}>
-                                        <X size={14} /> Remover
-                                    </Button>
-                                </div>
-                            )}
-                        </Field>
-                        <Field>
-                            <Label htmlFor="signatureName">Nome de quem assina (diretor/instrutor)</Label>
-                            <Input id="signatureName" {...register('signatureName')} />
-                        </Field>
-                        <Field>
-                            <Label htmlFor="signatureImageUrl">Imagem da assinatura (opcional)</Label>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <Input id="signatureImageUrl" placeholder="https://... (ou envie um arquivo)" {...register('signatureImageUrl')} style={{ flex: 1 }} />
-                                <ImageUploadButton
-                                    context="organization-branding"
-                                    onUploaded={(url) => setValue('signatureImageUrl', url)}
-                                    disabled={saveTemplateMutation.isPending}
-                                />
-                            </div>
-                            {signatureImageUrl && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                    <img src={signatureImageUrl} alt="Pré-visualização da assinatura" style={imagePreviewStyle} />
-                                    <Button type="button" $variant="ghost" onClick={() => setValue('signatureImageUrl', '')}>
-                                        <X size={14} /> Remover
-                                    </Button>
-                                </div>
-                            )}
-                        </Field>
-                        <FormActions>
-                            <Button type="button" $variant="secondary" onClick={() => setTemplateModalOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={saveTemplateMutation.isPending}>
-                                {saveTemplateMutation.isPending ? 'Salvando...' : 'Salvar'}
-                            </Button>
-                        </FormActions>
-                    </Form>
-                )}
-            </Modal>
+            <TemplateModal open={templateModalOpen} onOpenChange={setTemplateModalOpen} />
 
             <ReminderSettingsModal open={reminderSettingsOpen} onOpenChange={setReminderSettingsOpen} />
             <ReminderHistoryModal certificate={reminderHistoryFor} onClose={() => setReminderHistoryFor(null)} />

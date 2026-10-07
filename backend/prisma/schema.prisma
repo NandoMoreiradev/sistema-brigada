@@ -255,6 +255,11 @@ model Course {
   /// de brigada variam muito de formato (decisão 17) — a academia escreve do
   /// jeito que já usa na ementa impressa dela.
   syllabus                     String?   @db.Text
+  /// Nome do curso como sai no certificado ({{curso.nome}}). Vazio = usa o título da
+  /// turma (Event.title), que costuma ser um nome interno ("Brigadistas 11/10").
+  certificateTitle             String?
+  /// Carga horária em horas ({{curso.cargaHoraria}} no certificado)
+  workloadHours                Int?
   /// Sala onde a turma costuma ter aula: vem pré-selecionada ao agendar uma aula nova.
   /// Cada aula guarda a própria sala (`ClassSession.roomId`), então trocar aqui não mexe nas já agendadas.
   defaultRoomId                String?

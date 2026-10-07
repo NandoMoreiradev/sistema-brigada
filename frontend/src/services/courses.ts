@@ -30,6 +30,10 @@ export interface CreateCourseInput {
     recommendedRecyclingCourseId?: string;
     /** Conteúdo programático (texto livre) — vira a 2ª página do PDF do certificado quando preenchido. */
     syllabus?: string;
+    /** Nome do curso como sai no certificado; vazio = usa o título da turma. */
+    certificateTitle?: string;
+    /** Carga horária em horas, impressa no certificado. */
+    workloadHours?: number;
     /** Sala pré-selecionada ao agendar uma aula nova desta turma. */
     defaultRoomId?: string;
     instructorUserIds?: string[];

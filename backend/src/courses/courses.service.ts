@@ -61,6 +61,8 @@ export class CoursesService {
                     recyclingValidityMonths: dto.recyclingValidityMonths,
                     recommendedRecyclingCourseId: dto.recommendedRecyclingCourseId,
                     syllabus: dto.syllabus,
+                    certificateTitle: dto.certificateTitle?.trim() || null,
+                    workloadHours: dto.workloadHours ?? null,
                     defaultRoomId: dto.defaultRoomId,
                 },
             });
@@ -181,6 +183,9 @@ export class CoursesService {
                     recyclingValidityMonths: courseFields.recyclingValidityMonths,
                     recommendedRecyclingCourseId: courseFields.recommendedRecyclingCourseId,
                     syllabus: courseFields.syllabus,
+                    // `null`/vazio limpa (volta a usar o título da turma); `undefined` mantém.
+                    certificateTitle: courseFields.certificateTitle === undefined ? undefined : courseFields.certificateTitle?.trim() || null,
+                    workloadHours: courseFields.workloadHours,
                     // `null` tira a sala padrão; `undefined` mantém.
                     defaultRoomId: courseFields.defaultRoomId,
                 },
