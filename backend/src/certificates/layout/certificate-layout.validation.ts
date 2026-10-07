@@ -166,6 +166,7 @@ function readElement(raw: Raw, index: number, pageWidth: number, pageHeight: num
                 lineColor: r.color(raw, 'lineColor'),
                 nameColor: r.color(raw, 'nameColor'),
                 roleColor: r.color(raw, 'roleColor'),
+                font: r.oneOf(raw, 'font', FONT_FAMILIES, 'Helvetica'),
             };
             break;
         case 'qrcode':

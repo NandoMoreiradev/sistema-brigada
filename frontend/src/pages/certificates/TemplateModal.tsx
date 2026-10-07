@@ -7,8 +7,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { Eye, RotateCcw, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +18,7 @@ import { certificateTemplateApi, type CertificateTemplate } from '@/services/cer
 import { coursesApi } from '@/services/courses';
 import { THEME_COLORS, type CertificateLayout, type ThemeColorKey } from './layout/types';
 import { toast } from '@/utils/toast';
+import { certificateErrorMessage, usePdfPreview } from './PdfPreview';
 
 const Section = styled.section`
     display: flex;
@@ -79,14 +80,6 @@ const PreviewRow = styled.div`
     }
 `;
 
-const PdfFrame = styled.iframe`
-    width: 100%;
-    height: min(70vh, 640px);
-    border: 1px solid ${({ theme }) => theme.colors.borderLight};
-    border-radius: ${({ theme }) => theme.radii.sm};
-    background: ${({ theme }) => theme.colors.lightGray};
-`;
-
 const imagePreviewStyle = { maxHeight: 60, border: '1px solid #dee2e6', borderRadius: 6, padding: 4 };
 
 interface FormState {
@@ -94,21 +87,6 @@ interface FormState {
     signatureName: string;
     signatureImageUrl: string;
     layout: CertificateLayout;
-}
-
-/** Erro de resposta `blob` (a pré-visualização): a mensagem vem dentro do Blob. */
-async function errorMessage(error: unknown, fallback: string): Promise<string> {
-    if (!isAxiosError(error)) return fallback;
-    let data = error.response?.data;
-    if (data instanceof Blob) {
-        try {
-            data = JSON.parse(await data.text());
-        } catch {
-            return fallback;
-        }
-    }
-    const message = data?.message;
-    return (Array.isArray(message) ? message.join(' ') : message) || fallback;
 }
 
 const brandPayload = (form: FormState) => ({
@@ -127,7 +105,6 @@ export function TemplateModal({ open, onOpenChange }: Props) {
     const [form, setForm] = useState<FormState | null>(null);
     const [layoutDirty, setLayoutDirty] = useState(false);
     const [previewCourseId, setPreviewCourseId] = useState('');
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const filledRef = useRef(false);
 
     const { data: template, isSuccess } = useQuery({
@@ -152,11 +129,6 @@ export function TemplateModal({ open, onOpenChange }: Props) {
         }
     }, [open, isSuccess, template]);
 
-    // Libera o PDF da memória ao fechar a pré-visualização.
-    useEffect(() => () => {
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-    }, [previewUrl]);
-
     const update = (patch: Partial<FormState>) => setForm((current) => (current ? { ...current, ...patch } : current));
     const updateLayout = (change: (layout: CertificateLayout) => CertificateLayout) => {
         setForm((current) => (current ? { ...current, layout: change(current.layout) } : current));
@@ -171,7 +143,7 @@ export function TemplateModal({ open, onOpenChange }: Props) {
             queryClient.invalidateQueries({ queryKey: ['certificate-template'] });
             onOpenChange(false);
         },
-        onError: async (error) => toast.error(await errorMessage(error, 'Não foi possível salvar.')),
+        onError: async (error) => toast.error(await certificateErrorMessage(error, 'Não foi possível salvar.')),
     });
 
     const restoreMutation = useMutation({
@@ -182,15 +154,10 @@ export function TemplateModal({ open, onOpenChange }: Props) {
             update({ layout: saved.layout });
             setLayoutDirty(false);
         },
-        onError: async (error) => toast.error(await errorMessage(error, 'Não foi possível restaurar.')),
+        onError: async (error) => toast.error(await certificateErrorMessage(error, 'Não foi possível restaurar.')),
     });
 
-    const previewMutation = useMutation({
-        mutationFn: (state: FormState) =>
-            certificateTemplateApi.preview({ ...brandPayload(state), layout: state.layout, courseId: previewCourseId || undefined }),
-        onSuccess: (blob) => setPreviewUrl(URL.createObjectURL(blob)),
-        onError: async (error) => toast.error(await errorMessage(error, 'Não foi possível gerar a pré-visualização.')),
-    });
+    const preview = usePdfPreview();
 
     return (
         <>
@@ -210,7 +177,7 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                                 <Label htmlFor="logoUrl">Logo (vai dentro do selo)</Label>
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <Input id="logoUrl" placeholder="https://... (ou envie um arquivo)" value={form.logoUrl} onChange={(e) => update({ logoUrl: e.target.value })} style={{ flex: 1 }} />
-                                    <ImageUploadButton context="organization-branding" onUploaded={(url) => update({ logoUrl: url })} disabled={saveMutation.isPending} />
+                                    <ImageUploadButton context="organization-branding" pdfSafe onUploaded={(url) => update({ logoUrl: url })} disabled={saveMutation.isPending} />
                                 </div>
                                 {form.logoUrl && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -220,7 +187,7 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                                         </Button>
                                     </div>
                                 )}
-                                <HelpText>Use PNG ou JPG — SVG e WebP não saem no PDF.</HelpText>
+                                <HelpText>PNG ou JPG. Arquivos WEBP e GIF enviados aqui são convertidos para PNG; SVG não sai no PDF.</HelpText>
                             </Field>
                             <Field>
                                 <Label htmlFor="signatureName">Nome de quem assina (diretor/instrutor)</Label>
@@ -236,7 +203,7 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                                         onChange={(e) => update({ signatureImageUrl: e.target.value })}
                                         style={{ flex: 1 }}
                                     />
-                                    <ImageUploadButton context="organization-branding" onUploaded={(url) => update({ signatureImageUrl: url })} disabled={saveMutation.isPending} />
+                                    <ImageUploadButton context="organization-branding" pdfSafe onUploaded={(url) => update({ signatureImageUrl: url })} disabled={saveMutation.isPending} />
                                 </div>
                                 {form.signatureImageUrl && (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -271,6 +238,10 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                                 />
                                 Incluir a página de conteúdo programático (quando a turma tiver um)
                             </CheckboxField>
+                            <HelpText>
+                                Para mover elementos, trocar textos, adicionar imagens ou usar um modelo pronto, use o{' '}
+                                <Link to="/certificates/editor" onClick={() => onOpenChange(false)}>editor de layout</Link>.
+                            </HelpText>
                             {!template?.isDefaultLayout && (
                                 <div>
                                     <Button
@@ -294,8 +265,8 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                                         <option key={course.id} value={course.id}>{course.event.title}</option>
                                     ))}
                                 </Select>
-                                <Button type="button" $variant="secondary" onClick={() => previewMutation.mutate(form)} disabled={previewMutation.isPending}>
-                                    <Eye size={14} /> {previewMutation.isPending ? 'Gerando...' : 'Pré-visualizar PDF'}
+                                <Button type="button" $variant="secondary" onClick={() => preview.generate({ ...brandPayload(form), layout: form.layout, courseId: previewCourseId || undefined })} disabled={preview.isGenerating}>
+                                    <Eye size={14} /> {preview.isGenerating ? 'Gerando...' : 'Pré-visualizar PDF'}
                                 </Button>
                             </PreviewRow>
                             <HelpText>Mostra as alterações ainda não salvas, com um aluno de exemplo.</HelpText>
@@ -309,9 +280,7 @@ export function TemplateModal({ open, onOpenChange }: Props) {
                 )}
             </Modal>
 
-            <Modal open={!!previewUrl} onOpenChange={(isOpen) => !isOpen && setPreviewUrl(null)} title="Pré-visualização do certificado" width="960px">
-                {previewUrl && <PdfFrame src={previewUrl} title="Pré-visualização do certificado em PDF" />}
-            </Modal>
+            {preview.dialog}
         </>
     );
 }

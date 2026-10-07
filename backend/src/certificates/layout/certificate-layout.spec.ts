@@ -3,6 +3,7 @@ import { parseCertificateLayout, LayoutValidationError } from './certificate-lay
 import { buildClassicLayout } from './classic-layout';
 import { buildCertificateVariables, buildRenderInput, CertificateRenderSource } from './certificate-render-input';
 import { CertificatePdfService } from '../certificate-pdf.service';
+import { getLayoutPresets } from './layout-presets';
 
 describe('renderCertificateText', () => {
     const vars = { 'aluno.nome': 'Ana', 'curso.local': '', 'curso.cargaHoraria': '20 horas' };
@@ -32,6 +33,14 @@ describe('formatadores', () => {
         expect(formatWorkload(1)).toBe('1 hora');
         expect(formatWorkload(20)).toBe('20 horas');
         expect(formatWorkload(null)).toBe('');
+    });
+});
+
+describe('modelos prontos', () => {
+    it.each(getLayoutPresets().map((preset) => [preset.name, preset] as const))('%s passa na validação e gera PDF de 1 página', async (_, preset) => {
+        expect(() => parseCertificateLayout(JSON.parse(JSON.stringify(preset.layout)))).not.toThrow();
+        const pdf = await new CertificatePdfService().generate(buildRenderInput(source, preset.layout, {}, 'https://app.exemplo.com'));
+        expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBe(1);
     });
 });
 

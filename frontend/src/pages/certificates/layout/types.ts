@@ -73,6 +73,7 @@ export interface SignatureElement extends BaseElement {
     lineColor: ColorValue;
     nameColor: ColorValue;
     roleColor: ColorValue;
+    font?: FontFamily;
 }
 
 export interface QrCodeElement extends BaseElement {

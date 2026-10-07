@@ -292,14 +292,15 @@ export class CertificatePdfService {
 
         doc.moveTo(x, lineY).lineTo(x + w, lineY).lineWidth(1).strokeColor(color(element.lineColor) ?? '#ADB5BD').stroke();
         // Nome numa linha só: diminui até 8pt antes de cortar com reticências.
+        const family = element.font ?? 'Helvetica';
         let nameSize = 11;
-        doc.font('Helvetica-Bold').fontSize(nameSize);
+        doc.font(fontName(family, true, false)).fontSize(nameSize);
         while (nameSize > 8 && doc.widthOfString(name) > w) doc.fontSize((nameSize -= 0.5));
         doc.fillColor(color(element.nameColor) ?? '#212529')
             .text(name, x, lineY + 6, { width: w, height: 14, align: 'center', ellipsis: true });
         const role = renderCertificateText(element.role, input.variables);
         if (role) {
-            doc.font('Helvetica').fontSize(9).fillColor(color(element.roleColor) ?? '#6C757D')
+            doc.font(fontName(family, false, false)).fontSize(9).fillColor(color(element.roleColor) ?? '#6C757D')
                 .text(role, x, lineY + 22, { width: w, height: 12, align: 'center', ellipsis: true });
         }
     }

@@ -2,6 +2,13 @@ import { api } from './api';
 import type { Paginated } from '@/types';
 import type { CertificateLayout, CertificateVariable } from '@/pages/certificates/layout/types';
 
+export interface LayoutPreset {
+    id: string;
+    name: string;
+    description: string;
+    layout: CertificateLayout;
+}
+
 export type CertificateStatus = 'VALID' | 'EXPIRED' | 'REVOKED';
 
 export interface Certificate {
@@ -23,6 +30,7 @@ export interface Certificate {
 
 export interface CertificateTemplate {
     organizationId: string;
+    organizationName: string;
     logoUrl: string | null;
     signatureName: string | null;
     signatureImageUrl: string | null;
@@ -175,6 +183,10 @@ export const certificateTemplateApi = {
     },
     variables: async () => {
         const { data } = await api.get<CertificateVariable[]>('/certificate-templates/variables');
+        return data;
+    },
+    presets: async () => {
+        const { data } = await api.get<LayoutPreset[]>('/certificate-templates/presets');
         return data;
     },
 };

@@ -30,6 +30,7 @@ import EventDetail from '@/pages/EventDetail';
 import Staff from '@/pages/Staff';
 import People from '@/pages/People';
 import Certificates from '@/pages/Certificates';
+import CertificateEditorPage from '@/pages/certificates/editor/CertificateEditorPage';
 import Roles from '@/pages/Roles';
 import Registrations from '@/pages/Registrations';
 import Organizations from '@/pages/admin/Organizations';
@@ -81,6 +82,7 @@ export function Router() {
             </Route>
             <Route element={<PermissionRoute permission="certificates:manage" />}>
                 <Route path="/certificates" element={<Certificates />} />
+                <Route path="/certificates/editor" element={<CertificateEditorPage />} />
             </Route>
             <Route element={<PermissionRoute permission="registrations:manage" />}>
                 <Route path="/registrations" element={<Registrations />} />

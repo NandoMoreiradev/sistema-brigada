@@ -83,6 +83,8 @@ export interface SignatureElement extends BaseElement {
     lineColor: ColorValue;
     nameColor: ColorValue;
     roleColor: ColorValue;
+    /** Fonte do nome e do cargo (padrão Helvetica) */
+    font?: FontFamily;
 }
 
 export interface QrCodeElement extends BaseElement {

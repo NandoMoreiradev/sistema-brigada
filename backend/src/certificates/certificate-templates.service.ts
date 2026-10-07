@@ -9,6 +9,7 @@ import { CertificateLayout } from './layout/certificate-layout.types';
 import { LayoutValidationError, parseCertificateLayout } from './layout/certificate-layout.validation';
 import { buildClassicLayout } from './layout/classic-layout';
 import { CERTIFICATE_VARIABLES } from './layout/certificate-layout-variables';
+import { getLayoutPresets } from './layout/layout-presets';
 import { CertificateRenderSource, buildRenderInput } from './layout/certificate-render-input';
 
 const PREVIEW_CODE = 'AB3K9X2MQ7TD';
@@ -29,9 +30,14 @@ export class CertificateTemplatesService {
 
     /** Personalização + layout efetivo (o salvo, ou o Clássico quando não há). */
     async findOne(organizationId: string) {
-        const template = await this.prisma.certificateTemplate.findUnique({ where: { organizationId } });
+        const [template, organization] = await Promise.all([
+            this.prisma.certificateTemplate.findUnique({ where: { organizationId } }),
+            this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+        ]);
         return {
             organizationId,
+            // O editor visual usa nas iniciais do selo e na variável {{academia.nome}}.
+            organizationName: organization?.name ?? '',
             logoUrl: template?.logoUrl ?? null,
             signatureName: template?.signatureName ?? null,
             signatureImageUrl: template?.signatureImageUrl ?? null,
@@ -78,6 +84,10 @@ export class CertificateTemplatesService {
 
     getVariables() {
         return CERTIFICATE_VARIABLES;
+    }
+
+    getPresets() {
+        return getLayoutPresets();
     }
 
     /**

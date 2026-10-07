@@ -7,7 +7,8 @@
 // ainda não tem UI dedicada — o fluxo principal é automático.
 
 import { useState } from 'react';
-import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, BellRing } from 'lucide-react';
+import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, BellRing, LayoutTemplate } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { isAxiosError } from 'axios';
@@ -51,6 +52,7 @@ export default function Certificates() {
     const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false);
     const [reminderHistoryFor, setReminderHistoryFor] = useState<Certificate | null>(null);
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
 
     const { data, isLoading } = useQuery({
         queryKey: ['certificates', { status: statusFilter }],
@@ -145,8 +147,11 @@ export default function Certificates() {
                     <Button $variant="secondary" onClick={() => setReminderSettingsOpen(true)} style={{ marginRight: '0.5rem' }}>
                         <BellRing size={16} /> Lembretes
                     </Button>
-                    <Button $variant="secondary" onClick={() => setTemplateModalOpen(true)}>
+                    <Button $variant="secondary" onClick={() => setTemplateModalOpen(true)} style={{ marginRight: '0.5rem' }}>
                         <Settings size={16} /> Personalizar
+                    </Button>
+                    <Button onClick={() => navigate('/certificates/editor')}>
+                        <LayoutTemplate size={16} /> Editar layout
                     </Button>
                 </>
             }

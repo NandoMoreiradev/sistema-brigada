@@ -19,14 +19,33 @@ interface ImageUploadButtonProps {
     onUploaded: (fileUrl: string) => void;
     disabled?: boolean;
     label?: string;
+    /**
+     * A imagem vai para um PDF (certificado): o gerador só lê PNG e JPG, então WEBP e GIF
+     * são convertidos para PNG no navegador antes de enviar (GIF animado vira o 1º quadro).
+     */
+    pdfSafe?: boolean;
 }
 
-export function ImageUploadButton({ context, onUploaded, disabled, label = 'Enviar arquivo' }: ImageUploadButtonProps) {
+const PDF_READY_TYPES = ['image/jpeg', 'image/png'];
+
+async function convertToPng(file: File): Promise<File> {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('conversão falhou');
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
+}
+
+export function ImageUploadButton({ context, onUploaded, disabled, label = 'Enviar arquivo', pdfSafe }: ImageUploadButtonProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
 
     const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+        let file = e.target.files?.[0];
         e.target.value = ''; // permite selecionar o mesmo arquivo de novo depois
 
         if (!file) return;
@@ -42,6 +61,14 @@ export function ImageUploadButton({ context, onUploaded, disabled, label = 'Envi
 
         setIsUploading(true);
         try {
+            if (pdfSafe && !PDF_READY_TYPES.includes(file.type)) {
+                try {
+                    file = await convertToPng(file);
+                } catch {
+                    toast.error('Não foi possível converter a imagem. Envie um PNG ou JPG.');
+                    return;
+                }
+            }
             const { fileUrl } = await mediaApi.upload(file, context);
             onUploaded(fileUrl);
         } catch (error: any) {

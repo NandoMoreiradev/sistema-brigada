@@ -40,6 +40,13 @@ export class CertificateTemplatesController {
         return this.certificateTemplatesService.getVariables();
     }
 
+    /** Modelos prontos (Clássico, Moderno, Elegante) para começar no editor. */
+    @Get('presets')
+    @RequirePermission('certificates:manage')
+    presets() {
+        return this.certificateTemplatesService.getPresets();
+    }
+
     /** PDF de exemplo com o layout informado (ainda não salvo) ou o salvo. */
     @Post('preview')
     @HttpCode(200)
