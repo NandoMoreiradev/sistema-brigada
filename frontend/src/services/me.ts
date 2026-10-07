@@ -98,6 +98,7 @@ export interface MyDesignation {
 
 export interface MyCertificate {
     id: string;
+    code: string;
     issuedAt: string;
     expiresAt: string | null;
     status: CertificateStatus;

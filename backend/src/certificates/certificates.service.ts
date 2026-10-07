@@ -21,6 +21,8 @@ import { ListCertificatesDto } from './dto/list-certificates.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
 import { appTodayAsDateOnly } from '../common/datetime';
+import { generateCertificateCode, normalizeCertificateCode } from './certificate-code';
+import { effectiveCertificateStatus as effectiveStatus } from './certificate-status';
 
 const certificateInclude = {
     enrollment: {
@@ -53,7 +55,15 @@ export class CertificatesService {
         const { status, expiringInDays, page = 1, limit = 20 } = query;
 
         const where: Prisma.CertificateWhereInput = { organizationId };
-        if (status) {
+        // Mesmo critério de `effectiveStatus`: um VALID com validade já passada (o job ainda
+        // não rodou) aparece em "Vencidos", não em "Válidos".
+        const now = new Date();
+        if (status === CertificateStatus.VALID) {
+            where.status = CertificateStatus.VALID;
+            where.OR = [{ expiresAt: null }, { expiresAt: { gte: now } }];
+        } else if (status === CertificateStatus.EXPIRED) {
+            where.OR = [{ status: CertificateStatus.EXPIRED }, { status: CertificateStatus.VALID, expiresAt: { lt: now } }];
+        } else if (status) {
             where.status = status;
         }
         if (expiringInDays) {
@@ -113,6 +123,7 @@ export class CertificatesService {
     private serialize(certificate: Prisma.CertificateGetPayload<{ include: typeof certificateInclude }>) {
         return {
             ...certificate,
+            status: effectiveStatus(certificate),
             pdfUrl: certificate.pdfKey && this.mediaService.publicUrl ? `${this.mediaService.publicUrl}/${certificate.pdfKey}` : null,
         };
     }
@@ -252,10 +263,12 @@ export class CertificatesService {
             if (enrollment.status !== EnrollmentStatus.COMPLETED) {
                 await tx.enrollment.update({ where: { id: enrollmentId }, data: { status: EnrollmentStatus.COMPLETED } });
             }
+            // Sem retry de colisão do código: são 60 bits aleatórios, a chance é desprezível.
             return tx.certificate.create({
                 data: {
                     enrollmentId,
                     organizationId: enrollment.organizationId,
+                    code: generateCertificateCode(),
                     expiresAt,
                     issuedAutomatically,
                 },
@@ -300,6 +313,93 @@ export class CertificatesService {
         }
         await this.generateAndAttachPdf(id);
         return this.findOne(id, organizationId);
+    }
+
+    /**
+     * Revogação administrativa (emitido por engano, fraude...). O PDF continua existindo,
+     * mas a validação pública passa a responder "revogado" — é ela que vale, não o papel.
+     */
+    async revoke(id: string, organizationId: string, revokedByUserId: string, reason: string) {
+        const certificate = await this.prisma.certificate.findFirst({ where: { id, organizationId } });
+        if (!certificate) {
+            throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
+        }
+        if (certificate.status === CertificateStatus.REVOKED) {
+            throw new ConflictException('Este certificado já está revogado.');
+        }
+        await this.prisma.certificate.update({
+            where: { id },
+            data: { status: CertificateStatus.REVOKED, revokedAt: new Date(), revokedReason: reason.trim(), revokedByUserId },
+        });
+        return this.findOne(id, organizationId);
+    }
+
+    /** Desfaz uma revogação: volta para VALID ou EXPIRED, conforme a validade. */
+    async reinstate(id: string, organizationId: string) {
+        const certificate = await this.prisma.certificate.findFirst({ where: { id, organizationId } });
+        if (!certificate) {
+            throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
+        }
+        if (certificate.status !== CertificateStatus.REVOKED) {
+            throw new ConflictException('Este certificado não está revogado.');
+        }
+        await this.prisma.certificate.update({
+            where: { id },
+            data: {
+                status: effectiveStatus({ status: CertificateStatus.VALID, expiresAt: certificate.expiresAt }),
+                revokedAt: null,
+                revokedReason: null,
+                revokedByUserId: null,
+            },
+        });
+        return this.findOne(id, organizationId);
+    }
+
+    /** Chamado diariamente por `certificate-expiration.scheduler.ts`. */
+    async markExpiredCertificates(): Promise<number> {
+        const { count } = await this.prisma.certificate.updateMany({
+            where: { status: CertificateStatus.VALID, expiresAt: { lt: new Date() } },
+            data: { status: CertificateStatus.EXPIRED },
+        });
+        return count;
+    }
+
+    /**
+     * Validação pública por código (`GET /public/certificates/:code`, sem login). Devolve só
+     * o necessário para conferir a autenticidade — sem e-mail nem IDs internos.
+     */
+    async verifyByCode(rawCode: string) {
+        const code = normalizeCertificateCode(rawCode);
+        const certificate = code
+            ? await this.prisma.certificate.findUnique({
+                  where: { code },
+                  include: {
+                      enrollment: {
+                          include: {
+                              course: { include: { event: true, organization: { select: { name: true } } } },
+                              studentProfile: { include: { user: { select: { name: true } } } },
+                          },
+                      },
+                  },
+              })
+            : null;
+
+        if (!certificate) {
+            throw new NotFoundException('Nenhum certificado encontrado com este código.');
+        }
+
+        const { course } = certificate.enrollment;
+        return {
+            code: certificate.code,
+            status: effectiveStatus(certificate),
+            studentName: certificate.enrollment.studentProfile.user.name,
+            courseName: course.event.title,
+            courseCategory: course.category,
+            organizationName: course.organization.name,
+            issuedAt: certificate.issuedAt,
+            expiresAt: certificate.expiresAt,
+            revokedAt: certificate.revokedAt,
+        };
     }
 
     private async generateAndAttachPdf(certificateId: string) {
@@ -358,8 +458,9 @@ export class CertificatesService {
             .filter((enrollment) => enrollment.certificate)
             .map((enrollment) => ({
                 id: enrollment.certificate!.id,
+                code: enrollment.certificate!.code,
                 courseName: enrollment.course.event.title,
-                status: enrollment.certificate!.status,
+                status: effectiveStatus(enrollment.certificate!),
                 expiresAt: enrollment.certificate!.expiresAt,
             }))
             .sort((a, b) => (a.expiresAt && b.expiresAt ? +new Date(b.expiresAt) - +new Date(a.expiresAt) : 0));
@@ -375,70 +476,5 @@ export class CertificatesService {
         const result = new Date(date);
         result.setMonth(result.getMonth() + months);
         return result;
-    }
-
-    /**
-     * Decisão 19 do docs/decisoes.md: "sistema alerta vencimento". Chamado
-     * diariamente pelo job em `certificate-expiration.scheduler.ts`. Notifica
-     * uma única vez por certificado ao entrar na janela de 30 dias antes do
-     * vencimento — a deduplicação é feita checando se já existe uma
-     * `Notification` desse tipo com o link específico deste certificado
-     * (não há campo próprio para "já notificado" no schema).
-     */
-    async notifyExpiringCertificates(windowDays = 30): Promise<number> {
-        const now = new Date();
-        const windowEnd = new Date(now);
-        windowEnd.setDate(windowEnd.getDate() + windowDays);
-
-        const expiring = await this.prisma.certificate.findMany({
-            where: { status: CertificateStatus.VALID, expiresAt: { gte: now, lte: windowEnd } },
-            include: {
-                enrollment: {
-                    include: {
-                        course: { include: { event: true, organization: { select: { name: true } } } },
-                        studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
-                    },
-                },
-            },
-        });
-
-        let notifiedCount = 0;
-
-        for (const certificate of expiring) {
-            // Não `/certificates` (Fase 3, docs/decisoes.md) pelo mesmo motivo do link
-            // de "certificado emitido" acima: quem recebe é o próprio aluno.
-            const link = `/my-certificates#${certificate.id}`;
-            const alreadyNotified = await this.prisma.notification.findFirst({
-                where: { type: 'CERTIFICATE_EXPIRING', link },
-            });
-            if (alreadyNotified) continue;
-
-            const student = certificate.enrollment.studentProfile.user;
-            const courseName = certificate.enrollment.course.event.title;
-            const expiresAtLabel = certificate.expiresAt!.toLocaleDateString('pt-BR');
-            const message = `Seu certificado da turma "${courseName}" vence em ${expiresAtLabel}. Verifique se é preciso fazer a reciclagem.`;
-
-            await this.notificationsService.create({
-                userId: student.id,
-                organizationId: certificate.organizationId,
-                type: 'CERTIFICATE_EXPIRING',
-                title: 'Certificado vencendo em breve',
-                message,
-                link,
-            });
-
-            await this.transactionalEmailService.sendCertificateExpiringEmail(
-                { name: student.name, email: student.email },
-                certificate.organizationId,
-                certificate.enrollment.course.organization.name,
-                courseName,
-                expiresAtLabel,
-                `${process.env.FRONTEND_URL}${link}`,
-            );
-
-            notifiedCount++;
-        }
-
-        return notifiedCount;
     }
 }

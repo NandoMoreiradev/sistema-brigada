@@ -11,6 +11,26 @@ import { MailService } from '../communications/mail.service';
 import { EmailRendererService } from '../communications/email-renderer.service';
 import { MergeTagService, MergeTagContext } from '../common/merge-tag.service';
 
+export interface CertificateReminderEmail {
+    student: { name: string; email: string };
+    organizationId: string;
+    organizationName: string;
+    courseName: string;
+    /** true = já venceu (gatilho CERTIFICATE_EXPIRED) */
+    expired: boolean;
+    certificate: {
+        /** dd/MM/yyyy */
+        expiresAt: string;
+        /** Dias até vencer (antes) ou desde que venceu (depois) — sempre positivo ou zero */
+        daysLeft: string;
+        code: string;
+        link: string;
+        verifyLink: string;
+    };
+    /** Próxima turma de reciclagem sugerida, quando houver e a academia quiser sugerir */
+    recycling?: { courseName: string; startDate: string } | null;
+}
+
 @Injectable()
 export class TransactionalEmailService {
     private readonly logger = new Logger(TransactionalEmailService.name);
@@ -18,8 +38,8 @@ export class TransactionalEmailService {
     /**
      * Gatilhos enviados PELA plataforma para a academia (boas-vindas, redefinição de
      * senha) — sempre saem pela conta/remetente da plataforma, mesmo que a academia tenha
-     * Resend próprio configurado (ver EmailSenderFactory/MailService). CERTIFICATE_EXPIRING
-     * não entra aqui: é a academia notificando o próprio aluno dela.
+     * Resend próprio configurado (ver EmailSenderFactory/MailService). CERTIFICATE_EXPIRING/
+     * CERTIFICATE_EXPIRED não entram aqui: é a academia notificando o próprio aluno dela.
      */
     private static readonly PLATFORM_TRIGGERS: ReadonlySet<EmailTriggerType> = new Set([
         EmailTriggerType.ORGANIZATION_ADMIN_WELCOME,
@@ -118,14 +138,13 @@ export class TransactionalEmailService {
         await this.sendEmailByTrigger(user.email, EmailTriggerType.PASSWORD_RESET, context, user.organizationId);
     }
 
-    async sendCertificateExpiringEmail(
-        student: { name: string; email: string },
-        organizationId: string,
-        organizationName: string,
-        courseName: string,
-        expiresAtLabel: string,
-        link: string,
-    ): Promise<void> {
+    /**
+     * Lembrete de vencimento (antes de vencer → CERTIFICATE_EXPIRING; depois → CERTIFICATE_EXPIRED).
+     * Devolve se o envio deu certo: certificate-reminders.service.ts só marca o lembrete
+     * como enviado quando deu, e tenta de novo depois quando não deu.
+     */
+    async sendCertificateReminderEmail(reminder: CertificateReminderEmail): Promise<boolean> {
+        const { student, organizationId, organizationName, courseName, certificate, recycling } = reminder;
         const context: MergeTagContext = {
             organization: { name: organizationName },
             organization_name: organizationName,
@@ -134,10 +153,38 @@ export class TransactionalEmailService {
             student: { name: student.name },
             student_name: student.name,
             course: { name: courseName },
-            certificate: { expiresAt: expiresAtLabel, link },
+            certificate,
+            // Vazio quando não há sugestão — os templates usam {{#if recycling.courseName}}.
+            recycling: recycling ?? { courseName: '', startDate: '' },
         };
 
-        await this.sendEmailByTrigger(student.email, EmailTriggerType.CERTIFICATE_EXPIRING, context, organizationId);
+        const trigger = reminder.expired ? EmailTriggerType.CERTIFICATE_EXPIRED : EmailTriggerType.CERTIFICATE_EXPIRING;
+        return this.sendEmailByTrigger(student.email, trigger, context, organizationId);
+    }
+
+    /**
+     * E-mail interno com corpo montado em código (sem template editável) — hoje só o resumo
+     * de vencimentos para a gestão, que é uma tabela gerada, não um texto a personalizar.
+     * Sai pelo Resend da academia, dentro do layout dela, como os demais e-mails dela.
+     */
+    async sendOrganizationInternalEmail(
+        to: string,
+        organizationId: string,
+        organizationName: string,
+        subject: string,
+        bodyHtml: string,
+    ): Promise<boolean> {
+        try {
+            const organization = { name: organizationName };
+            const html = await this.emailRendererService.renderWithOrganizationLayout(bodyHtml, organization, { organization }, {
+                senderIdentity: 'organization',
+            });
+            await this.mailService.sendSingleOrThrow({ organizationId, to, subject, html });
+            return true;
+        } catch (error) {
+            this.logger.error(`Falha ao enviar e-mail interno "${subject}" para ${to}.`, (error as Error).stack);
+            return false;
+        }
     }
 
     /**

@@ -5,16 +5,39 @@ import { CertificateTemplatesService } from './certificate-templates.service';
 import { CertificateTemplatesController } from './certificate-templates.controller';
 import { CertificatePdfService } from './certificate-pdf.service';
 import { CertificateExpirationScheduler } from './certificate-expiration.scheduler';
+import { CertificateRemindersService } from './certificate-reminders.service';
+import { CertificateRemindersController } from './certificate-reminders.controller';
 import { PublicBadgeController } from './public-badge.controller';
+import { PublicCertificateVerificationController } from './public-certificate-verification.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MediaModule } from '../media/media.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TransactionalEmailModule } from '../transactional-email/transactional-email.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
-    imports: [PrismaModule, MediaModule, NotificationsModule, TransactionalEmailModule],
-    controllers: [CertificatesController, CertificateTemplatesController, PublicBadgeController],
-    providers: [CertificatesService, CertificateTemplatesService, CertificatePdfService, CertificateExpirationScheduler],
+    imports: [
+        PrismaModule,
+        MediaModule,
+        NotificationsModule,
+        TransactionalEmailModule,
+        // Escopo local, igual auth.module.ts — não há ThrottlerGuard global neste projeto.
+        ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
+    ],
+    controllers: [
+        CertificatesController,
+        CertificateTemplatesController,
+        CertificateRemindersController,
+        PublicBadgeController,
+        PublicCertificateVerificationController,
+    ],
+    providers: [
+        CertificatesService,
+        CertificateTemplatesService,
+        CertificatePdfService,
+        CertificateRemindersService,
+        CertificateExpirationScheduler,
+    ],
     exports: [CertificatesService],
 })
 export class CertificatesModule {}

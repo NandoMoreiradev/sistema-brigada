@@ -4,21 +4,26 @@
 // MVP (decisão 21 do docs/decisoes.md). `layoutConfig` fica livre (Json) para
 // não travar o schema a um layout específico antes de existir uma tela real
 // de edição de layout.
+//
+// `null` apaga o campo; ausente (`undefined`) mantém o valor salvo. Antes só
+// existia o "ausente", então uma logo enviada não saía mais.
 
-import { IsString, IsOptional, IsUrl, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsUrl, IsObject, ValidateIf } from 'class-validator';
+
+const isProvided = (_: unknown, value: unknown) => value !== null && value !== undefined;
 
 export class UpsertCertificateTemplateDto {
+    @ValidateIf(isProvided)
     @IsUrl({}, { message: 'A URL do logo fornecida é inválida.' })
-    @IsOptional()
-    logoUrl?: string;
+    logoUrl?: string | null;
 
+    @ValidateIf(isProvided)
     @IsString()
-    @IsOptional()
-    signatureName?: string;
+    signatureName?: string | null;
 
+    @ValidateIf(isProvided)
     @IsUrl({}, { message: 'A URL da assinatura fornecida é inválida.' })
-    @IsOptional()
-    signatureImageUrl?: string;
+    signatureImageUrl?: string | null;
 
     @IsObject()
     @IsOptional()

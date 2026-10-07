@@ -12,6 +12,7 @@ import { AttendanceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { appTodayAsDateOnly } from '../common/datetime';
+import { effectiveCertificateStatus } from '../certificates/certificate-status';
 
 @Injectable()
 export class MeService {
@@ -112,7 +113,11 @@ export class MeService {
             },
             lessons: { completed: completedLessons, total: totalLessons, required: enrollment.course.requireAllLessonsWatched },
             certificate: enrollment.certificate
-                ? { id: enrollment.certificate.id, status: enrollment.certificate.status, pdfUrl: this.toPdfUrl(enrollment.certificate.pdfKey) }
+                ? {
+                      id: enrollment.certificate.id,
+                      status: effectiveCertificateStatus(enrollment.certificate),
+                      pdfUrl: this.toPdfUrl(enrollment.certificate.pdfKey),
+                  }
                 : null,
         };
     }
@@ -130,7 +135,11 @@ export class MeService {
         return enrollments.map((enrollment) => ({
             ...enrollment,
             certificate: enrollment.certificate
-                ? { ...enrollment.certificate, pdfUrl: this.toPdfUrl(enrollment.certificate.pdfKey) }
+                ? {
+                      ...enrollment.certificate,
+                      status: effectiveCertificateStatus(enrollment.certificate),
+                      pdfUrl: this.toPdfUrl(enrollment.certificate.pdfKey),
+                  }
                 : null,
         }));
     }
@@ -156,6 +165,10 @@ export class MeService {
             orderBy: { issuedAt: 'desc' },
         });
 
-        return certificates.map((certificate) => ({ ...certificate, pdfUrl: this.toPdfUrl(certificate.pdfKey) }));
+        return certificates.map((certificate) => ({
+            ...certificate,
+            status: effectiveCertificateStatus(certificate),
+            pdfUrl: this.toPdfUrl(certificate.pdfKey),
+        }));
     }
 }

@@ -14,6 +14,7 @@ import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { format } from 'date-fns';
 import { api } from '@/services/api';
+import { formatCertificateCode } from '@/services/certificates';
 
 const Wrapper = styled.div`
     min-height: 100vh;
@@ -131,7 +132,7 @@ const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger'> = {
 interface BadgeData {
     userName: string;
     organizationName: string;
-    certificates: Array<{ id: string; courseName: string; status: string; expiresAt: string | null }>;
+    certificates: Array<{ id: string; code: string; courseName: string; status: string; expiresAt: string | null }>;
 }
 
 export default function BadgePage() {
@@ -181,7 +182,10 @@ export default function BadgePage() {
                         <CertItem key={cert.id}>
                             <CertInfo>
                                 <strong>{cert.courseName}</strong>
-                                <span>{cert.expiresAt ? `Válido até ${format(new Date(cert.expiresAt), 'dd/MM/yyyy')}` : 'Sem vencimento'}</span>
+                                <span>{cert.expiresAt ? `Validade até ${format(new Date(cert.expiresAt), 'dd/MM/yyyy')}` : 'Sem vencimento'}</span>
+                                <span>
+                                    Código <a href={`/validar/${cert.code}`} style={{ fontFamily: 'monospace' }}>{formatCertificateCode(cert.code)}</a>
+                                </span>
                             </CertInfo>
                             <StatusPill $tone={STATUS_TONE[cert.status] ?? 'success'}>
                                 {STATUS_LABEL[cert.status] ?? cert.status}

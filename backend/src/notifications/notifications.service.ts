@@ -24,6 +24,7 @@ import { Prisma } from '@prisma/client';
 /** Tipos de notificação previstos hoje (ver comentário do campo no schema.prisma). String livre, não é enum no banco. */
 export type NotificationType =
     | 'CERTIFICATE_EXPIRING'
+    | 'CERTIFICATE_EXPIRED'
     | 'CERTIFICATE_ISSUED'
     | 'DESIGNATION_ASSIGNED'
     | 'ENROLLMENT_CONFIRMED'

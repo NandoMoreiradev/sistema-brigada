@@ -5,9 +5,9 @@
 // Usa `pdfkit` (puro Node, sem dependência de navegador — ao contrário de
 // Puppeteer, roda sem configuração extra no Nixpacks/Railway) + `qrcode`
 // (mesma lib já usada pelo 2FA) para o QR de validação, que aponta para a
-// página pública do crachá (/badge/:token) — reaproveita a técnica de QR e o
-// endpoint público já construídos, em vez de inventar um link de validação
-// por certificado.
+// página pública deste certificado (/validar/:code). Antes apontava para o
+// crachá do aluno (/badge/:token), que lista todos os certificados dele mas
+// não prova qual papel é aquele — o código impresso resolve isso.
 //
 // Layout (2026-09-17) inspirado num certificado físico real de curso de
 // brigada que o cliente forneceu como referência: selo recortado (rosette)
@@ -29,6 +29,11 @@ import { ConfigService } from '@nestjs/config';
 import PDFDocument from 'pdfkit';
 import * as QRCode from 'qrcode';
 import { Prisma } from '@prisma/client';
+import { formatAppDate } from '../common/datetime';
+import { formatCertificateCode } from './certificate-code';
+
+/** Uma URL de imagem lenta não pode segurar a emissão: depois disso segue sem a imagem. */
+const IMAGE_FETCH_TIMEOUT_MS = 8000;
 
 // `Certificate` não tem uma relação Prisma explícita para `Organization` no
 // schema (só `organizationId` + índice) — por isso `organization` entra como
@@ -50,6 +55,13 @@ interface CertificateTemplateForPdf {
     signatureImageUrl?: string | null;
 }
 
+interface VerificationInfo {
+    /** Já formatado (XXXX-XXXX-XXXX). */
+    code: string;
+    /** Endereço da página de validação, sem protocolo — é para ser lido e digitado. */
+    pageUrl: string;
+}
+
 const NAVY = '#1B2A4A';
 const NAVY_LIGHT = '#3A4F7A';
 const GOLD = '#C9A227';
@@ -66,10 +78,14 @@ export class CertificatePdfService {
 
     async generate(certificate: CertificateForPdf, template: CertificateTemplateForPdf | null): Promise<Buffer> {
         const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
-        const badgeUrl = `${frontendUrl}/badge/${certificate.enrollment.studentProfile.user.publicBadgeToken}`;
+        const verificationUrl = `${frontendUrl}/validar/${certificate.code}`;
+        const verification: VerificationInfo = {
+            code: formatCertificateCode(certificate.code),
+            pageUrl: `${frontendUrl.replace(/^https?:\/\//, '')}/validar`,
+        };
 
         const [qrCodeBuffer, logoBuffer, signatureImageBuffer] = await Promise.all([
-            QRCode.toBuffer(badgeUrl, { margin: 1, width: 200 }),
+            QRCode.toBuffer(verificationUrl, { margin: 1, width: 200 }),
             this.fetchImageBuffer(template?.logoUrl),
             this.fetchImageBuffer(template?.signatureImageUrl),
         ]);
@@ -91,7 +107,7 @@ export class CertificatePdfService {
             this.drawCourseBanner(doc, width, certificate.enrollment.course.event.title);
             this.drawBody(doc, width, certificate);
             this.drawSignatures(doc, width, height, certificate, template, signatureImageBuffer);
-            this.drawQrCode(doc, width, height, qrCodeBuffer);
+            this.drawQrCode(doc, width, height, qrCodeBuffer, verification);
 
             const syllabus = certificate.enrollment.course.syllabus?.trim();
             if (syllabus) {
@@ -101,7 +117,7 @@ export class CertificatePdfService {
                 // toda página que o pdfkit adicionar sozinho por causa disso.
                 doc.on('pageAdded', () => this.drawBorder(doc, width, height));
                 doc.addPage({ layout: 'landscape', size: 'A4', margin: 50 });
-                this.drawSyllabusPage(doc, width, height, certificate.enrollment.course.event.title, syllabus, qrCodeBuffer);
+                this.drawSyllabusPage(doc, width, height, certificate.enrollment.course.event.title, syllabus, qrCodeBuffer, verification);
             }
 
             doc.end();
@@ -115,7 +131,7 @@ export class CertificatePdfService {
     private async fetchImageBuffer(url: string | null | undefined): Promise<Buffer | null> {
         if (!url) return null;
         try {
-            const response = await fetch(url);
+            const response = await fetch(url, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
             if (!response.ok) return null;
             return Buffer.from(await response.arrayBuffer());
         } catch (error) {
@@ -226,7 +242,7 @@ export class CertificatePdfService {
     private drawBody(doc: PDFKit.PDFDocument, width: number, certificate: CertificateForPdf) {
         const studentName = certificate.enrollment.studentProfile.user.name;
         const location = certificate.enrollment.course.event.location;
-        const issuedAt = certificate.issuedAt.toLocaleDateString('pt-BR');
+        const issuedAt = formatAppDate(certificate.issuedAt);
 
         let y = 218;
         doc.fontSize(13).font('Helvetica').fillColor(TEXT_DARK).text('Certificamos que', 0, y, { align: 'center' });
@@ -244,7 +260,7 @@ export class CertificatePdfService {
 
         if (certificate.expiresAt) {
             y += 28;
-            doc.fontSize(11).fillColor(TEXT_MUTED).text(`Validade: até ${certificate.expiresAt.toLocaleDateString('pt-BR')}.`, 0, y, {
+            doc.fontSize(11).fillColor(TEXT_MUTED).text(`Validade: até ${formatAppDate(certificate.expiresAt)}.`, 0, y, {
                 align: 'center',
             });
         }
@@ -299,13 +315,28 @@ export class CertificatePdfService {
         });
     }
 
-    private drawQrCode(doc: PDFKit.PDFDocument, width: number, height: number, qrCodeBuffer: Buffer) {
-        // Rótulo posicionado com folga generosa da margem inferior: um `text()` cujo bloco
+    private drawQrCode(doc: PDFKit.PDFDocument, width: number, height: number, qrCodeBuffer: Buffer, verification: VerificationInfo) {
+        // Rótulos posicionados com folga da margem inferior: um `text()` cujo bloco
         // ultrapassa `page.height - margins.bottom` faz o pdfkit abrir uma 2ª página sozinho
         // para o resto do texto, em vez de simplesmente cortar — já aconteceu aqui uma vez.
-        doc.image(qrCodeBuffer, width - 150, height - 190, { width: 90 });
-        doc.fontSize(8).fillColor(TEXT_MUTED).text('Valide este certificado', width - 160, height - 95, {
-            width: 110,
+        // Bloco recuado do canto inferior direito o bastante para não encostar no ornamento
+        // dourado (drawCornerOrnament), que ocupa a diagonal dos últimos 130pt.
+        const qrSize = 90;
+        const qrX = width - 165;
+        const qrY = height - 215;
+        const labelW = 130;
+        const labelX = qrX + qrSize / 2 - labelW / 2;
+        doc.image(qrCodeBuffer, qrX, qrY, { width: qrSize });
+        doc.fontSize(7).font('Helvetica').fillColor(TEXT_MUTED).text('Código de verificação', labelX, qrY + qrSize + 3, {
+            width: labelW,
+            align: 'center',
+        });
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY).text(verification.code, labelX, qrY + qrSize + 12, {
+            width: labelW,
+            align: 'center',
+        });
+        doc.fontSize(7).font('Helvetica').fillColor(TEXT_MUTED).text(`Valide em ${verification.pageUrl}`, labelX, qrY + qrSize + 23, {
+            width: labelW,
             align: 'center',
         });
     }
@@ -317,6 +348,7 @@ export class CertificatePdfService {
         courseTitle: string,
         syllabus: string,
         qrCodeBuffer: Buffer,
+        verification: VerificationInfo,
     ) {
         doc.fontSize(26).font('Helvetica-Bold').fillColor(GOLD).text('CONTEÚDO PROGRAMÁTICO', 0, 55, { align: 'center' });
         doc.fontSize(12).font('Helvetica').fillColor(TEXT_MUTED).text(courseTitle, 0, 90, { align: 'center' });
@@ -331,6 +363,6 @@ export class CertificatePdfService {
             lineGap: 4,
         });
 
-        this.drawQrCode(doc, width, height, qrCodeBuffer);
+        this.drawQrCode(doc, width, height, qrCodeBuffer, verification);
     }
 }

@@ -12,6 +12,7 @@ export const PUBLIC_ROUTE_PREFIXES = [
     '/forgot-password',
     '/reset-password',
     '/badge/', // validação pública de crachá (/badge/:token)
+    '/validar', // validação pública de certificado (/validar e /validar/:code)
     '/register/', // autocadastro público de pessoas (/register/:token)
     '/convite/', // convite dirigido (/convite/:token)
 ];
