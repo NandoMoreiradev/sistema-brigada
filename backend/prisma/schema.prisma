@@ -583,24 +583,63 @@ model CourseLesson {
   moduleId String
   title    String
   content  String? @db.Text
-  videoUrl String?
-  videoKey String?
   duration Int?
   order    Int     @default(0)
   active   Boolean @default(true)
 
-  module   CourseModule     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module   CourseModule        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   progress LessonProgress[]
+  videos   CourseLessonVideo[]
+  files    CourseLessonFile[]
 
   @@index([moduleId])
 }
 
+/// Vídeo de uma aula (uma aula pode ter vários). `storageKey` presente = arquivo enviado pro R2
+/// (contexto 'course-lessons', tocado no player embutido e acompanhado sozinho); ausente = link
+/// externo colado, que abre em nova aba.
+model CourseLessonVideo {
+  id         String   @id @default(cuid())
+  lessonId   String
+  title      String?
+  url        String
+  storageKey String?
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  lesson CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+}
+
+/// Material de apoio de uma vídeo-aula (PDF, apostila, planilha, slides...). Mesmo formato de
+/// EventFile: `storageKey` vem de upload via presigned URL (contexto 'course-lesson-files') e
+/// `externalUrl` guarda a URL pública do arquivo.
+model CourseLessonFile {
+  id               String   @id @default(cuid())
+  lessonId         String
+  name             String
+  storageKey       String?
+  externalUrl      String?
+  mimeType         String?
+  size             Int?
+  uploadedByUserId String
+  createdAt        DateTime @default(now())
+
+  lesson CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+}
+
 model LessonProgress {
-  id          String    @id @default(cuid())
-  userId      String
-  lessonId    String
-  completed   Boolean   @default(false)
-  completedAt DateTime?
+  id              String    @id @default(cuid())
+  userId          String
+  lessonId        String
+  completed       Boolean   @default(false)
+  completedAt     DateTime?
+  /// Vídeos enviados (CourseLessonVideo com storageKey) que o aluno já assistiu até o fim. A aula
+  /// vira `completed` sozinha quando todos os vídeos enviados dela estão aqui.
+  watchedVideoIds String[]  @default([])
 
   user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   lesson CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)

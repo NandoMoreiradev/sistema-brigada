@@ -145,11 +145,41 @@ export interface CourseLesson {
     moduleId: string;
     title: string;
     content: string | null;
-    videoUrl: string | null;
-    videoKey: string | null;
     duration: number | null;
     order: number;
-    progress: Array<{ completed: boolean }>;
+    progress: Array<{ completed: boolean; watchedVideoIds: string[] }>;
+    /** Vídeos da aula, em ordem. */
+    videos: CourseLessonVideo[];
+    /** Material de apoio (PDF, slides, planilha...). */
+    files: CourseLessonFile[];
+}
+
+export interface CourseLessonVideo {
+    id: string;
+    lessonId: string;
+    title: string | null;
+    url: string;
+    /** Presente = arquivo enviado (player embutido); ausente = link externo. */
+    storageKey: string | null;
+    order: number;
+}
+
+export interface CourseLessonVideoInput {
+    id?: string;
+    title?: string;
+    url: string;
+    storageKey?: string;
+}
+
+export interface CourseLessonFile {
+    id: string;
+    lessonId: string;
+    name: string;
+    storageKey: string | null;
+    externalUrl: string | null;
+    mimeType: string | null;
+    size: number | null;
+    createdAt: string;
 }
 
 export interface ModuleInstructor {
@@ -161,8 +191,8 @@ export interface CourseLessonInput {
     moduleId: string;
     title: string;
     content?: string;
-    videoUrl?: string;
-    videoKey?: string | null;
+    /** Lista completa: no update, substitui os vídeos da aula. */
+    videos?: CourseLessonVideoInput[];
     duration?: number;
 }
 
@@ -209,6 +239,18 @@ export const courseLessonsApi = {
     markProgress: async (courseId: string, lessonId: string, completed: boolean) => {
         const { data } = await api.put(`/courses/${courseId}/lessons/${lessonId}/progress`, { completed });
         return data;
+    },
+    /** Vídeo enviado tocou até o fim; o backend conclui a aula quando todos os vídeos enviados foram vistos. */
+    markVideoWatched: async (courseId: string, lessonId: string, videoId: string) => {
+        const { data } = await api.put(`/courses/${courseId}/lessons/${lessonId}/progress`, { watchedVideoId: videoId });
+        return data;
+    },
+    addFile: async (courseId: string, lessonId: string, input: { name: string; storageKey?: string; externalUrl?: string; mimeType?: string; size?: number }) => {
+        const { data } = await api.post<CourseLessonFile>(`/courses/${courseId}/lessons/${lessonId}/files`, input);
+        return data;
+    },
+    removeFile: async (courseId: string, lessonId: string, fileId: string) => {
+        await api.delete(`/courses/${courseId}/lessons/${lessonId}/files/${fileId}`);
     },
 };
 

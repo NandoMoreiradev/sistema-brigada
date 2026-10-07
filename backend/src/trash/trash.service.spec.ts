@@ -19,7 +19,9 @@ function buildPrisma(overrides: Record<string, Record<string, jest.Mock>> = {}) 
         certificate: model(['count', 'findMany']),
         classSession: model(['count']),
         courseModule: model(['count']),
-        courseLesson: model(['count', 'findMany']),
+        courseLesson: model(['count']),
+        courseLessonVideo: model(['findMany']),
+        courseLessonFile: model(['findMany']),
         eventFile: model(['count', 'findMany']),
         occurrenceReport: model(['count']),
         occurrenceReportFile: model(['count', 'findMany']),
@@ -157,7 +159,8 @@ describe('TrashService', () => {
             prisma.classSession.count.mockResolvedValue(5);
             prisma.courseModule.count.mockResolvedValue(2);
             prisma.courseLesson.count.mockResolvedValue(6);
-            prisma.courseLesson.findMany.mockResolvedValue([{ videoKey: 'videos/a.mp4' }]);
+            prisma.courseLessonVideo.findMany.mockResolvedValue([{ storageKey: 'videos/a.mp4' }]);
+            prisma.courseLessonFile.findMany.mockResolvedValue([{ storageKey: 'materiais/apostila.pdf' }]);
             prisma.certificate.findMany.mockResolvedValue([{ pdfKey: 'certs/1.pdf' }, { pdfKey: 'certs/2.pdf' }]);
             prisma.event.delete.mockResolvedValue({});
             return prisma;
@@ -166,7 +169,7 @@ describe('TrashService', () => {
         it('purge-check de turma mostra contagens e arquivos', async () => {
             const check = await build(coursePrisma()).purgeCheck('courses', 'c1', ORG);
             expect(check.name).toBe('Turma A');
-            expect(check.files).toBe(3);
+            expect(check.files).toBe(4);
             expect(check.items).toContainEqual({ label: 'matrículas', count: 4 });
             expect(check.items).toContainEqual({ label: 'certificados emitidos', count: 3 });
         });
@@ -182,7 +185,7 @@ describe('TrashService', () => {
 
             expect(prisma.event.delete).toHaveBeenCalledWith({ where: { id: 'e1', hardDelete: true } });
             expect(order[0]).toBe('db');
-            expect(mediaService.deleteObject).toHaveBeenCalledTimes(3);
+            expect(mediaService.deleteObject).toHaveBeenCalledTimes(4);
         });
 
         it('se o banco recusar (FK), nenhum arquivo é apagado e o erro vira 409', async () => {
