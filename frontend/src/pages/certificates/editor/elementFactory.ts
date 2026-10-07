@@ -6,7 +6,8 @@
 import { PAGE_SIZE, type CertificateLayout, type LayoutElement } from '../layout/types';
 import { newId } from './layoutUtils';
 
-export type NewElementKind = 'text' | 'variable-text' | 'image' | 'signature' | 'qrcode' | 'rect' | 'ellipse' | 'line' | 'seal' | 'ornament';
+/** 'syllabus' só é oferecido no verso (botão próprio no editor). */
+export type NewElementKind = 'text' | 'variable-text' | 'image' | 'signature' | 'qrcode' | 'rect' | 'ellipse' | 'line' | 'seal' | 'ornament' | 'syllabus';
 
 export const NEW_ELEMENT_OPTIONS: Array<{ kind: NewElementKind; label: string }> = [
     { kind: 'text', label: 'Texto' },
@@ -55,6 +56,11 @@ export function createElement(kind: NewElementKind, layout: CertificateLayout): 
             return { ...centered(84, 114), type: 'seal', color: '$primary', ringColor: '$accent', ribbonColor: '$primaryLight', showRibbon: true, content: 'logo' };
         case 'ornament':
             return { id: newId(), x: 0, y: 0, w: 130, h: 130, type: 'ornament', corner: 'top-left', color: '$primary', accentColor: '$accentLight' };
+        case 'syllabus':
+            return {
+                id: newId(), name: 'Conteúdo programático', type: 'syllabus', x: 80, y: 130, w: page.width - 160, h: page.height - 190,
+                font: 'Helvetica', size: 11, minSize: 9, autoShrink: false, color: '$text', align: 'left', lineGap: 4, columns: 1, columnGap: 24,
+            };
     }
 }
 

@@ -109,15 +109,50 @@ export interface OrnamentElement extends BaseElement {
     accentColor: ColorValue;
 }
 
-export type LayoutElement = TextElement | ImageElement | SignatureElement | QrCodeElement | ShapeElement | SealElement | OrnamentElement;
+/** Conteúdo programático da turma (só no verso); o que não cabe continua em outra página igual. */
+export interface SyllabusElement extends BaseElement {
+    type: 'syllabus';
+    font: FontFamily;
+    size: number;
+    minSize: number;
+    autoShrink: boolean;
+    color: ColorValue;
+    align: 'left' | 'justify';
+    lineGap: number;
+    columns: number;
+    columnGap: number;
+}
+
+export type LayoutElement =
+    | TextElement
+    | ImageElement
+    | SignatureElement
+    | QrCodeElement
+    | ShapeElement
+    | SealElement
+    | OrnamentElement
+    | SyllabusElement;
+
+export interface PageBackground {
+    color: ColorValue;
+    imageUrl?: string | null;
+}
+
+export interface BackPage {
+    enabled: boolean;
+    /** Só imprime o verso quando a turma tem conteúdo programático */
+    onlyWithSyllabus: boolean;
+    background: PageBackground;
+    elements: LayoutElement[];
+}
 
 export interface CertificateLayout {
     version: number;
     orientation: Orientation;
     theme: LayoutTheme;
-    background: { color: ColorValue; imageUrl?: string | null };
+    background: PageBackground;
     elements: LayoutElement[];
-    syllabusPage: { enabled: boolean; title: string };
+    backPage: BackPage;
 }
 
 export interface CertificateVariable {

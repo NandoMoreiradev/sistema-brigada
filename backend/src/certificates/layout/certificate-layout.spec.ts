@@ -5,6 +5,9 @@ import { buildCertificateVariables, buildRenderInput, CertificateRenderSource } 
 import { CertificatePdfService } from '../certificate-pdf.service';
 import { getLayoutPresets } from './layout-presets';
 import { FONT_FAMILIES } from './certificate-fonts';
+import type { SyllabusElement } from './certificate-layout.types';
+
+const syllabusBoxOf = (layout: { backPage: { elements: Array<{ type: string }> } }) => layout.backPage.elements.find((e) => e.type === 'syllabus');
 
 describe('renderCertificateText', () => {
     const vars = { 'aluno.nome': 'Ana', 'curso.local': '', 'curso.cargaHoraria': '20 horas' };
@@ -73,6 +76,28 @@ describe('parseCertificateLayout', () => {
         }
     });
 
+    it('converte o layout v1 (verso fixo) no verso Clássico editável, mantendo título e liga/desliga', () => {
+        const v1 = buildClassicLayout() as any;
+        delete v1.backPage;
+        v1.version = 1;
+        v1.syllabusPage = { enabled: false, title: 'EMENTA DO CURSO' };
+        const parsed = parseCertificateLayout(v1);
+        expect(parsed.version).toBe(2);
+        expect(parsed.backPage.enabled).toBe(false);
+        expect(parsed.backPage.elements.some((e) => e.type === 'text' && e.content === 'EMENTA DO CURSO')).toBe(true);
+        expect(parsed.backPage.elements.some((e) => e.type === 'syllabus')).toBe(true);
+    });
+
+    it('conteúdo programático só no verso e uma vez só', () => {
+        const front = buildClassicLayout() as any;
+        front.elements.push({ ...syllabusBoxOf(front), id: 'na-frente' });
+        expect(() => parseCertificateLayout(front)).toThrow(/só pode ficar no verso/);
+
+        const twice = buildClassicLayout() as any;
+        twice.backPage.elements.push({ ...syllabusBoxOf(twice), id: 'outro' });
+        expect(() => parseCertificateLayout(twice)).toThrow(/só um bloco/);
+    });
+
     it('descarta propriedades desconhecidas e corrige ids repetidos', () => {
         const layout = buildClassicLayout() as any;
         layout.hacked = true;
@@ -125,6 +150,41 @@ describe('CertificatePdfService', () => {
         const pdf = await service.generate(buildRenderInput(source, buildClassicLayout(), {}, 'https://app.exemplo.com'));
         expect(pdf.subarray(0, 4).toString()).toBe('%PDF');
         expect(pageCount(pdf)).toBe(1);
+    });
+
+    const withSyllabus = (syllabus: string) => ({ ...source, course: { ...source.course, syllabus } });
+    const topics = (n: number) => Array.from({ length: n }, (_, i) => `Tópico ${i + 1} — descrição do conteúdo abordado`).join('\n');
+    const syllabusBox = (layout: ReturnType<typeof buildClassicLayout>) => layout.backPage.elements.find((e) => e.type === 'syllabus') as SyllabusElement;
+
+    it('verso: com 2 colunas a mesma ementa ocupa menos páginas', async () => {
+        const one = buildClassicLayout();
+        const two = buildClassicLayout();
+        syllabusBox(two).columns = 2;
+        const pagesOne = pageCount(await service.generate(buildRenderInput(withSyllabus(topics(80)), one, {}, 'https://app.exemplo.com')));
+        const pagesTwo = pageCount(await service.generate(buildRenderInput(withSyllabus(topics(80)), two, {}, 'https://app.exemplo.com')));
+        expect(pagesTwo).toBeLessThan(pagesOne);
+    });
+
+    it('verso: autoShrink faz caber em uma página quando dá', async () => {
+        const layout = buildClassicLayout();
+        Object.assign(syllabusBox(layout), { autoShrink: true, size: 11, minSize: 6 });
+        const pdf = await service.generate(buildRenderInput(withSyllabus(topics(30)), layout, {}, 'https://app.exemplo.com'));
+        expect(pageCount(pdf)).toBe(2); // frente + 1 verso
+    });
+
+    it('verso: parágrafo único enorme é quebrado por palavras e termina', async () => {
+        const pdf = await service.generate(buildRenderInput(withSyllabus('palavra '.repeat(3000)), buildClassicLayout(), {}, 'https://app.exemplo.com'));
+        expect(pageCount(pdf)).toBeGreaterThan(2);
+        expect(pageCount(pdf)).toBeLessThanOrEqual(11);
+    });
+
+    it('verso: sai sem conteúdo programático só quando "onlyWithSyllabus" está desligado; desligado não sai', async () => {
+        const layout = buildClassicLayout();
+        expect(pageCount(await service.generate(buildRenderInput(source, layout, {}, 'https://app.exemplo.com')))).toBe(1);
+        layout.backPage.onlyWithSyllabus = false;
+        expect(pageCount(await service.generate(buildRenderInput(source, layout, {}, 'https://app.exemplo.com')))).toBe(2);
+        layout.backPage.enabled = false;
+        expect(pageCount(await service.generate(buildRenderInput(withSyllabus(topics(10)), layout, {}, 'https://app.exemplo.com')))).toBe(1);
     });
 
     it('conteúdo programático longo flui por várias páginas e termina', async () => {

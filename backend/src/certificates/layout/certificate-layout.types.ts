@@ -1,7 +1,7 @@
 // backend/src/certificates/layout/certificate-layout.types.ts
 //
-// Formato do layout do certificado (guardado em CertificateTemplate.layoutConfig).
-// O certificado é uma lista de elementos posicionados sobre a página, desenhados na
+// Formato do layout do certificado (guardado em CertificateDesign.layout). A frente
+// e o verso são listas de elementos posicionados sobre a página, desenhados na
 // ordem da lista (o último fica por cima). Coordenadas e tamanhos em pontos PDF
 // (1pt = 1/72"), origem no canto superior esquerdo — a mesma unidade do pdfkit, então
 // o gerador não converte nada. A4 deitado = 841,89 × 595,28pt.
@@ -9,8 +9,12 @@
 // O editor visual (frontend) manipula este mesmo formato; o tipo é espelhado em
 // frontend/src/pages/certificates/layout/types.ts. Mudou aqui, mude lá — e suba
 // `version` se a mudança não for compatível com layouts já salvos.
+//
+// Versão 2: o verso deixou de ser fixo (`syllabusPage: { enabled, title }`) e virou
+// uma página editável (`backPage`). Layouts v1 são convertidos na leitura
+// (certificate-layout.validation.ts) — não há migração de banco.
 
-export const LAYOUT_VERSION = 1;
+export const LAYOUT_VERSION = 2;
 
 export const PAGE_SIZE = {
     landscape: { width: 841.89, height: 595.28 },
@@ -123,7 +127,35 @@ export interface OrnamentElement extends BaseElement {
     accentColor: ColorValue;
 }
 
-export type LayoutElement = TextElement | ImageElement | SignatureElement | QrCodeElement | ShapeElement | SealElement | OrnamentElement;
+/**
+ * Conteúdo programático da turma (só no verso). O texto que não couber na caixa
+ * continua numa página seguinte com o mesmo desenho do verso — depois de diminuir a
+ * fonte até `minSize`, se `autoShrink`.
+ */
+export interface SyllabusElement extends BaseElement {
+    type: 'syllabus';
+    font: FontFamily;
+    size: number;
+    /** Até onde a fonte pode diminuir antes de continuar em outra página */
+    minSize: number;
+    autoShrink: boolean;
+    color: ColorValue;
+    align: 'left' | 'justify';
+    lineGap: number;
+    /** 1 a 3 colunas */
+    columns: number;
+    columnGap: number;
+}
+
+export type LayoutElement =
+    | TextElement
+    | ImageElement
+    | SignatureElement
+    | QrCodeElement
+    | ShapeElement
+    | SealElement
+    | OrnamentElement
+    | SyllabusElement;
 export type LayoutElementType = LayoutElement['type'];
 
 export interface CertificateLayout {
@@ -136,9 +168,14 @@ export interface CertificateLayout {
         imageUrl?: string | null;
     };
     elements: LayoutElement[];
-    /** 2ª página com o conteúdo programático da turma, quando ela tiver um */
-    syllabusPage: {
-        enabled: boolean;
-        title: string;
-    };
+    /** Verso (2ª página): onde normalmente vai o conteúdo programático da turma */
+    backPage: BackPage;
+}
+
+export interface BackPage {
+    enabled: boolean;
+    /** Só imprime o verso quando a turma tem conteúdo programático preenchido */
+    onlyWithSyllabus: boolean;
+    background: { color: ColorValue; imageUrl?: string | null };
+    elements: LayoutElement[];
 }

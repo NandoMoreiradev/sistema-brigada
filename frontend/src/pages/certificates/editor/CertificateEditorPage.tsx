@@ -7,7 +7,7 @@
 // Atalhos: Ctrl+Z / Ctrl+Shift+Z (ou Ctrl+Y), Ctrl+S, Ctrl+D (duplicar),
 // Delete, setas (1pt; Shift = 10pt), Esc (tira a seleção).
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import {
     Circle,
     Eye,
     FileImage,
+    ListChecks,
     Minus,
     PenLine,
     Plus,
@@ -40,7 +41,8 @@ import { EditorCanvas } from './EditorCanvas';
 import { MiniLayout } from './MiniLayout';
 import { useCertificateRenderContext } from './useCertificateRenderContext';
 import { LayersPanel } from './LayersPanel';
-import { ElementProperties, PageProperties, type ElementPatch } from './PropertiesPanel';
+import { ElementProperties, PageProperties, type EditorSide, type ElementPatch } from './PropertiesPanel';
+import { Segmented } from '@/components/ui/Segmented';
 import { createElement, duplicateElement, NEW_ELEMENT_OPTIONS, type NewElementKind } from './elementFactory';
 import { useHistory } from './useHistory';
 
@@ -196,9 +198,14 @@ const ADD_ICONS: Record<NewElementKind, typeof Type> = {
     line: Minus,
     seal: Stamp,
     ornament: Triangle,
+    syllabus: ListChecks,
 };
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+/** Aplica `change` à lista de elementos da página em edição (frente ou verso). */
+const onSide = (layout: CertificateLayout, side: EditorSide, change: (elements: LayoutElement[]) => LayoutElement[]): CertificateLayout =>
+    side === 'front' ? { ...layout, elements: change(layout.elements) } : { ...layout, backPage: { ...layout.backPage, elements: change(layout.backPage.elements) } };
 
 const isTyping = (target: EventTarget | null) =>
     target instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable);
@@ -219,6 +226,7 @@ export default function CertificateEditorPage() {
         canRedo,
     } = useHistory<CertificateLayout | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [side, setSide] = useState<EditorSide>('front');
     const [zoom, setZoom] = useState(1);
     const [showVariables, setShowVariables] = useState(false);
     const [previewCourseId, setPreviewCourseId] = useState('');
@@ -259,51 +267,71 @@ export default function CertificateEditorPage() {
         return () => window.removeEventListener('beforeunload', warn);
     }, [dirty]);
 
-    const selected = layout?.elements.find((element) => element.id === selectedId) ?? null;
+    // O canvas, as camadas e o painel trabalham com "a página da vez": a frente, ou o verso
+    // apresentado com o mesmo formato (fundo + elementos), com o tema e a orientação comuns.
+    const viewLayout = useMemo<CertificateLayout | null>(
+        () => (layout && side === 'back' ? { ...layout, background: layout.backPage.background, elements: layout.backPage.elements } : layout),
+        [layout, side],
+    );
+    const selected = viewLayout?.elements.find((element) => element.id === selectedId) ?? null;
 
     // ---------------------------------------------------------------- edição
 
     const updateElement = useCallback(
         (id: string, patch: ElementPatch, coalesceKey?: string) =>
             setLayout(
-                (current) => current && { ...current, elements: current.elements.map((e) => (e.id === id ? ({ ...e, ...patch } as LayoutElement) : e)) },
+                (current) => current && onSide(current, side, (elements) => elements.map((e) => (e.id === id ? ({ ...e, ...patch } as LayoutElement) : e))),
                 coalesceKey,
             ),
-        [setLayout],
+        [setLayout, side],
     );
 
     const previewElement = useCallback(
-        (next: LayoutElement) => previewLayout((current) => current && { ...current, elements: current.elements.map((e) => (e.id === next.id ? next : e)) }),
-        [previewLayout],
+        (next: LayoutElement) => previewLayout((current) => current && onSide(current, side, (elements) => elements.map((e) => (e.id === next.id ? next : e)))),
+        [previewLayout, side],
     );
 
     const addElement = (kind: NewElementKind) => {
         if (!layout) return;
         const element = createElement(kind, layout);
-        setLayout({ ...layout, elements: [...layout.elements, element] });
+        setLayout(onSide(layout, side, (elements) => [...elements, element]));
         setSelectedId(element.id);
     };
 
     const deleteSelected = useCallback(() => {
         if (!selectedId) return;
-        setLayout((current) => current && { ...current, elements: current.elements.filter((e) => e.id !== selectedId) });
+        setLayout((current) => current && onSide(current, side, (elements) => elements.filter((e) => e.id !== selectedId)));
         setSelectedId(null);
-    }, [setLayout, selectedId]);
+    }, [setLayout, selectedId, side]);
 
     const duplicateSelected = useCallback(() => {
-        if (!selected || !layout) return;
+        // Conteúdo programático é um só por verso.
+        if (!selected || !layout || selected.type === 'syllabus') return;
         const copy = duplicateElement(selected);
-        const index = layout.elements.findIndex((e) => e.id === selected.id);
-        setLayout({ ...layout, elements: [...layout.elements.slice(0, index + 1), copy, ...layout.elements.slice(index + 1)] });
+        setLayout(
+            onSide(layout, side, (elements) => {
+                const index = elements.findIndex((e) => e.id === selected.id);
+                return [...elements.slice(0, index + 1), copy, ...elements.slice(index + 1)];
+            }),
+        );
         setSelectedId(copy.id);
-    }, [setLayout, layout, selected]);
+    }, [setLayout, layout, selected, side]);
 
     const arrange = (to: 'front' | 'back' | 'forward' | 'backward') => {
         if (!layout || !selected) return;
-        const others = layout.elements.filter((e) => e.id !== selected.id);
-        const index = layout.elements.findIndex((e) => e.id === selected.id);
-        const target = { front: others.length, back: 0, forward: Math.min(others.length, index + 1), backward: Math.max(0, index - 1) }[to];
-        setLayout({ ...layout, elements: [...others.slice(0, target), selected, ...others.slice(target)] });
+        setLayout(
+            onSide(layout, side, (elements) => {
+                const others = elements.filter((e) => e.id !== selected.id);
+                const index = elements.findIndex((e) => e.id === selected.id);
+                const target = { front: others.length, back: 0, forward: Math.min(others.length, index + 1), backward: Math.max(0, index - 1) }[to];
+                return [...others.slice(0, target), selected, ...others.slice(target)];
+            }),
+        );
+    };
+
+    const switchSide = (next: EditorSide) => {
+        setSide(next);
+        setSelectedId(null);
     };
 
     const applyPreset = (preset: LayoutPreset) => {
@@ -406,6 +434,15 @@ export default function CertificateEditorPage() {
                     style={{ fontSize: '0.9rem', fontWeight: 600, padding: '0.3rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: 6, minWidth: 0, width: 220 }}
                 />
                 <span className="dirty">{dirty ? 'Alterações não salvas' : 'Tudo salvo'}</span>
+                <Segmented<EditorSide>
+                    ariaLabel="Página em edição"
+                    value={side}
+                    onChange={switchSide}
+                    options={[
+                        { value: 'front', label: 'Frente' },
+                        { value: 'back', label: layout.backPage.enabled ? 'Verso' : 'Verso (desligado)' },
+                    ]}
+                />
                 <span className="spacer" />
                 <Button type="button" $variant="ghost" onClick={undo} disabled={!canUndo} title="Desfazer (Ctrl+Z)" aria-label="Desfazer">
                     <Undo2 size={16} />
@@ -454,6 +491,17 @@ export default function CertificateEditorPage() {
                 <Side $width={232}>
                     <h3>Adicionar</h3>
                     <AddGrid>
+                        {side === 'back' && (
+                            <button
+                                type="button"
+                                onClick={() => addElement('syllabus')}
+                                disabled={layout.backPage.elements.some((element) => element.type === 'syllabus')}
+                                title="Um bloco por verso"
+                                style={{ gridColumn: '1 / -1' }}
+                            >
+                                <ListChecks size={14} /> Conteúdo programático
+                            </button>
+                        )}
                         {NEW_ELEMENT_OPTIONS.map(({ kind, label }) => {
                             const Icon = ADD_ICONS[kind];
                             return (
@@ -465,11 +513,11 @@ export default function CertificateEditorPage() {
                     </AddGrid>
                     <h3>Camadas</h3>
                     <LayersPanel
-                        elements={layout.elements}
+                        elements={viewLayout!.elements}
                         selectedId={selectedId}
                         onSelect={setSelectedId}
                         onToggle={(id, patch) => updateElement(id, patch)}
-                        onReorder={(elements) => setLayout({ ...layout, elements })}
+                        onReorder={(elements) => setLayout(onSide(layout, side, () => elements))}
                     />
                     <h3>Modelos prontos</h3>
                     {presets.map((preset) => (
@@ -482,7 +530,7 @@ export default function CertificateEditorPage() {
                 </Side>
 
                 <EditorCanvas
-                    layout={layout}
+                    layout={viewLayout!}
                     ctx={ctx}
                     zoom={zoom}
                     selectedId={selectedId}
@@ -514,7 +562,7 @@ export default function CertificateEditorPage() {
                             onArrange={arrange}
                         />
                     ) : (
-                        <PageProperties layout={layout} onChange={(change) => setLayout((current) => current && change(current), 'page')} />
+                        <PageProperties layout={layout} side={side} onChange={(change) => setLayout((current) => current && change(current), 'page')} />
                     )}
                 </Side>
             </Body>

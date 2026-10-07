@@ -7,6 +7,7 @@
 // do desenho antigo, para quem não mexer em nada ver o mesmo papel.
 
 import { CertificateLayout, LAYOUT_VERSION, PAGE_SIZE } from './certificate-layout.types';
+import { buildClassicBackPage } from './back-pages';
 
 const { width: W, height: H } = PAGE_SIZE.landscape;
 const LINE_MUTED = '#ADB5BD';
@@ -25,7 +26,7 @@ export function buildClassicLayout(): CertificateLayout {
             muted: '#6C757D',
         },
         background: { color: '#FFFFFF', imageUrl: null },
-        syllabusPage: { enabled: true, title: 'CONTEÚDO PROGRAMÁTICO' },
+        backPage: buildClassicBackPage(),
         elements: [
             { id: 'frame-outer', name: 'Moldura externa', type: 'shape', shape: 'rect', x: 20, y: 20, w: W - 40, h: H - 40, stroke: '$accent', strokeWidth: 1.5, fill: null },
             { id: 'frame-inner', name: 'Moldura interna', type: 'shape', shape: 'rect', x: 28, y: 28, w: W - 56, h: H - 56, stroke: '$primary', strokeWidth: 1, fill: null },
