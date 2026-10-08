@@ -5,8 +5,8 @@
 // que não existem neste produto. Aqui só a estrutura visual: navegação fixa
 // para as rotas placeholder do bootstrap.
 
-import { useState, type ReactElement, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { registrationsApi } from '@/services/registrations';
@@ -28,11 +28,15 @@ import {
     UserPlus,
     PanelLeftClose,
     PanelLeftOpen,
+    Menu,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
 import { Avatar } from '@/components/ui/Avatar';
 import { NotificationBell } from './NotificationBell';
+
+/** Abaixo disso o menu lateral vira gaveta (e o recolher/expandir deixa de fazer sentido). */
+const MOBILE_BREAKPOINT = 900;
 
 const Shell = styled.div`
     display: flex;
@@ -44,9 +48,14 @@ const Shell = styled.div`
     box-sizing: border-box;
     background: ${({ theme }) => theme.colors.pageBackground};
     overflow: hidden;
+
+    @media (max-width: ${MOBILE_BREAKPOINT}px) {
+        padding: 0.5rem;
+        gap: 0.5rem;
+    }
 `;
 
-const Sidebar = styled.aside<{ $collapsed: boolean }>`
+const Sidebar = styled.aside<{ $collapsed: boolean; $open: boolean }>`
     width: ${({ $collapsed }) => ($collapsed ? '72px' : '248px')};
     flex-shrink: 0;
     background: linear-gradient(180deg, #23272b 0%, #1a1d21 100%);
@@ -59,6 +68,19 @@ const Sidebar = styled.aside<{ $collapsed: boolean }>`
     padding: 1.25rem 0.75rem;
     overflow: hidden;
     transition: width 0.2s ease;
+
+    /* Celular: o menu vira uma gaveta por cima do conteúdo, aberta pelo botão do topo. */
+    @media (max-width: ${MOBILE_BREAKPOINT}px) {
+        position: fixed;
+        top: 0.5rem;
+        bottom: 0.5rem;
+        left: 0.5rem;
+        width: min(280px, calc(100vw - 3rem));
+        z-index: 1000;
+        transform: translateX(${({ $open }) => ($open ? '0' : 'calc(-100% - 1rem)')});
+        visibility: ${({ $open }) => ($open ? 'visible' : 'hidden')};
+        transition: transform 0.2s ease, visibility 0.2s;
+    }
 
     .nav-label {
         white-space: nowrap;
@@ -273,6 +295,47 @@ const Topbar = styled.header`
     border-radius: ${({ theme }) => theme.radii.lg};
     background: ${({ theme }) => theme.colors.white};
     box-shadow: ${({ theme }) => theme.shadows.e1};
+
+    @media (max-width: ${MOBILE_BREAKPOINT}px) {
+        height: 56px;
+        padding: 0 0.75rem;
+    }
+`;
+
+const TopbarLeft = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+`;
+
+const MenuButton = styled.button`
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: 1px solid ${({ theme }) => theme.colors.borderLight};
+    border-radius: ${({ theme }) => theme.radii.sm};
+    background: transparent;
+    color: ${({ theme }) => theme.colors.textDark};
+    cursor: pointer;
+
+    &:hover {
+        background: ${({ theme }) => theme.colors.lightGray};
+    }
+
+    @media (max-width: ${MOBILE_BREAKPOINT}px) {
+        display: inline-flex;
+    }
+`;
+
+const Backdrop = styled.div`
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: rgba(20, 23, 28, 0.5);
 `;
 
 const Greeting = styled.div`
@@ -330,9 +393,13 @@ const UserBadge = styled.div`
         font-size: 0.7rem;
         color: ${({ theme }) => theme.colors.textMuted};
     }
+
+    @media (max-width: 640px) {
+        display: none;
+    }
 `;
 
-const Main = styled.div`
+const Main =styled.div`
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -411,10 +478,38 @@ function getGreeting() {
     return 'Boa noite';
 }
 
+function useIsMobile() {
+    const query = `(max-width: ${MOBILE_BREAKPOINT}px)`;
+    const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+    useEffect(() => {
+        const media = window.matchMedia(query);
+        const onChange = () => setMatches(media.matches);
+        onChange();
+        media.addEventListener('change', onChange);
+        return () => media.removeEventListener('change', onChange);
+    }, [query]);
+    return matches;
+}
+
 export function MainLayout({ children }: { children: ReactNode }) {
     const { user, organization, signOut, isImpersonating, impersonatedOrganizationName, stopImpersonation } = useAuth();
     const navigate = useNavigate();
-    const [collapsed, setCollapsed] = useState(readSidebarCollapsed);
+    const location = useLocation();
+    const isMobile = useIsMobile();
+    const [collapsedPreference, setCollapsed] = useState(readSidebarCollapsed);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    // Na gaveta do celular os rótulos sempre aparecem: "recolhido" só vale no desktop.
+    const collapsed = collapsedPreference && !isMobile;
+    const drawerVisible = isMobile && drawerOpen;
+
+    // Navegou (ou girou o aparelho): a gaveta fecha sozinha. Esc também fecha.
+    useEffect(() => setDrawerOpen(false), [location.pathname, isMobile]);
+    useEffect(() => {
+        if (!drawerVisible) return;
+        const onKey = (event: KeyboardEvent) => event.key === 'Escape' && setDrawerOpen(false);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [drawerVisible]);
     const isSuperAdmin = user?.role === 'SUPER_ADMIN';
     const isOrgAdmin = !!user?.role && ADMIN_ROLES.includes(user.role) && !isSuperAdmin;
 
@@ -489,7 +584,8 @@ export function MainLayout({ children }: { children: ReactNode }) {
 
     return (
         <Shell>
-            <Sidebar $collapsed={collapsed}>
+            {drawerVisible && <Backdrop onClick={() => setDrawerOpen(false)} aria-hidden />}
+            <Sidebar $collapsed={collapsed} $open={drawerOpen} id="menu-lateral" aria-label="Menu principal">
                 <Brand className="brand">
                     <BrandIcon><Flame size={18} /></BrandIcon>
                     <BrandText className="brand-text">
@@ -517,17 +613,19 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     {renderNavItem({ to: '/settings', label: 'Minha Conta', icon: Settings })}
                 </Nav>
 
-                <SidebarTooltip label={collapseLabel} show={collapsed}>
-                    <CollapseButton
-                        className="nav-entry"
-                        onClick={toggleCollapsed}
-                        aria-label={collapseLabel}
-                        aria-expanded={!collapsed}
-                    >
-                        {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-                        <span className="nav-label">{collapseLabel}</span>
-                    </CollapseButton>
-                </SidebarTooltip>
+                {!isMobile && (
+                    <SidebarTooltip label={collapseLabel} show={collapsed}>
+                        <CollapseButton
+                            className="nav-entry"
+                            onClick={toggleCollapsed}
+                            aria-label={collapseLabel}
+                            aria-expanded={!collapsed}
+                        >
+                            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+                            <span className="nav-label">{collapseLabel}</span>
+                        </CollapseButton>
+                    </SidebarTooltip>
+                )}
 
                 <SidebarTooltip label="Sair" show={collapsed}>
                     <SignOutButton className="nav-entry" onClick={signOut} aria-label={collapsed ? 'Sair' : undefined}>
@@ -546,9 +644,14 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     </ImpersonationBar>
                 )}
                 <Topbar>
-                    <Greeting>
-                        <span>{getGreeting()},</span> {user?.name?.split(' ')[0]}
-                    </Greeting>
+                    <TopbarLeft>
+                        <MenuButton type="button" onClick={() => setDrawerOpen(true)} aria-label="Abrir menu" aria-expanded={drawerVisible} aria-controls="menu-lateral">
+                            <Menu size={18} />
+                        </MenuButton>
+                        <Greeting>
+                            <span>{getGreeting()},</span> {user?.name?.split(' ')[0]}
+                        </Greeting>
+                    </TopbarLeft>
                     <TopbarRight>
                         <NotificationBell />
                         <TopbarDivider />

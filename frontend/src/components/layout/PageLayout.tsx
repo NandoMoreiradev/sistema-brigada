@@ -20,6 +20,10 @@ const PageWrapper = styled.div`
     overflow-y: auto;
     animation: fadeIn 0.3s ease-in-out;
 
+    @media (max-width: 640px) {
+        padding: 0;
+    }
+
     @keyframes fadeIn {
         from {
             opacity: 0;
@@ -40,6 +44,10 @@ const Header = styled.header<{ $sticky?: boolean }>`
     box-shadow: 0 2px 8px rgba(52, 58, 64, 0.08);
     flex-shrink: 0;
 
+    @media (max-width: 640px) {
+        padding: 0.5rem 0.75rem;
+    }
+
     ${({ $sticky }) => $sticky && `
         position: sticky;
         top: 0;
@@ -52,6 +60,11 @@ const HeaderTop = styled.div`
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+
+    @media (max-width: 640px) {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
 `;
 
 const TitleSection = styled.div`
@@ -116,6 +129,10 @@ const HeaderActions = styled.div`
     gap: 0.5rem;
     flex-wrap: nowrap;
     flex-shrink: 0;
+
+    @media (max-width: 640px) {
+        flex-wrap: wrap;
+    }
 `;
 
 const HeaderContent = styled.div`
