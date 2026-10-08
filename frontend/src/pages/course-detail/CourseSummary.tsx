@@ -127,7 +127,7 @@ export function InstructorList({ instructors }: { instructors: Course['instructo
     );
 }
 
-export function CourseSummary({ course }: { course: Course }) {
+export function CourseSummary({ course, studentView = false }: { course: Course; studentView?: boolean }) {
     const start = formatDateOnly(course.event.startDate);
     const end = course.event.endDate ? formatDateOnly(course.event.endDate) : null;
     const enrolled = course._count.enrollments;
@@ -141,20 +141,32 @@ export function CourseSummary({ course }: { course: Course }) {
                 <Badge $tone={STATUS_TONE[course.event.status]} style={{ alignSelf: 'flex-start' }}>{STATUS_LABEL[course.event.status]}</Badge>
             </Card>
 
-            <Card>
-                <CardLabel><MapPin size={13} /> Local</CardLabel>
-                <CardValue>{course.event.location || 'Não informado'}</CardValue>
-                {course.defaultRoom && <CardHint>Sala padrão: {course.defaultRoom.name}</CardHint>}
-            </Card>
+            {/* Para a equipe o "Não informado" lembra de preencher; para o aluno é só ruído. */}
+            {(!studentView || course.event.location || course.defaultRoom) && (
+                <Card>
+                    <CardLabel><MapPin size={13} /> Local</CardLabel>
+                    {!course.event.location && studentView && course.defaultRoom ? (
+                        <CardValue>{course.defaultRoom.name}</CardValue>
+                    ) : (
+                        <>
+                            <CardValue>{course.event.location || 'Não informado'}</CardValue>
+                            {course.defaultRoom && <CardHint>Sala padrão: {course.defaultRoom.name}</CardHint>}
+                        </>
+                    )}
+                </Card>
+            )}
 
-            <Card>
-                <CardLabel><Users size={13} /> Matrículas</CardLabel>
-                <CardValue>
-                    {enrolled}
-                    {course.vacancies ? ` de ${course.vacancies} vagas` : ' matriculados'}
-                </CardValue>
-                {course.vacancies ? <MiniProgress $percent={percentFull} style={{ width: '100%' }} /> : <CardHint>Sem limite de vagas</CardHint>}
-            </Card>
+            {/* Lotação e regra do certificado são da gestão; o aluno vê o próprio andamento em "Meu progresso". */}
+            {!studentView && (
+                <Card>
+                    <CardLabel><Users size={13} /> Matrículas</CardLabel>
+                    <CardValue>
+                        {enrolled}
+                        {course.vacancies ? ` de ${course.vacancies} vagas` : ' matriculados'}
+                    </CardValue>
+                    {course.vacancies ? <MiniProgress $percent={percentFull} style={{ width: '100%' }} /> : <CardHint>Sem limite de vagas</CardHint>}
+                </Card>
+            )}
 
             <Card>
                 <CardLabel>
@@ -168,7 +180,7 @@ export function CourseSummary({ course }: { course: Course }) {
             </Card>
 
             <Card>
-                <CardLabel><Award size={13} /> Certificado</CardLabel>
+                <CardLabel><Award size={13} /> {studentView ? 'Regra do certificado' : 'Certificado'}</CardLabel>
                 <CardValue>Presença mínima de {course.minAttendancePercent}%</CardValue>
                 <CardHint>
                     {course.requireAllLessonsWatched ? 'Todas as vídeo-aulas obrigatórias' : 'Vídeo-aulas opcionais'} ·{' '}
