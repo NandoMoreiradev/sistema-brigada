@@ -3,6 +3,8 @@ import styled, { css } from 'styled-components';
 
 /** Abaixo disso a tabela vira uma lista de cartões (uma linha = um cartão). */
 const STACK_BREAKPOINT = 640;
+/** Célula com texto até esse tamanho cabe em meia largura do cartão. */
+const SHORT_CELL_LENGTH = 24;
 
 export const TableWrapper = styled.div`
     background: ${({ theme }) => theme.colors.white};
@@ -41,8 +43,12 @@ const stackedStyles = css`
         gap: 0.6rem;
     }
 
+    /* Campos curtos (data, status, número) dividem a linha de dois em dois; os longos ocupam a largura toda. */
     tr {
-        display: block;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-flow: row dense;
+        column-gap: 1rem;
         padding: 0.35rem 0.9rem;
         border: 1px solid ${({ theme }) => theme.colors.borderLight};
         border-radius: ${({ theme }) => theme.radii.md};
@@ -52,6 +58,7 @@ const stackedStyles = css`
 
     td {
         display: block;
+        grid-column: 1 / -1;
         padding: 0.45rem 0;
         border-top: 1px dashed ${({ theme }) => theme.colors.borderLight};
         overflow-wrap: anywhere;
@@ -62,6 +69,10 @@ const stackedStyles = css`
         padding-top: 0.6rem;
         font-size: 0.9375rem;
         font-weight: 700;
+    }
+
+    td[data-short] {
+        grid-column: auto;
     }
 
     td[data-label]::before {
@@ -109,8 +120,9 @@ function labelCells(table: HTMLTableElement) {
                 if (label) cell.setAttribute('data-label', label);
                 else cell.removeAttribute('data-label');
                 // Coluna sem título (e que não é a 1ª) = botões de ação.
-                if (column > 0 && labels[column] === '') cell.setAttribute('data-actions', '');
-                else cell.removeAttribute('data-actions');
+                const isActions = column > 0 && labels[column] === '';
+                cell.toggleAttribute('data-actions', isActions);
+                cell.toggleAttribute('data-short', column > 0 && !isActions && (cell.textContent ?? '').trim().length <= SHORT_CELL_LENGTH);
                 column += cell.colSpan;
             }
         }
