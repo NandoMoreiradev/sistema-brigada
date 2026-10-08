@@ -19,6 +19,12 @@ const Shell = styled.div`
     gap: 1.5rem;
     align-items: flex-start;
     height: 100%;
+
+    @media (max-width: 860px) {
+        flex-direction: column;
+        gap: 1rem;
+        height: auto;
+    }
 `;
 
 const TabsList = styled(Tabs.List)`
@@ -27,6 +33,14 @@ const TabsList = styled(Tabs.List)`
     gap: 0.15rem;
     width: 220px;
     flex-shrink: 0;
+
+    /* Celular: as abas viram uma linha em cima do conteúdo, como em Settings. */
+    @media (max-width: 860px) {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 0.25rem;
+    }
 `;
 
 const TabsTrigger = styled(Tabs.Trigger)`
@@ -42,6 +56,7 @@ const TabsTrigger = styled(Tabs.Trigger)`
     font-weight: 600;
     color: ${({ theme }) => theme.colors.textMedium};
     cursor: pointer;
+    white-space: nowrap;
 
     &:hover {
         background: ${({ theme }) => theme.colors.lightGray};
@@ -56,6 +71,11 @@ const TabsTrigger = styled(Tabs.Trigger)`
 const TabsContent = styled(Tabs.Content)`
     flex: 1;
     min-width: 0;
+
+    @media (max-width: 860px) {
+        flex: none;
+        width: 100%;
+    }
 `;
 
 export default function EmailsAndCommunications() {

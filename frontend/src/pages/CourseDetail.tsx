@@ -19,6 +19,7 @@ import { toast } from '@/utils/toast';
 import { coursesApi, classSessionsApi, enrollmentsApi } from '@/services/courses';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { scrollFade, useScrollFade } from '@/components/ui/scrollFade';
 import { CourseSummary } from '@/pages/course-detail/CourseSummary';
 import { SessionsTab } from '@/pages/course-detail/SessionsTab';
 import { LessonsTab } from '@/pages/course-detail/LessonsTab';
@@ -38,6 +39,7 @@ const TabsList = styled(Tabs.List)`
     border-bottom: 1px solid ${({ theme }) => theme.colors.borderLight};
     margin-bottom: 1rem;
     overflow-x: auto;
+    ${scrollFade}
 `;
 
 const TabsTrigger = styled(Tabs.Trigger)`
@@ -121,6 +123,7 @@ export default function CourseDetail() {
         TABS.includes(requestedTab as TabValue) && (requestedTab !== 'enrollments' || canSeeRoster) ? (requestedTab as TabValue) : 'sessions';
     // `replace` para trocar de aba não empilhar histórico; o link com ?tab= abre direto na aba.
     const changeTab = (value: string) => setSearchParams(value === 'sessions' ? {} : { tab: value }, { replace: true });
+    const tabsRef = useScrollFade<HTMLDivElement>(activeTab);
 
     // Instrutor não tem acesso à lista completa de turmas (/courses), só a /my-courses.
     const backPath = canManage ? '/courses' : '/my-courses';
@@ -190,7 +193,7 @@ export default function CourseDetail() {
             <CourseSummary course={course} studentView={!canSeeRoster} />
 
             <Tabs.Root value={activeTab} onValueChange={changeTab}>
-                <TabsList aria-label="Seções da turma">
+                <TabsList ref={tabsRef} aria-label="Seções da turma">
                     <TabsTrigger value="sessions">Agenda <TabCount>{sessions?.length ?? course._count.sessions}</TabCount></TabsTrigger>
                     <TabsTrigger value="schedule">Programação</TabsTrigger>
                     <TabsTrigger value="lessons">Vídeo-aulas</TabsTrigger>

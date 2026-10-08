@@ -259,15 +259,15 @@ export default function People() {
                 </>
             }
         >
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                <Field style={{ flex: 1, marginBottom: 0 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <Field style={{ flex: '1 1 200px', minWidth: 0, marginBottom: 0 }}>
                     <Input
                         placeholder="Buscar por nome ou e-mail..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
                 </Field>
-                <Field style={{ width: 220, marginBottom: 0 }}>
+                <Field style={{ flex: '0 1 220px', minWidth: 0, marginBottom: 0 }}>
                     <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}>
                         <option value="ALL">Todos os tipos</option>
                         <option value="STUDENT">Alunos</option>

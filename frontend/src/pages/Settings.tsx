@@ -20,6 +20,7 @@ import { OrganizationGeneralTab } from '@/pages/settings/OrganizationGeneralTab'
 import { OrganizationEmailTab } from '@/pages/settings/OrganizationEmailTab';
 import { OrganizationRegistrationTab } from '@/pages/settings/OrganizationRegistrationTab';
 import { DirtyContext } from '@/pages/settings/SettingsParts';
+import { scrollFade, useScrollFade } from '@/components/ui/scrollFade';
 
 const ProfileHeader = styled.div`
     display: flex;
@@ -88,6 +89,7 @@ const TabsList = styled(Tabs.List)`
         gap: 0.25rem;
         padding-bottom: 0.25rem;
         border-bottom: 1px solid ${({ theme }) => theme.colors.borderLight};
+        ${scrollFade}
     }
 `;
 
@@ -208,6 +210,7 @@ export default function Settings() {
     // senão o toast de sucesso/erro aparece sobre outra aba sem contexto.
     const requested = searchParams.has('success') || searchParams.has('error') ? 'integrations' : searchParams.get('tab');
     const [tab, setTab] = useState(items.some((i) => i.value === requested) ? requested! : 'profile');
+    const tabsRef = useScrollFade<HTMLDivElement>(tab);
 
     const dirtyRef = useRef(false);
     const reportDirty = useCallback((dirty: boolean) => { dirtyRef.current = dirty; }, []);
@@ -249,7 +252,7 @@ export default function Settings() {
             <DirtyContext.Provider value={reportDirty}>
                 <Tabs.Root value={tab} onValueChange={changeTab} orientation="vertical">
                     <Shell>
-                        <TabsList aria-label="Seções de configuração">
+                        <TabsList ref={tabsRef} aria-label="Seções de configuração">
                             {renderGroup('Minha conta', ACCOUNT_ITEMS)}
                             {canEditOrganization && renderGroup('Academia', ORGANIZATION_ITEMS)}
                         </TabsList>
