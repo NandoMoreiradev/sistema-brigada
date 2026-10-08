@@ -10,7 +10,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { registrationsApi } from '@/services/registrations';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import {
     LayoutDashboard,
     GraduationCap,
@@ -28,7 +28,7 @@ import {
     UserPlus,
     PanelLeftClose,
     PanelLeftOpen,
-    Menu,
+    Ellipsis,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
@@ -49,7 +49,9 @@ const Shell = styled.div`
     background: ${({ theme }) => theme.colors.pageBackground};
     overflow: hidden;
 
+    /* Celular: conteúdo em cima, barra de navegação embaixo (o menu lateral é gaveta, fora do fluxo). */
     @media (max-width: ${MOBILE_BREAKPOINT}px) {
+        flex-direction: column;
         padding: 0.5rem;
         gap: 0.5rem;
     }
@@ -302,33 +304,78 @@ const Topbar = styled.header`
     }
 `;
 
-const TopbarLeft = styled.div`
+const BottomBar = styled.nav`
+    flex-shrink: 0;
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
+    align-items: stretch;
+    gap: 0.25rem;
+    padding: 0.25rem 0.25rem calc(0.25rem + env(safe-area-inset-bottom));
+    border-radius: ${({ theme }) => theme.radii.lg};
+    background: ${({ theme }) => theme.colors.white};
+    box-shadow: ${({ theme }) => theme.shadows.e2};
 `;
 
-const MenuButton = styled.button`
-    display: none;
+const bottomItemStyles = css`
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    flex-shrink: 0;
-    border: 1px solid ${({ theme }) => theme.colors.borderLight};
+    gap: 0.2rem;
+    padding: 0.3rem 0.25rem;
+    border: none;
     border-radius: ${({ theme }) => theme.radii.sm};
     background: transparent;
-    color: ${({ theme }) => theme.colors.textDark};
+    color: ${({ theme }) => theme.colors.textMuted};
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.1;
+    text-decoration: none;
     cursor: pointer;
 
-    &:hover {
-        background: ${({ theme }) => theme.colors.lightGray};
+    span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    @media (max-width: ${MOBILE_BREAKPOINT}px) {
-        display: inline-flex;
+    &.active {
+        background: ${({ theme }) => theme.colors.primaryLight};
+        color: ${({ theme }) => theme.colors.primary};
     }
+
+    &:focus-visible {
+        outline: 2px solid ${({ theme }) => theme.colors.primary};
+        outline-offset: -2px;
+    }
+`;
+
+const BottomItem = styled(NavLink)`
+    ${bottomItemStyles}
+`;
+
+const BottomButton = styled.button`
+    ${bottomItemStyles}
+
+    &[aria-expanded='true'] {
+        background: ${({ theme }) => theme.colors.primaryLight};
+        color: ${({ theme }) => theme.colors.primary};
+    }
+`;
+
+const BottomDot = styled.i`
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 6px);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #e03131;
+    border: 2px solid #fff;
 `;
 
 const Backdrop = styled.div`
@@ -442,6 +489,14 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'GROUP_ADMIN', 'ORG_ADMIN'];
 
 type NavEntry = { to: string; label: string; icon: typeof UserPlus; badge?: number };
 
+/**
+ * Ordem de preferência dos atalhos da barra inferior do celular: ficam os 3 primeiros que o perfil
+ * tem no menu (aluno: Painel, Minhas Turmas, Meus Certificados; coordenação: Painel, Turmas,
+ * Pessoas; plataforma: Academias). O resto vai para a gaveta, aberta pelo "Mais".
+ */
+const BOTTOM_NAV_PREFERENCE = ['/admin/organizations', '/dashboard', '/courses', '/my-courses', '/people', '/my-certificates', '/certificates', '/events'];
+const BOTTOM_NAV_SIZE = 3;
+
 const SIDEBAR_COLLAPSED_KEY = 'pronthea:sidebar-collapsed';
 
 function readSidebarCollapsed() {
@@ -554,6 +609,11 @@ export function MainLayout({ children }: { children: ReactNode }) {
                   : { to: '/my-certificates', label: 'Meus Certificados', icon: Award },
           ];
 
+    const bottomCandidates: NavEntry[] = isSuperAdmin ? [{ to: '/admin/organizations', label: 'Academias', icon: Building2 }] : navItems;
+    const bottomItems = BOTTOM_NAV_PREFERENCE.flatMap((to) => bottomCandidates.filter((entry) => entry.to === to)).slice(0, BOTTOM_NAV_SIZE);
+    // Algo pendente escondido na gaveta (ex.: cadastros a aprovar) ganha um ponto no "Mais".
+    const hiddenPending = navItems.some((entry) => !!entry.badge && !bottomItems.includes(entry));
+
     const toggleCollapsed = () => {
         setCollapsed((prev) => {
             const next = !prev;
@@ -644,14 +704,9 @@ export function MainLayout({ children }: { children: ReactNode }) {
                     </ImpersonationBar>
                 )}
                 <Topbar>
-                    <TopbarLeft>
-                        <MenuButton type="button" onClick={() => setDrawerOpen(true)} aria-label="Abrir menu" aria-expanded={drawerVisible} aria-controls="menu-lateral">
-                            <Menu size={18} />
-                        </MenuButton>
-                        <Greeting>
-                            <span>{getGreeting()},</span> {user?.name?.split(' ')[0]}
-                        </Greeting>
-                    </TopbarLeft>
+                    <Greeting>
+                        <span>{getGreeting()},</span> {user?.name?.split(' ')[0]}
+                    </Greeting>
                     <TopbarRight>
                         <NotificationBell />
                         <TopbarDivider />
@@ -667,6 +722,22 @@ export function MainLayout({ children }: { children: ReactNode }) {
                 </Topbar>
                 <Main>{children}</Main>
             </Content>
+
+            {isMobile && (
+                <BottomBar aria-label="Navegação principal">
+                    {bottomItems.map(({ to, label, icon: Icon }) => (
+                        <BottomItem key={to} to={to}>
+                            <Icon size={20} />
+                            <span>{label.replace(/^(Minhas|Meus) /, '')}</span>
+                        </BottomItem>
+                    ))}
+                    <BottomButton type="button" onClick={() => setDrawerOpen(true)} aria-expanded={drawerVisible} aria-controls="menu-lateral">
+                        <Ellipsis size={20} />
+                        <span>Mais</span>
+                        {hiddenPending && <BottomDot aria-label="Há itens pendentes no menu" />}
+                    </BottomButton>
+                </BottomBar>
+            )}
         </Shell>
     );
 }
