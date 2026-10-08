@@ -30,9 +30,15 @@ const Grid = styled.div`
     grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
     gap: 0.75rem;
     margin-bottom: 1rem;
+
+    /* Celular: duas colunas, para o resumo não empurrar as abas para fora da tela. */
+    @media (max-width: 640px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
 `;
 
-const Card = styled.div`
+const Card = styled.div<{ $wide?: boolean }>`
     background: ${({ theme }) => theme.colors.white};
     border: 1px solid ${({ theme }) => theme.colors.borderLight};
     border-radius: ${({ theme }) => theme.radii.md};
@@ -41,6 +47,11 @@ const Card = styled.div`
     flex-direction: column;
     gap: 0.35rem;
     min-width: 0;
+
+    @media (max-width: 640px) {
+        padding: 0.6rem 0.75rem;
+        ${({ $wide }) => $wide && 'grid-column: 1 / -1;'}
+    }
 `;
 
 const CardLabel = styled.div`
@@ -179,7 +190,7 @@ export function CourseSummary({ course, studentView = false }: { course: Course;
                 )}
             </Card>
 
-            <Card>
+            <Card $wide>
                 <CardLabel><Award size={13} /> {studentView ? 'Regra do certificado' : 'Certificado'}</CardLabel>
                 <CardValue>Presença mínima de {course.minAttendancePercent}%</CardValue>
                 <CardHint>

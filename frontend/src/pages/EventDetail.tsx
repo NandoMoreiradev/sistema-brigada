@@ -31,15 +31,20 @@ import { OccurrencesTab } from '@/pages/event-detail/OccurrencesTab';
 import { FilesTab } from '@/pages/event-detail/FilesTab';
 import { KIND_LABEL, STATUS_LABEL, STATUS_TONE, EVENT_STATUS_VALUES } from '@/utils/eventLabels';
 import type { AttendanceStatus, EventStatus } from '@/types';
+import { scrollFade, useScrollFade } from '@/components/ui/scrollFade';
 
 const TabsList = styled(Tabs.List)`
     display: flex;
     gap: 0.5rem;
     border-bottom: 1px solid ${({ theme }) => theme.colors.borderLight};
     margin-bottom: 1rem;
+    overflow-x: auto;
+    ${scrollFade}
 `;
 
 const TabsTrigger = styled(Tabs.Trigger)`
+    flex-shrink: 0;
+    white-space: nowrap;
     padding: 0.6rem 0.25rem;
     background: transparent;
     border: none;
@@ -86,6 +91,7 @@ export default function EventDetail() {
     const { user } = useAuth();
     const canManageEvent = hasPermission(user, 'events:manage');
     const [editOpen, setEditOpen] = useState(false);
+    const tabsRef = useScrollFade<HTMLDivElement>();
 
     const { data: event } = useQuery({ queryKey: ['events', eventId], queryFn: () => eventsApi.get(eventId) });
 
@@ -173,7 +179,7 @@ export default function EventDetail() {
             {canManageEvent && <EditEventModal event={event} open={editOpen} onOpenChange={setEditOpen} />}
 
             <Tabs.Root defaultValue={isOperation ? 'designations' : 'meeting'}>
-                <TabsList>
+                <TabsList ref={tabsRef}>
                     {isOperation ? (
                         <>
                             <TabsTrigger value="designations">Escala</TabsTrigger>

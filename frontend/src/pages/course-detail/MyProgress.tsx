@@ -18,9 +18,15 @@ const Wrapper = styled.section`
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 0.75rem;
     margin-bottom: 1rem;
+
+    /* Celular: presença e vídeo-aulas lado a lado; próxima aula e certificado em linha inteira. */
+    @media (max-width: 640px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
 `;
 
-const Card = styled.div<{ $highlight?: boolean }>`
+const Card = styled.div<{ $highlight?: boolean; $wide?: boolean }>`
     background: ${({ theme, $highlight }) => ($highlight ? theme.colors.primaryLight : theme.colors.white)};
     border: 1px solid ${({ theme }) => theme.colors.borderLight};
     border-radius: ${({ theme }) => theme.radii.md};
@@ -29,6 +35,11 @@ const Card = styled.div<{ $highlight?: boolean }>`
     flex-direction: column;
     gap: 0.35rem;
     min-width: 0;
+
+    @media (max-width: 640px) {
+        padding: 0.6rem 0.75rem;
+        ${({ $wide }) => $wide && 'grid-column: 1 / -1;'}
+    }
 `;
 
 const Label = styled.div`
@@ -78,7 +89,7 @@ export function MyProgress({ courseId, sessions }: { courseId: string; sessions:
 
     return (
         <Wrapper aria-label="Meu progresso na turma">
-            <Card $highlight={!!next}>
+            <Card $highlight={!!next} $wide>
                 <Label><CalendarClock size={13} /> Próxima aula</Label>
                 {next ? (
                     <>
@@ -93,7 +104,7 @@ export function MyProgress({ courseId, sessions }: { courseId: string; sessions:
                 )}
             </Card>
 
-            <Card>
+            <Card $wide={lessons.total === 0}>
                 <Label><CheckCircle2 size={13} /> Minha presença</Label>
                 <Value>
                     {attendance.present} de {attendance.totalSessions} {attendance.totalSessions === 1 ? 'aula' : 'aulas'} ({attendance.percent}%)
@@ -111,7 +122,7 @@ export function MyProgress({ courseId, sessions }: { courseId: string; sessions:
                 </Card>
             )}
 
-            <Card>
+            <Card $wide>
                 <Label><Award size={13} /> Certificado</Label>
                 {certificate ? (
                     <>
