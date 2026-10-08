@@ -52,7 +52,8 @@ const Shell = styled.div`
     /* Celular: conteúdo em cima, barra de navegação embaixo (o menu lateral é gaveta, fora do fluxo). */
     @media (max-width: ${MOBILE_BREAKPOINT}px) {
         flex-direction: column;
-        padding: 0.5rem;
+        /* viewport-fit=cover: o conteúdo vai até as bordas, então desviamos de notch e barra home. */
+        padding: calc(0.5rem + env(safe-area-inset-top)) calc(0.5rem + env(safe-area-inset-right)) 0.5rem calc(0.5rem + env(safe-area-inset-left));
         gap: 0.5rem;
     }
 `;
@@ -74,9 +75,9 @@ const Sidebar = styled.aside<{ $collapsed: boolean; $open: boolean }>`
     /* Celular: o menu vira uma gaveta por cima do conteúdo, aberta pelo botão do topo. */
     @media (max-width: ${MOBILE_BREAKPOINT}px) {
         position: fixed;
-        top: 0.5rem;
-        bottom: 0.5rem;
-        left: 0.5rem;
+        top: calc(0.5rem + env(safe-area-inset-top));
+        bottom: calc(0.5rem + env(safe-area-inset-bottom));
+        left: calc(0.5rem + env(safe-area-inset-left));
         width: min(280px, calc(100vw - 3rem));
         z-index: 1000;
         transform: translateX(${({ $open }) => ($open ? '0' : 'calc(-100% - 1rem)')});
