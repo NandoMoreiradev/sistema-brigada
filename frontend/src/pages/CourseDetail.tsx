@@ -22,6 +22,7 @@ import { hasPermission } from '@/utils/permissions';
 import { CourseSummary } from '@/pages/course-detail/CourseSummary';
 import { SessionsTab } from '@/pages/course-detail/SessionsTab';
 import { LessonsTab } from '@/pages/course-detail/LessonsTab';
+import { StudentLessons } from '@/pages/course-detail/lessons/StudentLessons';
 import { EnrollmentsTab } from '@/pages/course-detail/EnrollmentsTab';
 import { AttendanceModal } from '@/pages/course-detail/AttendanceModal';
 import { EditCourseModal } from '@/pages/course-detail/EditCourseModal';
@@ -183,9 +184,10 @@ export default function CourseDetail() {
                 <ArrowLeft size={14} /> {backLabel}
             </BackLink>
 
-            <CourseSummary course={course} />
-
+            {/* Aluno: o que importa para ele (próxima aula, presença, progresso) vem antes dos dados administrativos. */}
             {!canManage && <MyProgress courseId={courseId} sessions={sessions ?? []} />}
+
+            <CourseSummary course={course} studentView={!canSeeRoster} />
 
             <Tabs.Root value={activeTab} onValueChange={changeTab}>
                 <TabsList aria-label="Seções da turma">
@@ -219,14 +221,17 @@ export default function CourseDetail() {
                 </Tabs.Content>
 
                 <Tabs.Content value="lessons">
-                    <LessonsTab
-                        courseId={courseId}
-                        canManageCourse={canManage}
-                        isCourseInstructor={isInstructor}
-                        studentView={!canSeeRoster}
-                        courseInstructors={course.instructors}
-                        currentUserId={user?.id}
-                    />
+                    {canSeeRoster ? (
+                        <LessonsTab
+                            courseId={courseId}
+                            canManageCourse={canManage}
+                            isCourseInstructor={isInstructor}
+                            courseInstructors={course.instructors}
+                            currentUserId={user?.id}
+                        />
+                    ) : (
+                        <StudentLessons courseId={courseId} lessonsRequired={course.requireAllLessonsWatched} />
+                    )}
                 </Tabs.Content>
 
                 {canSeeRoster && (

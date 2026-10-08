@@ -7,14 +7,13 @@ import { useState } from 'react';
 import styled from 'styled-components';
 import {
     Plus,
-    PlayCircle,
+    Eye,
     CheckCircle2,
     Circle,
     Trash2,
     Pencil,
     UserCog,
     ChevronDown,
-    Paperclip,
     FileText,
     Image as ImageIcon,
     Music,
@@ -44,7 +43,8 @@ import { mediaApi } from '@/services/media';
 import { toast } from '@/utils/toast';
 import { apiErrorMessage } from '@/utils/apiError';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
-import { RichTextViewer } from '@/components/ui/RichTextViewer';
+import { LessonViewer } from './lessons/LessonViewer';
+import { formatFileSize, formatLessonDuration } from './lessons/lessonMedia';
 
 const VIDEO_ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska'];
 const VIDEO_MAX_SIZE = 500 * 1024 * 1024; // 500MB — mesmo teto do contexto 'course-lessons' em media.service.ts
@@ -91,12 +91,6 @@ function materialIcon(mime: string | null): LucideIcon {
     if (mime?.startsWith('image/')) return ImageIcon;
     if (mime?.startsWith('audio/')) return Music;
     return FileText;
-}
-
-function formatFileSize(bytes: number | null | undefined) {
-    if (!bytes) return '';
-    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
 
 const ModuleCard = styled.div`
@@ -220,18 +214,6 @@ const MaterialList = styled.ul`
     svg { flex-shrink: 0; color: ${({ theme }) => theme.colors.textMuted}; }
 `;
 
-const MaterialHeading = styled.span`
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0.35rem;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: ${({ theme }) => theme.colors.textMuted};
-`;
-
 const RemoveMaterialButton = styled.button`
     display: flex;
     margin-left: auto;
@@ -242,21 +224,6 @@ const RemoveMaterialButton = styled.button`
     color: ${({ theme }) => theme.colors.textMuted};
 
     &:hover { color: ${({ theme }) => theme.colors.danger}; }
-`;
-
-const VideoBlock = styled.div`
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-`;
-
-const VideoCaption = styled.span`
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: ${({ theme }) => theme.colors.textDark};
 `;
 
 const VideoDraftCard = styled.div`
@@ -297,21 +264,13 @@ const IconButton = styled.button<{ $danger?: boolean }>`
     &:disabled { opacity: 0.35; cursor: default; }
 `;
 
+/** Prévia da aula (o mesmo conteúdo que o aluno vê), aberta sob a linha da aula. */
 const LessonExtra = styled.div`
-    margin-top: 0.5rem;
-    margin-left: 1.9rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    margin: 0.75rem 0 0.5rem 1.9rem;
+    max-width: 760px;
 
-    video {
-        display: block;
-        width: auto;
-        height: auto;
-        max-width: 100%;
-        max-height: 360px;
-        border-radius: ${({ theme }) => theme.radii.sm};
-        background: #000;
+    @media (max-width: 640px) {
+        margin-left: 0;
     }
 `;
 
@@ -320,13 +279,11 @@ const LessonExtra = styled.div`
  * docs/decisoes.md: TrainingModule/Lesson/Progress do maskotCrmEdu, agora
  * escopado por Course). Uma aula pode ter vários vídeos (CourseLessonVideo), cada um sendo um
  * link colado (só `url`) ou um arquivo enviado direto pro R2 via presigned URL (`url` = URL
- * pública do upload, `storageKey` = chave no bucket) — o player embutido só é usado para vídeo
- * próprio; link externo abre em nova aba, já que não dá pra assumir que é embutível.
+ * pública do upload, `storageKey` = chave no bucket). YouTube/Vimeo tocam embutidos; os demais
+ * links abrem em nova aba, já que não dá pra assumir que são embutíveis (ver lessons/lessonMedia.ts).
  *
- * Progresso do aluno: se a aula tem vídeo próprio, ela é marcada como assistida sozinha quando
- * todos os vídeos próprios dela chegaram ao fim (o aluno não marca à mão). Aula só com links não
- * tem como ser acompanhada, então continua sendo o aluno quem marca. Marcar assistida pode liberar
- * o certificado (course-lessons.service.ts).
+ * Esta é a visão de gestão (coordenação e instrutores). O aluno vê as mesmas aulas no player de
+ * lessons/StudentLessons.tsx, onde o progresso é acompanhado; aqui "Ver aula" mostra a prévia.
  *
  * Material de apoio (PDF, slides, planilha...): anexos da aula (CourseLessonFile), escolhidos no
  * modal e enviados ao salvar — numa aula nova ainda não existe id para pendurar o arquivo.
@@ -335,7 +292,6 @@ export function LessonsTab({
     courseId,
     canManageCourse,
     isCourseInstructor,
-    studentView = false,
     courseInstructors,
     currentUserId,
 }: {
@@ -343,8 +299,6 @@ export function LessonsTab({
     /** Módulos (criar/excluir) e responsáveis exigem courses:manage — mesmo gate do backend. */
     canManageCourse: boolean;
     isCourseInstructor: boolean;
-    /** Aluno: esconde o que é de gestão (responsáveis) e mostra o próprio progresso. */
-    studentView?: boolean;
     /** Instrutores da turma: são as únicas pessoas que podem ser responsáveis por um módulo. */
     courseInstructors: { userId: string; user: { name: string } }[];
     currentUserId?: string;
@@ -354,6 +308,8 @@ export function LessonsTab({
     const [responsibleIds, setResponsibleIds] = useState<string[]>([]);
     const [onlyMine, setOnlyMine] = useState(false);
     const [collapsedModuleIds, setCollapsedModuleIds] = useState<Set<string>>(new Set());
+    /** Aulas com a prévia aberta (vídeo, texto e material, como o aluno vê). */
+    const [previewLessonIds, setPreviewLessonIds] = useState<Set<string>>(new Set());
     const [lessonModalModuleId, setLessonModalModuleId] = useState<string | null>(null);
     const [editingLesson, setEditingLesson] = useState<CourseLesson | null>(null);
     /** Vídeos da aula em edição, na ordem; arquivos novos só sobem ao salvar. */
@@ -591,30 +547,21 @@ export function LessonsTab({
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível salvar o progresso.')),
     });
 
-    const videoWatchedMutation = useMutation({
-        mutationFn: ({ lessonId, videoId }: { lessonId: string; videoId: string }) => courseLessonsApi.markVideoWatched(courseId, lessonId, videoId),
-        onSuccess: () => {
-            invalidateModules();
-            queryClient.invalidateQueries({ queryKey: ['me'] });
-        },
-        onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível salvar o progresso.')),
-    });
+    const togglePreview = (lessonId: string) =>
+        setPreviewLessonIds((current) => {
+            const next = new Set(current);
+            if (next.has(lessonId)) next.delete(lessonId);
+            else next.add(lessonId);
+            return next;
+        });
 
     const keptMaterials = (editingLesson?.files ?? []).filter((file) => !removedMaterialIds.includes(file.id));
     const allModules = modules ?? [];
     const myModulesCount = allModules.filter(isResponsible).length;
     const visibleModules = onlyMine ? allModules.filter(isResponsible) : allModules;
-    const allLessons = allModules.flatMap((m) => m.lessons);
-    const watchedCount = allLessons.filter((l) => l.progress?.[0]?.completed).length;
 
     return (
         <div>
-            {studentView && allLessons.length > 0 && (
-                <HelpText as="p" style={{ margin: '0 0 0.75rem' }}>
-                    Você assistiu {watchedCount} de {allLessons.length} vídeo-aulas. Vídeos daqui são marcados sozinhos quando terminam; nos links externos, marque
-                    você mesmo depois de assistir.
-                </HelpText>
-            )}
             {(canManageCourse || myModulesCount > 0) && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                     <div>
@@ -684,69 +631,55 @@ export function LessonsTab({
                         </ModuleHeader>
 
                         <div id={contentId} hidden={collapsed}>
-                            {!studentView && (
-                                <ResponsibleLine>
-                                    {courseModule.instructors.length > 0 ? (
-                                        <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
-                                    ) : (
-                                        <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
-                                    )}
-                                </ResponsibleLine>
-                            )}
+                            <ResponsibleLine>
+                                {courseModule.instructors.length > 0 ? (
+                                    <>Responsável: {courseModule.instructors.map((i) => <span key={i.userId}>{i.user.name}</span>)}</>
+                                ) : (
+                                    <>Sem responsável definido: qualquer instrutor da turma pode editar as aulas.</>
+                                )}
+                            </ResponsibleLine>
 
                             {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditModule(courseModule) ? ' Use “+ Aula” para adicionar.' : ''}</span>}
 
                             {courseModule.lessons.map((lesson) => {
                                 const completed = lesson.progress?.[0]?.completed ?? false;
                                 const hasContent = Boolean(lesson.content && lesson.content !== '<p></p>');
-                                const materials = lesson.files ?? [];
-                                const videos = lesson.videos ?? [];
-                                const uploadedVideos = videos.filter((video) => video.storageKey);
-                                const linkVideos = videos.filter((video) => !video.storageKey);
-                                const watchedVideoIds = lesson.progress?.[0]?.watchedVideoIds ?? [];
-                                const watchedUploadedCount = uploadedVideos.filter((video) => watchedVideoIds.includes(video.id)).length;
-                                // Vídeo próprio: para o aluno, só o fim de todos os vídeos próprios marca como assistida.
-                                const autoTracked = studentView && uploadedVideos.length > 0;
+                                const videoCount = (lesson.videos ?? []).length;
+                                const fileCount = (lesson.files ?? []).length;
+                                const previewOpen = previewLessonIds.has(lesson.id);
+                                const previewId = `lesson-${lesson.id}-preview`;
+                                const details = [
+                                    formatLessonDuration(lesson.duration),
+                                    videoCount > 0 ? `${videoCount} ${videoCount === 1 ? 'vídeo' : 'vídeos'}` : null,
+                                    fileCount > 0 ? `${fileCount} ${fileCount === 1 ? 'arquivo' : 'arquivos'}` : null,
+                                ]
+                                    .filter(Boolean)
+                                    .join(' · ');
                                 return (
                                     <LessonItem key={lesson.id}>
                                         <LessonRow>
-                                            {autoTracked ? (
-                                                <span
-                                                    style={{ display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
-                                                    title={
-                                                        completed
-                                                            ? 'Assistida'
-                                                            : uploadedVideos.length > 1
-                                                              ? `Será marcada como assistida quando todos os vídeos terminarem (${watchedUploadedCount} de ${uploadedVideos.length})`
-                                                              : 'Será marcada como assistida quando o vídeo terminar'
-                                                    }
-                                                >
-                                                    {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                                </span>
-                                            ) : (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
-                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
-                                                    title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
-                                                    aria-label={completed ? `Marcar "${lesson.title}" como não assistida` : `Marcar "${lesson.title}" como assistida`}
-                                                >
-                                                    {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                                                </button>
-                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: completed ? '#28a745' : '#adb5bd' }}
+                                                title={completed ? 'Marcar como não assistida' : 'Marcar como assistida'}
+                                                aria-label={completed ? `Marcar "${lesson.title}" como não assistida` : `Marcar "${lesson.title}" como assistida`}
+                                            >
+                                                {completed ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                                            </button>
                                             <LessonTitle>
                                                 <strong>{lesson.title}</strong>
-                                                {(lesson.duration || videos.length > 1) && (
-                                                    <span>
-                                                        {[lesson.duration ? `${Math.round(lesson.duration / 60)} min` : null, videos.length > 1 ? `${videos.length} vídeos` : null]
-                                                            .filter(Boolean)
-                                                            .join(' · ')}
-                                                    </span>
-                                                )}
+                                                {details && <span>{details}</span>}
                                             </LessonTitle>
-                                            {videos.length === 1 && linkVideos.length === 1 && (
-                                                <Button as="a" href={linkVideos[0].url} target="_blank" rel="noreferrer" $variant="ghost">
-                                                    <PlayCircle size={14} /> Assistir
+                                            {(videoCount > 0 || hasContent || fileCount > 0) && (
+                                                <Button
+                                                    $variant="ghost"
+                                                    onClick={() => togglePreview(lesson.id)}
+                                                    aria-expanded={previewOpen}
+                                                    aria-controls={previewId}
+                                                    title={previewOpen ? 'Ocultar a aula' : 'Ver a aula como o aluno vê'}
+                                                >
+                                                    <Eye size={14} /> {previewOpen ? 'Ocultar' : 'Ver aula'}
                                                 </Button>
                                             )}
                                             {canEditModule(courseModule) && (
@@ -765,65 +698,9 @@ export function LessonsTab({
                                                 </Button>
                                             )}
                                         </LessonRow>
-                                        {(uploadedVideos.length > 0 || videos.length > 1 || hasContent || materials.length > 0) && (
-                                            <LessonExtra>
-                                                {/* Um único link fica no botão "Assistir" da linha; com mais vídeos, todos aparecem aqui em ordem. */}
-                                                {(uploadedVideos.length > 0 || videos.length > 1) &&
-                                                    videos.map((video, index) => {
-                                                        const label = video.title || (videos.length > 1 ? `Vídeo ${index + 1}` : null);
-                                                        const watched = watchedVideoIds.includes(video.id);
-                                                        if (!video.storageKey) {
-                                                            return (
-                                                                <div key={video.id}>
-                                                                    <Button as="a" href={video.url} target="_blank" rel="noreferrer" $variant="ghost">
-                                                                        <PlayCircle size={14} /> {label ? `Assistir: ${label}` : 'Assistir'}
-                                                                    </Button>
-                                                                </div>
-                                                            );
-                                                        }
-                                                        return (
-                                                            <VideoBlock key={video.id}>
-                                                                {label && (
-                                                                    <VideoCaption>
-                                                                        {studentView && watched && <CheckCircle2 size={13} color="#28a745" aria-label="Assistido" />}
-                                                                        {label}
-                                                                    </VideoCaption>
-                                                                )}
-                                                                <video
-                                                                    controls
-                                                                    preload="metadata"
-                                                                    src={video.url}
-                                                                    onEnded={() => {
-                                                                        if (studentView && !watched) videoWatchedMutation.mutate({ lessonId: lesson.id, videoId: video.id });
-                                                                    }}
-                                                                />
-                                                            </VideoBlock>
-                                                        );
-                                                    })}
-                                                {hasContent && <RichTextViewer html={lesson.content!} />}
-                                                {materials.length > 0 && (
-                                                    <div>
-                                                        <MaterialHeading>
-                                                            <Paperclip size={12} /> Material de apoio
-                                                        </MaterialHeading>
-                                                        <MaterialList>
-                                                            {materials.map((material) => {
-                                                                const Icon = materialIcon(material.mimeType);
-                                                                return (
-                                                                    <li key={material.id}>
-                                                                        <Icon size={14} />
-                                                                        {material.externalUrl ? (
-                                                                            <a href={material.externalUrl} target="_blank" rel="noreferrer">{material.name}</a>
-                                                                        ) : (
-                                                                            <span>{material.name}</span>
-                                                                        )}
-                                                                        {material.size ? <small>{formatFileSize(material.size)}</small> : null}
-                                                                    </li>
-                                                                );
-                                                            })}
-                                                        </MaterialList>
-                                                    </div>
-                                                )}
+                                        {previewOpen && (
+                                            <LessonExtra id={previewId}>
+                                                <LessonViewer lesson={lesson} />
                                             </LessonExtra>
                                         )}
                                     </LessonItem>
