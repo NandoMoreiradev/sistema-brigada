@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCourseModuleDto } from './dto/create-course-module.dto';
 import { UpdateCourseModuleDto } from './dto/update-course-module.dto';
+import { ReorderCourseModulesDto } from './dto/reorder-course-items.dto';
 import { assertAreCourseInstructors, INSTRUCTOR_USER_SELECT } from './course-instructors.util';
 
 @Injectable()
@@ -18,7 +19,25 @@ export class CourseModulesService {
 
     async create(courseId: string, organizationId: string, dto: CreateCourseModuleDto) {
         await this.requireCourse(courseId, organizationId);
-        return this.prisma.courseModule.create({ data: { courseId, title: dto.title, order: dto.order ?? 0 } });
+        // Sem ordem explícita, o módulo novo entra no fim da lista.
+        let order = dto.order;
+        if (order === undefined) {
+            const last = await this.prisma.courseModule.aggregate({ where: { courseId }, _max: { order: true } });
+            order = (last._max.order ?? -1) + 1;
+        }
+        return this.prisma.courseModule.create({ data: { courseId, title: dto.title, order } });
+    }
+
+    /** Grava a nova ordem dos módulos: `ids` deve trazer todos os módulos da turma, sem repetir. */
+    async reorder(courseId: string, organizationId: string, dto: ReorderCourseModulesDto) {
+        await this.requireCourse(courseId, organizationId);
+        const modules = await this.prisma.courseModule.findMany({ where: { courseId }, select: { id: true } });
+        const ids = [...new Set(dto.ids)];
+        if (ids.length !== modules.length || !modules.every((m) => ids.includes(m.id))) {
+            throw new BadRequestException('Informe todos os módulos da turma, sem repetir.');
+        }
+        await this.prisma.$transaction(ids.map((id, order) => this.prisma.courseModule.update({ where: { id }, data: { order } })));
+        return { ids };
     }
 
     /** Lista módulos com aulas e o progresso do usuário atual em cada aula. */
@@ -30,7 +49,7 @@ export class CourseModulesService {
                 instructors: { include: { user: INSTRUCTOR_USER_SELECT } },
                 lessons: {
                     where: { active: true },
-                    orderBy: { order: 'asc' },
+                    orderBy: [{ order: 'asc' }, { id: 'asc' }],
                     include: {
                         progress: { where: { userId: currentUserId } },
                         videos: { orderBy: { order: 'asc' } },
@@ -38,7 +57,7 @@ export class CourseModulesService {
                     },
                 },
             },
-            orderBy: { order: 'asc' },
+            orderBy: [{ order: 'asc' }, { id: 'asc' }],
         });
     }
 

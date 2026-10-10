@@ -225,6 +225,10 @@ export const courseModulesApi = {
         const { data } = await api.patch<CourseModuleWithLessons>(`/courses/${courseId}/modules/${moduleId}`, input);
         return data;
     },
+    /** `ids`: todos os módulos da turma, na nova ordem. */
+    reorder: async (courseId: string, ids: string[]) => {
+        await api.put(`/courses/${courseId}/modules/reorder`, { ids });
+    },
     setInstructors: async (courseId: string, moduleId: string, userIds: string[]) => {
         const { data } = await api.put<{ instructors: ModuleInstructor[] }>(`/courses/${courseId}/modules/${moduleId}/instructors`, { userIds });
         return data;
@@ -235,6 +239,10 @@ export const courseModulesApi = {
 };
 
 export const courseLessonsApi = {
+    /** `ids`: todas as aulas ativas do módulo, na nova ordem. */
+    reorder: async (courseId: string, moduleId: string, ids: string[]) => {
+        await api.put(`/courses/${courseId}/lessons/reorder`, { moduleId, ids });
+    },
     create: async (courseId: string, input: CourseLessonInput) => {
         const { data } = await api.post<CourseLesson>(`/courses/${courseId}/lessons`, input);
         return data;

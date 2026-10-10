@@ -3,6 +3,7 @@ import { CourseModulesService } from './course-modules.service';
 import { CreateCourseModuleDto } from './dto/create-course-module.dto';
 import { UpdateCourseModuleDto } from './dto/update-course-module.dto';
 import { SetModuleInstructorsDto } from './dto/set-module-instructors.dto';
+import { ReorderCourseModulesDto } from './dto/reorder-course-items.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
 import { PermissionsGuard, RequirePermission } from '../auth/guard/permissions.guard';
@@ -34,6 +35,16 @@ export class CourseModulesController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.courseModulesService.create(courseId, this.requireOrganizationId(organizationId), dto);
+    }
+
+    @Put('reorder')
+    @RequirePermission('courses:manage')
+    reorder(
+        @Param('courseId') courseId: string,
+        @Body() dto: ReorderCourseModulesDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+    ) {
+        return this.courseModulesService.reorder(courseId, this.requireOrganizationId(organizationId), dto);
     }
 
     @Get()

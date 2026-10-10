@@ -21,6 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { CreateCourseLessonDto } from './dto/create-course-lesson.dto';
 import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
+import { ReorderCourseLessonsDto } from './dto/reorder-course-items.dto';
 import { CreateCourseLessonFileDto } from './dto/create-course-lesson-file.dto';
 import { UpdateLessonProgressDto } from './dto/update-lesson-progress.dto';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
@@ -88,13 +89,20 @@ export class CourseLessonsService {
         await this.requireModuleInCourse(courseId, dto.moduleId);
         await this.assertCanEditLessonsInModule(courseId, dto.moduleId, user);
 
+        // Sem ordem explícita, a aula nova entra no fim do módulo.
+        let order = dto.order;
+        if (order === undefined) {
+            const last = await this.prisma.courseLesson.aggregate({ where: { moduleId: dto.moduleId }, _max: { order: true } });
+            order = (last._max.order ?? -1) + 1;
+        }
+
         return this.prisma.courseLesson.create({
             data: {
                 moduleId: dto.moduleId,
                 title: dto.title,
                 content: dto.content,
                 duration: dto.duration,
-                order: dto.order ?? 0,
+                order,
                 videos: {
                     create: (dto.videos ?? []).map((video, index) => ({
                         title: video.title || null,
@@ -106,6 +114,21 @@ export class CourseLessonsService {
             },
             include: { videos: { orderBy: { order: 'asc' } } },
         });
+    }
+
+    /** Grava a nova ordem das aulas de um módulo: `ids` deve trazer todas as aulas ativas dele, sem repetir. */
+    async reorder(courseId: string, organizationId: string, dto: ReorderCourseLessonsDto, user: AuthenticatedUser) {
+        await this.requireCourse(courseId, organizationId);
+        await this.requireModuleInCourse(courseId, dto.moduleId);
+        await this.assertCanEditLessonsInModule(courseId, dto.moduleId, user);
+
+        const lessons = await this.prisma.courseLesson.findMany({ where: { moduleId: dto.moduleId, active: true }, select: { id: true } });
+        const ids = [...new Set(dto.ids)];
+        if (ids.length !== lessons.length || !lessons.every((l) => ids.includes(l.id))) {
+            throw new BadRequestException('Informe todas as aulas do módulo, sem repetir.');
+        }
+        await this.prisma.$transaction(ids.map((id, order) => this.prisma.courseLesson.update({ where: { id }, data: { order } })));
+        return { ids };
     }
 
     async update(courseId: string, organizationId: string, lessonId: string, dto: UpdateCourseLessonDto, user: AuthenticatedUser) {

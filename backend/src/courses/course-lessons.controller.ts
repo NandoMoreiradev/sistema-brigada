@@ -17,6 +17,7 @@ import { Controller, Post, Body, Patch, Put, Param, Delete, UseGuards, BadReques
 import { CourseLessonsService } from './course-lessons.service';
 import { CreateCourseLessonDto } from './dto/create-course-lesson.dto';
 import { UpdateCourseLessonDto } from './dto/update-course-lesson.dto';
+import { ReorderCourseLessonsDto } from './dto/reorder-course-items.dto';
 import { UpdateLessonProgressDto } from './dto/update-lesson-progress.dto';
 import { CreateCourseLessonFileDto } from './dto/create-course-lesson-file.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
@@ -51,6 +52,17 @@ export class CourseLessonsController {
         @CurrentUser() user: AuthenticatedUser,
     ) {
         return this.courseLessonsService.create(courseId, this.requireOrganizationId(organizationId), dto, user);
+    }
+
+    @Put('reorder')
+    @Roles(...ALL_ORG_ROLES)
+    reorder(
+        @Param('courseId') courseId: string,
+        @Body() dto: ReorderCourseLessonsDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.courseLessonsService.reorder(courseId, this.requireOrganizationId(organizationId), dto, user);
     }
 
     @Patch(':lessonId')
