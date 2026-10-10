@@ -3,9 +3,13 @@
 // Módulos + aulas em vídeo de uma turma (decisão de reaproveitamento em docs/decisoes.md:
 // TrainingModule/Lesson/Progress do maskotCrmEdu, agora escopado por Course).
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import styled from 'styled-components';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
+    GripVertical,
     Plus,
     Eye,
     CheckCircle2,
@@ -264,6 +268,61 @@ const IconButton = styled.button<{ $danger?: boolean }>`
     &:disabled { opacity: 0.35; cursor: default; }
 `;
 
+const DragHandleButton = styled(IconButton)`
+    cursor: grab;
+    touch-action: none;
+
+    &:active { cursor: grabbing; }
+`;
+
+/** Alça de arrastar (mouse, toque e teclado: Espaço pega, setas movem). Some para quem não pode reordenar. */
+function dragHandle(
+    sortable: ReturnType<typeof useSortable>,
+    label: string,
+    enabled: boolean,
+) {
+    if (!enabled) return null;
+    const { attributes, listeners, setActivatorNodeRef } = sortable;
+    return (
+        <DragHandleButton
+            type="button"
+            ref={setActivatorNodeRef}
+            aria-label={label}
+            title="Arraste para reordenar"
+            {...attributes}
+            {...listeners}
+        >
+            <GripVertical size={16} />
+        </DragHandleButton>
+    );
+}
+
+/** Cartão de módulo arrastável: `children` recebe a alça (null se o módulo não pode ser reordenado). */
+function SortableModuleCard({ id, title, enabled, children }: { id: string; title: string; enabled: boolean; children: (handle: ReactNode) => ReactNode }) {
+    const sortable = useSortable({ id, disabled: !enabled });
+    return (
+        <ModuleCard
+            ref={sortable.setNodeRef}
+            style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? 0.6 : 1, position: 'relative', zIndex: sortable.isDragging ? 2 : undefined }}
+        >
+            {children(dragHandle(sortable, `Mover o módulo ${title}. Espaço para pegar e setas para mudar a ordem.`, enabled))}
+        </ModuleCard>
+    );
+}
+
+/** Aula arrastável dentro do módulo. */
+function SortableLessonItem({ id, title, enabled, children }: { id: string; title: string; enabled: boolean; children: (handle: ReactNode) => ReactNode }) {
+    const sortable = useSortable({ id, disabled: !enabled });
+    return (
+        <LessonItem
+            ref={sortable.setNodeRef}
+            style={{ transform: CSS.Translate.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? 0.6 : 1, position: 'relative', zIndex: sortable.isDragging ? 2 : undefined }}
+        >
+            {children(dragHandle(sortable, `Mover a aula ${title}. Espaço para pegar e setas para mudar a ordem.`, enabled))}
+        </LessonItem>
+    );
+}
+
 /** Prévia da aula (o mesmo conteúdo que o aluno vê), aberta sob a linha da aula. */
 const LessonExtra = styled.div`
     margin: 0.75rem 0 0.5rem 1.9rem;
@@ -360,6 +419,53 @@ export function LessonsTab({
         },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível atualizar os responsáveis.')),
     });
+
+    // Alguns pixels antes de começar a arrastar: um clique simples não vira arraste.
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
+
+    // A tela já mostra a nova ordem (cache atualizado na hora); se o servidor recusar, recarrega a ordem salva.
+    const reorderModulesMutation = useMutation({
+        mutationFn: (ids: string[]) => courseModulesApi.reorder(courseId, ids),
+        onError: (error: unknown) => {
+            toast.error(apiErrorMessage(error, 'Não foi possível salvar a nova ordem dos módulos.'));
+            invalidateModules();
+        },
+    });
+
+    const reorderLessonsMutation = useMutation({
+        mutationFn: ({ moduleId, ids }: { moduleId: string; ids: string[] }) => courseLessonsApi.reorder(courseId, moduleId, ids),
+        onError: (error: unknown) => {
+            toast.error(apiErrorMessage(error, 'Não foi possível salvar a nova ordem das aulas.'));
+            invalidateModules();
+        },
+    });
+
+    const handleModuleDragEnd = ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id || !modules) return;
+        const from = modules.findIndex((m) => m.id === active.id);
+        const to = modules.findIndex((m) => m.id === over.id);
+        if (from < 0 || to < 0) return;
+        const reordered = arrayMove(modules, from, to);
+        queryClient.setQueryData(['courses', courseId, 'modules'], reordered);
+        reorderModulesMutation.mutate(reordered.map((m) => m.id));
+    };
+
+    const handleLessonDragEnd = (moduleId: string, { active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id || !modules) return;
+        const lessons = modules.find((m) => m.id === moduleId)?.lessons ?? [];
+        const from = lessons.findIndex((l) => l.id === active.id);
+        const to = lessons.findIndex((l) => l.id === over.id);
+        if (from < 0 || to < 0) return;
+        const reordered = arrayMove(lessons, from, to);
+        queryClient.setQueryData(
+            ['courses', courseId, 'modules'],
+            modules.map((m) => (m.id === moduleId ? { ...m, lessons: reordered } : m)),
+        );
+        reorderLessonsMutation.mutate({ moduleId, ids: reordered.map((l) => l.id) });
+    };
 
     const removeModuleMutation = useMutation({
         mutationFn: (moduleId: string) => courseModulesApi.remove(courseId, moduleId),
@@ -587,12 +693,23 @@ export function LessonsTab({
                 </div>
             )}
 
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleModuleDragEnd}>
+            <SortableContext items={visibleModules.map((m) => m.id)} strategy={verticalListSortingStrategy}>
             {visibleModules.map((courseModule) => {
                 const collapsed = collapsedModuleIds.has(courseModule.id);
                 const contentId = `module-${courseModule.id}-lessons`;
                 return (
-                    <ModuleCard key={courseModule.id}>
+                    <SortableModuleCard
+                        key={courseModule.id}
+                        id={courseModule.id}
+                        title={courseModule.title}
+                        // Com o filtro "só os meus" a lista está incompleta, e a ordem é gravada para todos os módulos.
+                        enabled={canManageCourse && !onlyMine && !reorderModulesMutation.isPending}
+                    >
+                      {(moduleHandle) => (<>
                         <ModuleHeader $collapsed={collapsed}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', minWidth: 0 }}>
+                            {moduleHandle}
                             <h3>
                                 <ModuleToggle
                                     type="button"
@@ -607,6 +724,7 @@ export function LessonsTab({
                                     <small>{courseModule.lessons.length} {courseModule.lessons.length === 1 ? 'aula' : 'aulas'}</small>
                                 </ModuleToggle>
                             </h3>
+                            </div>
                             {(canEditModule(courseModule) || canManageCourse) && (
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     {canEditModule(courseModule) && (
@@ -659,6 +777,8 @@ export function LessonsTab({
 
                             {courseModule.lessons.length === 0 && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>Nenhuma aula neste módulo ainda.{canEditModule(courseModule) ? ' Use “+ Aula” para adicionar.' : ''}</span>}
 
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => handleLessonDragEnd(courseModule.id, event)}>
+                            <SortableContext items={courseModule.lessons.map((l) => l.id)} strategy={verticalListSortingStrategy}>
                             {courseModule.lessons.map((lesson) => {
                                 const completed = lesson.progress?.[0]?.completed ?? false;
                                 const hasContent = Boolean(lesson.content && lesson.content !== '<p></p>');
@@ -674,8 +794,15 @@ export function LessonsTab({
                                     .filter(Boolean)
                                     .join(' · ');
                                 return (
-                                    <LessonItem key={lesson.id}>
+                                    <SortableLessonItem
+                                        key={lesson.id}
+                                        id={lesson.id}
+                                        title={lesson.title}
+                                        enabled={canEditModule(courseModule) && !reorderLessonsMutation.isPending}
+                                    >
+                                      {(lessonHandle) => (<>
                                         <LessonRow>
+                                            {lessonHandle}
                                             <button
                                                 type="button"
                                                 onClick={() => progressMutation.mutate({ lessonId: lesson.id, completed: !completed })}
@@ -721,13 +848,19 @@ export function LessonsTab({
                                                 <LessonViewer lesson={lesson} />
                                             </LessonExtra>
                                         )}
-                                    </LessonItem>
+                                      </>)}
+                                    </SortableLessonItem>
                                 );
                             })}
+                            </SortableContext>
+                            </DndContext>
                         </div>
-                    </ModuleCard>
+                      </>)}
+                    </SortableModuleCard>
                 );
             })}
+            </SortableContext>
+            </DndContext>
 
             {allModules.length === 0 && (
                 <TableWrapper>
