@@ -221,6 +221,10 @@ export const courseModulesApi = {
         const { data } = await api.post<CourseModuleWithLessons>(`/courses/${courseId}/modules`, input);
         return data;
     },
+    update: async (courseId: string, moduleId: string, input: { title?: string; order?: number }) => {
+        const { data } = await api.patch<CourseModuleWithLessons>(`/courses/${courseId}/modules/${moduleId}`, input);
+        return data;
+    },
     setInstructors: async (courseId: string, moduleId: string, userIds: string[]) => {
         const { data } = await api.put<{ instructors: ModuleInstructor[] }>(`/courses/${courseId}/modules/${moduleId}/instructors`, { userIds });
         return data;

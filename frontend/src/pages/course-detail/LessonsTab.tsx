@@ -304,6 +304,8 @@ export function LessonsTab({
     currentUserId?: string;
 }) {
     const [moduleModalOpen, setModuleModalOpen] = useState(false);
+    /** Módulo cujo título está sendo editado; null = o modal está criando um módulo novo. */
+    const [editingModule, setEditingModule] = useState<CourseModuleWithLessons | null>(null);
     const [responsiblesModule, setResponsiblesModule] = useState<CourseModuleWithLessons | null>(null);
     const [responsibleIds, setResponsibleIds] = useState<string[]>([]);
     const [onlyMine, setOnlyMine] = useState(false);
@@ -341,6 +343,12 @@ export function LessonsTab({
         mutationFn: (title: string) => courseModulesApi.create(courseId, { title }),
         onSuccess: () => { toast.success('Módulo criado.'); invalidateModules(); setModuleModalOpen(false); },
         onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível criar o módulo.')),
+    });
+
+    const renameModuleMutation = useMutation({
+        mutationFn: ({ moduleId, title }: { moduleId: string; title: string }) => courseModulesApi.update(courseId, moduleId, { title }),
+        onSuccess: () => { toast.success('Módulo atualizado.'); invalidateModules(); setModuleModalOpen(false); },
+        onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Não foi possível atualizar o módulo.')),
     });
 
     const setResponsiblesMutation = useMutation({
@@ -572,7 +580,7 @@ export function LessonsTab({
                         )}
                     </div>
                     {canManageCourse && (
-                        <Button onClick={() => { resetModule({ title: '' }); setModuleModalOpen(true); }}>
+                        <Button onClick={() => { setEditingModule(null); resetModule({ title: '' }); setModuleModalOpen(true); }}>
                             <Plus size={16} /> Novo módulo
                         </Button>
                     )}
@@ -604,6 +612,16 @@ export function LessonsTab({
                                     {canEditModule(courseModule) && (
                                         <Button $variant="ghost" onClick={() => openCreateLesson(courseModule.id)}>
                                             <Plus size={14} /> Aula
+                                        </Button>
+                                    )}
+                                    {canManageCourse && (
+                                        <Button
+                                            $variant="ghost"
+                                            onClick={() => { setEditingModule(courseModule); resetModule({ title: courseModule.title }); setModuleModalOpen(true); }}
+                                            aria-label={`Renomear módulo ${courseModule.title}`}
+                                            title="Renomear módulo"
+                                        >
+                                            <Pencil size={14} />
                                         </Button>
                                     )}
                                     {canManageCourse && (
@@ -755,15 +773,23 @@ export function LessonsTab({
                 </Form>
             </Modal>
 
-            <Modal open={moduleModalOpen} onOpenChange={setModuleModalOpen} title="Novo módulo">
-                <Form onSubmit={handleSubmitModule((data) => createModuleMutation.mutate(data.title))}>
+            <Modal open={moduleModalOpen} onOpenChange={setModuleModalOpen} title={editingModule ? 'Editar módulo' : 'Novo módulo'}>
+                <Form
+                    onSubmit={handleSubmitModule((data) =>
+                        editingModule
+                            ? renameModuleMutation.mutate({ moduleId: editingModule.id, title: data.title.trim() })
+                            : createModuleMutation.mutate(data.title),
+                    )}
+                >
                     <Field>
                         <Label htmlFor="moduleTitle">Título do módulo</Label>
                         <Input id="moduleTitle" placeholder="ex: Módulo 1 — Fundamentos" {...registerModule('title', { required: true })} />
                     </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setModuleModalOpen(false)}>Cancelar</Button>
-                        <Button type="submit" disabled={createModuleMutation.isPending}>{createModuleMutation.isPending ? 'Salvando...' : 'Criar'}</Button>
+                        <Button type="submit" disabled={createModuleMutation.isPending || renameModuleMutation.isPending}>
+                            {createModuleMutation.isPending || renameModuleMutation.isPending ? 'Salvando...' : editingModule ? 'Salvar' : 'Criar'}
+                        </Button>
                     </FormActions>
                 </Form>
             </Modal>
