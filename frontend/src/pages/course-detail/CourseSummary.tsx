@@ -196,6 +196,7 @@ export function CourseSummary({ course, studentView = false }: { course: Course;
                 <CardHint>
                     {course.requireAllLessonsWatched ? 'Todas as vídeo-aulas obrigatórias' : 'Vídeo-aulas opcionais'} ·{' '}
                     {course.recyclingValidityMonths ? `validade de ${course.recyclingValidityMonths} meses` : 'sem vencimento'}
+                    {!course.autoIssueCertificates && ' · emissão manual'}
                 </CardHint>
             </Card>
         </Grid>

@@ -38,6 +38,7 @@ const schema = z.object({
     vacancies: z.string().optional(),
     minAttendancePercent: z.string().optional(),
     requireAllLessonsWatched: z.boolean().optional(),
+    autoIssueCertificates: z.boolean().optional(),
     recyclingValidityMonths: z.string().optional(),
     recommendedRecyclingCourseId: z.string().optional(),
     syllabus: z.string().optional(),
@@ -90,6 +91,7 @@ export default function Courses() {
             vacancies: '',
             minAttendancePercent: '75',
             requireAllLessonsWatched: true,
+            autoIssueCertificates: true,
             recyclingValidityMonths: '',
             recommendedRecyclingCourseId: '',
             syllabus: '',
@@ -124,6 +126,7 @@ export default function Courses() {
             vacancies: formData.vacancies ? Number(formData.vacancies) : undefined,
             minAttendancePercent: formData.minAttendancePercent ? Number(formData.minAttendancePercent) : undefined,
             requireAllLessonsWatched: formData.requireAllLessonsWatched,
+            autoIssueCertificates: formData.autoIssueCertificates,
             recyclingValidityMonths: formData.recyclingValidityMonths ? Number(formData.recyclingValidityMonths) : undefined,
             recommendedRecyclingCourseId: formData.recommendedRecyclingCourseId || undefined,
             syllabus: formData.syllabus || undefined,
@@ -306,6 +309,11 @@ export default function Courses() {
                     <CheckboxField>
                         <input type="checkbox" {...register('requireAllLessonsWatched')} />
                         Exigir todas as vídeo-aulas assistidas para emitir o certificado
+                    </CheckboxField>
+
+                    <CheckboxField>
+                        <input type="checkbox" {...register('autoIssueCertificates')} />
+                        Emitir os certificados automaticamente ao atingir os critérios
                     </CheckboxField>
 
                     {courses.length > 0 && (

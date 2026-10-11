@@ -247,6 +247,9 @@ model Course {
   /// Critério de emissão automática do certificado (decisão 17: configurável por turma)
   minAttendancePercent         Int       @default(75)
   requireAllLessonsWatched     Boolean   @default(true)
+  /// false = a academia emite os certificados manualmente: ao atingir os critérios nada é
+  /// emitido sozinho, e a emissão manual não avisa o aluno (ver Certificate.studentNotifiedAt).
+  autoIssueCertificates        Boolean   @default(true)
   /// Validade em meses do certificado emitido nesta turma (decisão 19)
   recyclingValidityMonths      Int?
   recommendedRecyclingCourseId String?
@@ -977,6 +980,10 @@ model Certificate {
   expiresAt                 DateTime?
   status                    CertificateStatus @default(VALID)
   pdfKey                    String?
+  /// true = o PDF foi enviado pela academia; "Regerar PDF(s)" não sobrescreve.
+  pdfUploadedManually       Boolean           @default(false)
+  /// Quando o aluno foi avisado (notificação + e-mail). Null = ainda não avisado.
+  studentNotifiedAt         DateTime?
   /// Decisão 16: emissão automática por critérios da turma
   issuedAutomatically       Boolean           @default(true)
   recycledFromCertificateId String?

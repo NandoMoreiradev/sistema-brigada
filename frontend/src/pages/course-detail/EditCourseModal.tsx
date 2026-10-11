@@ -42,6 +42,7 @@ interface FormData {
     minAttendancePercent: string;
     recyclingValidityMonths: string;
     requireAllLessonsWatched: boolean;
+    autoIssueCertificates: boolean;
     recommendedRecyclingCourseId: string;
     syllabus: string;
     certificateTitle: string;
@@ -131,6 +132,7 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
             minAttendancePercent: String(course.minAttendancePercent),
             recyclingValidityMonths: course.recyclingValidityMonths ? String(course.recyclingValidityMonths) : '',
             requireAllLessonsWatched: course.requireAllLessonsWatched,
+            autoIssueCertificates: course.autoIssueCertificates,
             recommendedRecyclingCourseId: course.recommendedRecyclingCourseId ?? '',
             syllabus: course.syllabus ?? '',
             certificateTitle: course.certificateTitle ?? '',
@@ -153,6 +155,7 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 status: input.status,
                 minAttendancePercent: input.minAttendancePercent === '' ? 75 : Number(input.minAttendancePercent),
                 requireAllLessonsWatched: input.requireAllLessonsWatched,
+                autoIssueCertificates: input.autoIssueCertificates,
                 recyclingValidityMonths: numberOrNull(input.recyclingValidityMonths),
                 recommendedRecyclingCourseId: emptyToNull(input.recommendedRecyclingCourseId),
                 syllabus: emptyToNull(input.syllabus),
@@ -337,6 +340,10 @@ export function EditCourseModal({ course, open, onOpenChange }: EditCourseModalP
                 <CheckboxField>
                     <input type="checkbox" {...register('requireAllLessonsWatched')} />
                     Exigir todas as vídeo-aulas assistidas para emitir o certificado
+                </CheckboxField>
+                <CheckboxField>
+                    <input type="checkbox" {...register('autoIssueCertificates')} />
+                    Emitir os certificados automaticamente ao atingir os critérios
                 </CheckboxField>
                 <Field>
                     <Label htmlFor="editRecommendedRecyclingCourseId">Curso de reciclagem recomendado (opcional)</Label>

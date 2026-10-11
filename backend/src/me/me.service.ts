@@ -112,7 +112,8 @@ export class MeService {
                 minPercent: enrollment.course.minAttendancePercent,
             },
             lessons: { completed: completedLessons, total: totalLessons, required: enrollment.course.requireAllLessonsWatched },
-            certificate: enrollment.certificate
+            // Certificado emitido manualmente fica oculto até a academia avisar o aluno.
+            certificate: enrollment.certificate?.studentNotifiedAt
                 ? {
                       id: enrollment.certificate.id,
                       status: effectiveCertificateStatus(enrollment.certificate),
@@ -134,7 +135,7 @@ export class MeService {
 
         return enrollments.map((enrollment) => ({
             ...enrollment,
-            certificate: enrollment.certificate
+            certificate: enrollment.certificate?.studentNotifiedAt
                 ? {
                       ...enrollment.certificate,
                       status: effectiveCertificateStatus(enrollment.certificate),
@@ -160,7 +161,7 @@ export class MeService {
         if (!studentProfile) return [];
 
         const certificates = await this.prisma.certificate.findMany({
-            where: { organizationId, enrollment: { studentProfileId: studentProfile.id } },
+            where: { organizationId, studentNotifiedAt: { not: null }, enrollment: { studentProfileId: studentProfile.id } },
             include: { enrollment: { include: { course: { include: { event: true } } } } },
             orderBy: { issuedAt: 'desc' },
         });
