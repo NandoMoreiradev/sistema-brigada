@@ -55,6 +55,11 @@ export class CreateCourseDto {
     @IsOptional()
     requireAllLessonsWatched?: boolean;
 
+    /** false = a academia emite os certificados manualmente (nada é emitido ao atingir os critérios). */
+    @IsBoolean()
+    @IsOptional()
+    autoIssueCertificates?: boolean;
+
     /** Validade em meses do certificado emitido nesta turma (decisão 19). */
     @IsInt()
     @Min(1)

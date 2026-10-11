@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import { CertificatesService } from './certificates.service';
 import { ListCertificatesDto } from './dto/list-certificates.dto';
 import { IssueCertificateDto } from './dto/issue-certificate.dto';
 import { RevokeCertificateDto } from './dto/revoke-certificate.dto';
+import { UploadCertificatePdfDto } from './dto/upload-certificate-pdf.dto';
 import { RegeneratePdfsDto } from './dto/regenerate-pdfs.dto';
 import { JwtAuthGuard } from '../auth/guard/jwt-auth.guard';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -66,6 +67,26 @@ export class CertificatesController {
     @RequirePermission('certificates:manage')
     regeneratePdf(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.certificatesService.regeneratePdf(id, this.requireOrganizationId(organizationId));
+    }
+
+    /** Registra o PDF enviado pela academia (já no storage via `POST /media/presigned-url`, contexto `certificates`). */
+    @Post(':id/pdf')
+    @RequirePermission('certificates:manage')
+    uploadPdf(@Param('id') id: string, @Body() dto: UploadCertificatePdfDto, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.certificatesService.uploadPdf(id, this.requireOrganizationId(organizationId), dto.storageKey);
+    }
+
+    @Delete(':id/pdf')
+    @RequirePermission('certificates:manage')
+    useGeneratedPdf(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.certificatesService.useGeneratedPdf(id, this.requireOrganizationId(organizationId));
+    }
+
+    /** Avisa o aluno (notificação + e-mail); também serve para reenviar. */
+    @Post(':id/notify')
+    @RequirePermission('certificates:manage')
+    notifyStudent(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.certificatesService.notifyStudent(id, this.requireOrganizationId(organizationId));
     }
 
     @Post(':id/revoke')

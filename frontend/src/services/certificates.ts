@@ -20,6 +20,10 @@ export interface Certificate {
     issuedAutomatically: boolean;
     pdfKey: string | null;
     pdfUrl: string | null;
+    /** true = PDF enviado pela academia ("Regerar PDF" não o sobrescreve) */
+    pdfUploadedManually: boolean;
+    /** null = o aluno ainda não foi avisado (e não vê o certificado em /my-certificates) */
+    studentNotifiedAt: string | null;
     revokedAt: string | null;
     revokedReason: string | null;
     enrollment: {
@@ -94,6 +98,19 @@ export const certificatesApi = {
     },
     issue: async (enrollmentId: string, force?: boolean) => {
         const { data } = await api.post<Certificate>('/certificates/issue', { enrollmentId, force });
+        return data;
+    },
+    /** `storageKey` vem do upload com contexto `certificates` (mediaApi.upload). */
+    uploadPdf: async (id: string, storageKey: string) => {
+        const { data } = await api.post<Certificate>(`/certificates/${id}/pdf`, { storageKey });
+        return data;
+    },
+    useGeneratedPdf: async (id: string) => {
+        const { data } = await api.delete<Certificate>(`/certificates/${id}/pdf`);
+        return data;
+    },
+    notifyStudent: async (id: string) => {
+        const { data } = await api.post<Certificate>(`/certificates/${id}/notify`);
         return data;
     },
     revoke: async (id: string, reason: string) => {

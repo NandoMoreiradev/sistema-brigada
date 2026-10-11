@@ -6,8 +6,8 @@
 // (`POST /certificates/issue`) existe na API para casos excepcionais, mas
 // ainda não tem UI dedicada — o fluxo principal é automático.
 
-import { useState } from 'react';
-import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, BellRing, LayoutTemplate } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Award, Settings, Download, RefreshCw, ShieldCheck, Copy, Ban, RotateCcw, BellRing, LayoutTemplate, Upload, Send, FileCheck } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { isAxiosError } from 'axios';
@@ -28,6 +28,7 @@ import { DesignsModal } from '@/pages/certificates/DesignsModal';
 import { RegeneratePdfsModal } from '@/pages/certificates/RegeneratePdfsModal';
 import { ReminderSettingsModal } from '@/pages/certificates/ReminderSettingsModal';
 import { ReminderHistoryModal } from '@/pages/certificates/ReminderHistoryModal';
+import { mediaApi } from '@/services/media';
 import { toast } from '@/utils/toast';
 
 const STATUS_LABEL: Record<CertificateStatus, string> = {
@@ -55,6 +56,8 @@ export default function Certificates() {
     const queryClient = useQueryClient();
     const [designsOpen, setDesignsOpen] = useState(false);
     const [regenerateOpen, setRegenerateOpen] = useState(false);
+    const pdfInputRef = useRef<HTMLInputElement>(null);
+    const uploadTargetId = useRef<string | null>(null);
 
     const { data, isLoading } = useQuery({
         queryKey: ['certificates', { status: statusFilter }],
@@ -71,6 +74,41 @@ export default function Certificates() {
         },
         onError: (error) => toast.error(errorMessage(error, 'Não foi possível gerar o PDF.')),
     });
+
+    const uploadPdfMutation = useMutation({
+        mutationFn: async ({ id, file }: { id: string; file: File }) => {
+            const { storageKey } = await mediaApi.upload(file, 'certificates');
+            return certificatesApi.uploadPdf(id, storageKey);
+        },
+        onSuccess: () => {
+            toast.success('PDF enviado.');
+            invalidateCertificates();
+        },
+        onError: (error) => toast.error(errorMessage(error, 'Não foi possível enviar o PDF.')),
+    });
+
+    const useGeneratedPdfMutation = useMutation({
+        mutationFn: (id: string) => certificatesApi.useGeneratedPdf(id),
+        onSuccess: () => {
+            toast.success('Voltou a usar o PDF gerado pelo sistema.');
+            invalidateCertificates();
+        },
+        onError: (error) => toast.error(errorMessage(error, 'Não foi possível voltar ao PDF do sistema.')),
+    });
+
+    const notifyMutation = useMutation({
+        mutationFn: (id: string) => certificatesApi.notifyStudent(id),
+        onSuccess: () => {
+            toast.success('Aluno avisado.');
+            invalidateCertificates();
+        },
+        onError: (error) => toast.error(errorMessage(error, 'Não foi possível avisar o aluno.')),
+    });
+
+    const pickPdf = (certificate: Certificate) => {
+        uploadTargetId.current = certificate.id;
+        pdfInputRef.current?.click();
+    };
 
     const revokeMutation = useMutation({
         mutationFn: ({ id, reason }: { id: string; reason: string }) => certificatesApi.revoke(id, reason),
@@ -114,12 +152,37 @@ export default function Certificates() {
         { label: 'Copiar código', icon: <Copy size={14} />, onSelect: () => copyCode(certificate.code) },
         { label: 'Lembretes de vencimento', icon: <BellRing size={14} />, onSelect: () => setReminderHistoryFor(certificate) },
         {
-            label: 'Regerar PDF',
-            icon: <RefreshCw size={14} />,
-            hint: 'aplica a personalização atual',
-            disabled: regenerateMutation.isPending,
-            onSelect: () => regenerateMutation.mutate(certificate.id),
+            label: 'Enviar PDF da academia',
+            icon: <Upload size={14} />,
+            hint: certificate.studentNotifiedAt ? undefined : 'também avisa o aluno',
+            disabled: uploadPdfMutation.isPending,
+            onSelect: () => pickPdf(certificate),
         },
+        certificate.pdfUploadedManually
+            ? {
+                  label: 'Usar o PDF do sistema',
+                  icon: <FileCheck size={14} />,
+                  hint: 'descarta o PDF enviado',
+                  disabled: useGeneratedPdfMutation.isPending,
+                  onSelect: () => useGeneratedPdfMutation.mutate(certificate.id),
+              }
+            : {
+                  label: 'Regerar PDF',
+                  icon: <RefreshCw size={14} />,
+                  hint: 'aplica a personalização atual',
+                  disabled: regenerateMutation.isPending,
+                  onSelect: () => regenerateMutation.mutate(certificate.id),
+              },
+        ...(certificate.status === 'REVOKED'
+            ? []
+            : [
+                  {
+                      label: certificate.studentNotifiedAt ? 'Reenviar aviso ao aluno' : 'Avisar aluno',
+                      icon: <Send size={14} />,
+                      disabled: notifyMutation.isPending,
+                      onSelect: () => notifyMutation.mutate(certificate.id),
+                  } satisfies MenuEntry,
+              ]),
         { type: 'separator' },
         certificate.status === 'REVOKED'
             ? {
@@ -189,6 +252,15 @@ export default function Certificates() {
                                     >
                                         {STATUS_LABEL[certificate.status]}
                                     </Badge>
+                                    {!certificate.studentNotifiedAt && certificate.status !== 'REVOKED' && (
+                                        <Badge
+                                            $tone="warning"
+                                            style={{ marginLeft: '0.4rem' }}
+                                            title="O aluno ainda não foi avisado e não vê este certificado em Meus certificados."
+                                        >
+                                            Aluno não avisado
+                                        </Badge>
+                                    )}
                                 </Td>
                                 <Td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                                     {certificate.pdfUrl ? (
@@ -218,6 +290,19 @@ export default function Certificates() {
                     </EmptyState>
                 )}
             </TableWrapper>
+
+            <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf"
+                hidden
+                onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    const id = uploadTargetId.current;
+                    e.target.value = '';
+                    if (file && id) uploadPdfMutation.mutate({ id, file });
+                }}
+            />
 
             <TemplateModal open={templateModalOpen} onOpenChange={setTemplateModalOpen} />
             <DesignsModal open={designsOpen} onOpenChange={setDesignsOpen} />

@@ -165,6 +165,7 @@ export interface Course {
     vacancies?: number | null;
     minAttendancePercent: number;
     requireAllLessonsWatched: boolean;
+    autoIssueCertificates: boolean;
     recyclingValidityMonths?: number | null;
     recommendedRecyclingCourseId?: string | null;
     syllabus?: string | null;

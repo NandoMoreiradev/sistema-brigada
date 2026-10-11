@@ -24,6 +24,8 @@ export interface CreateCourseInput {
     /** Critério de emissão automática do certificado (decisão 17, docs/decisoes.md). */
     minAttendancePercent?: number;
     requireAllLessonsWatched?: boolean;
+    /** false = a academia emite os certificados manualmente. */
+    autoIssueCertificates?: boolean;
     /** Validade em meses do certificado emitido nesta turma (decisão 19). */
     recyclingValidityMonths?: number;
     /** Curso sugerido para reciclagem quando o certificado desta turma vencer (decisão 19). */

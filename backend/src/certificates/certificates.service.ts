@@ -10,7 +10,7 @@
 // automaticamente pelo módulo `courses` (ver class-sessions.service.ts e
 // enrollments.service.ts) toda vez que a presença muda.
 
-import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaService } from '../media/media.service';
 import { CertificatePdfService } from './certificate-pdf.service';
@@ -231,6 +231,8 @@ export class CertificatesService {
         try {
             const result = await this.checkEligibility(enrollmentId);
             if (!result.eligible) return null;
+            // Turma com emissão manual: a academia emite pelo botão (issueManually).
+            if (!result.enrollment.course.autoIssueCertificates) return null;
             return this.issue(enrollmentId, true);
         } catch (error) {
             this.logger.warn(`Falha ao avaliar elegibilidade de certificado para matrícula ${enrollmentId}: ${error.message}`);
@@ -292,11 +294,39 @@ export class CertificatesService {
 
         await this.generateAndAttachPdf(certificate.id);
 
-        const student = enrollment.studentProfile.user;
-        const courseName = enrollment.course.event.title;
+        // Turma com emissão manual não avisa o aluno aqui: o aviso sai quando a academia sobe o
+        // PDF dela ou clica em "Avisar aluno" (senão ele abriria o certificado antes do arquivo final).
+        if (enrollment.course.autoIssueCertificates) {
+            return this.notifyStudent(certificate.id, enrollment.organizationId);
+        }
+        return this.findOne(certificate.id, enrollment.organizationId);
+    }
+
+    /** Notificação no sistema + e-mail de "certificado emitido"; marca `studentNotifiedAt`. */
+    async notifyStudent(id: string, organizationId: string) {
+        const certificate = await this.prisma.certificate.findFirst({
+            where: { id, organizationId },
+            include: {
+                enrollment: {
+                    include: {
+                        course: { include: { event: true } },
+                        studentProfile: { include: { user: { select: { id: true, name: true, email: true } } } },
+                    },
+                },
+            },
+        });
+        if (!certificate) {
+            throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
+        }
+        if (certificate.status === CertificateStatus.REVOKED) {
+            throw new ConflictException('Não é possível avisar o aluno de um certificado revogado.');
+        }
+
+        const student = certificate.enrollment.studentProfile.user;
+        const courseName = certificate.enrollment.course.event.title;
         await this.notificationsService.create({
             userId: student.id,
-            organizationId: enrollment.organizationId,
+            organizationId,
             type: 'CERTIFICATE_ISSUED',
             title: 'Certificado emitido',
             message: `Seu certificado da turma "${courseName}" foi emitido.`,
@@ -305,20 +335,18 @@ export class CertificatesService {
             link: '/my-certificates',
         });
 
-        const organization = await this.prisma.organization.findUnique({
-            where: { id: enrollment.organizationId },
-            select: { name: true },
-        });
-        // Sem await: o e-mail não pode atrasar nem derrubar a emissão (o serviço já loga falhas).
+        const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+        // Sem await: o e-mail não pode atrasar nem derrubar a operação (o serviço já loga falhas).
         void this.transactionalEmailService.sendCertificateIssuedEmail(
             { name: student.name, email: student.email },
-            enrollment.organizationId,
+            organizationId,
             organization?.name ?? '',
             courseName,
             `${process.env.FRONTEND_URL}/my-certificates`,
         );
 
-        return this.findOne(certificate.id, enrollment.organizationId);
+        await this.prisma.certificate.update({ where: { id }, data: { studentNotifiedAt: new Date() } });
+        return this.findOne(id, organizationId);
     }
 
     async regeneratePdf(id: string, organizationId: string) {
@@ -326,7 +354,52 @@ export class CertificatesService {
         if (!certificate) {
             throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
         }
+        if (certificate.pdfUploadedManually) {
+            throw new ConflictException('O PDF deste certificado foi enviado pela academia. Volte ao PDF do sistema para poder regerá-lo.');
+        }
         await this.generateAndAttachPdf(id);
+        return this.findOne(id, organizationId);
+    }
+
+    /**
+     * Troca o PDF pelo da academia (já enviado ao storage via URL pré-assinada). Se o aluno ainda
+     * não foi avisado, o aviso sai agora — é o momento em que o arquivo final existe.
+     */
+    async uploadPdf(id: string, organizationId: string, storageKey: string) {
+        const certificate = await this.prisma.certificate.findFirst({ where: { id, organizationId } });
+        if (!certificate) {
+            throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
+        }
+        // Chaves de upload da academia: certificates/{organizationId}/{uuid}.pdf (ver MediaService.generatePresignedUrl).
+        if (!storageKey.startsWith(`certificates/${organizationId}/`) || !storageKey.toLowerCase().endsWith('.pdf')) {
+            throw new BadRequestException('Arquivo de PDF inválido.');
+        }
+
+        await this.prisma.certificate.update({ where: { id }, data: { pdfKey: storageKey, pdfUploadedManually: true } });
+        if (certificate.pdfKey && certificate.pdfKey !== storageKey) {
+            await this.mediaService.deleteObject(certificate.pdfKey);
+        }
+
+        if (!certificate.studentNotifiedAt && certificate.status !== CertificateStatus.REVOKED) {
+            return this.notifyStudent(id, organizationId);
+        }
+        return this.findOne(id, organizationId);
+    }
+
+    /** Descarta o PDF enviado pela academia e volta ao PDF gerado pelo sistema. */
+    async useGeneratedPdf(id: string, organizationId: string) {
+        const certificate = await this.prisma.certificate.findFirst({ where: { id, organizationId } });
+        if (!certificate) {
+            throw new NotFoundException(`Certificado com ID ${id} não encontrado nesta organização.`);
+        }
+        if (!certificate.pdfUploadedManually) {
+            throw new ConflictException('Este certificado já usa o PDF gerado pelo sistema.');
+        }
+        await this.prisma.certificate.update({ where: { id }, data: { pdfUploadedManually: false } });
+        if (!(await this.generateAndAttachPdf(id))) {
+            await this.prisma.certificate.update({ where: { id }, data: { pdfUploadedManually: true } });
+            throw new InternalServerErrorException('Não foi possível gerar o PDF. O PDF enviado foi mantido.');
+        }
         return this.findOne(id, organizationId);
     }
 
@@ -499,7 +572,8 @@ export class CertificatesService {
             throw new ConflictException('Já existe uma regeração de PDFs em andamento nesta academia.');
         }
 
-        const where: Prisma.CertificateWhereInput = { organizationId, status: { not: CertificateStatus.REVOKED } };
+        // PDFs enviados pela academia não são sobrescritos.
+        const where: Prisma.CertificateWhereInput = { organizationId, status: { not: CertificateStatus.REVOKED }, pdfUploadedManually: false };
         if (scope.courseId) {
             where.enrollment = { courseId: scope.courseId };
         } else if (scope.designId) {
