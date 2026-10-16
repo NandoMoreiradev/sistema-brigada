@@ -51,6 +51,39 @@ export type UpdateCourseInput = {
     [K in Exclude<keyof CreateCourseInput, 'instructorUserIds'>]?: CreateCourseInput[K] | null;
 } & { status?: EventStatus };
 
+/** Resumo do que há para copiar de uma turma e do que a turma de destino já tem. */
+export interface CourseCopyPreview {
+    source: {
+        title: string;
+        sessions: number;
+        groups: number;
+        activities: number;
+        scheduleDays: number;
+        modules: number;
+        lessons: number;
+        videos: number;
+        files: number;
+        /** Primeiro dia com algo datado (aula avulsa ou programação), `YYYY-MM-DD`. */
+        firstDate: string | null;
+    };
+    target: { sessions: number; activities: number; modules: number };
+}
+
+export interface CourseCopyInput {
+    sourceCourseId: string;
+    startDate?: string;
+    sessions: boolean;
+    schedule: boolean;
+    lessons: boolean;
+}
+
+export interface CourseCopyResult {
+    sessions: { copied: number; skipped: number };
+    schedule: { groups: number; activities: number; days: number };
+    lessons: { modules: number; lessons: number };
+    warnings: string[];
+}
+
 export const coursesApi = {
     list: async (search?: string) => {
         const { data } = await api.get<Paginated<Course>>('/courses', { params: { search, limit: 100 } });
@@ -70,6 +103,14 @@ export const coursesApi = {
     },
     remove: async (id: string) => {
         await api.delete(`/courses/${id}`);
+    },
+    copyPreview: async (id: string, sourceCourseId: string) => {
+        const { data } = await api.get<CourseCopyPreview>(`/courses/${id}/copy-preview`, { params: { sourceCourseId } });
+        return data;
+    },
+    copyFrom: async (id: string, input: CourseCopyInput) => {
+        const { data } = await api.post<CourseCopyResult>(`/courses/${id}/copy-from`, input);
+        return data;
     },
     assignInstructor: async (id: string, userId: string) => {
         const { data } = await api.post<Course>(`/courses/${id}/instructors`, { userId });

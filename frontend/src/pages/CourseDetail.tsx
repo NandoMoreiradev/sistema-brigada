@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Tabs from '@radix-ui/react-tabs';
 import styled from 'styled-components';
-import { ArrowLeft, ClipboardList, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, ClipboardList, Copy, Pencil, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
@@ -19,6 +19,7 @@ import { toast } from '@/utils/toast';
 import { coursesApi, classSessionsApi, enrollmentsApi } from '@/services/courses';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPermission } from '@/utils/permissions';
+import { toDateOnly } from '@/utils/courseDates';
 import { scrollFade, useScrollFade } from '@/components/ui/scrollFade';
 import { CourseSummary } from '@/pages/course-detail/CourseSummary';
 import { SessionsTab } from '@/pages/course-detail/SessionsTab';
@@ -27,6 +28,7 @@ import { StudentLessons } from '@/pages/course-detail/lessons/StudentLessons';
 import { EnrollmentsTab } from '@/pages/course-detail/EnrollmentsTab';
 import { AttendanceModal } from '@/pages/course-detail/AttendanceModal';
 import { EditCourseModal } from '@/pages/course-detail/EditCourseModal';
+import { CopyFromCourseModal } from '@/pages/course-detail/CopyFromCourseModal';
 import { MyProgress } from '@/pages/course-detail/MyProgress';
 import { ScheduleTab } from '@/pages/course-detail/ScheduleTab';
 
@@ -101,6 +103,7 @@ export default function CourseDetail() {
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [editModalOpen, setEditModalOpen] = useState(false);
+    const [copyModalOpen, setCopyModalOpen] = useState(false);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
     const { user } = useAuth();
@@ -175,6 +178,9 @@ export default function CourseDetail() {
                     <>
                         <Button $variant="secondary" onClick={() => setEditModalOpen(true)}>
                             <Pencil size={14} /> Editar turma
+                        </Button>
+                        <Button $variant="secondary" onClick={() => setCopyModalOpen(true)}>
+                            <Copy size={14} /> Copiar de outra turma
                         </Button>
                         <Button $variant="danger" onClick={handleDeleteCourse} disabled={removeCourseMutation.isPending}>
                             <Trash2 size={14} /> Excluir
@@ -255,6 +261,7 @@ export default function CourseDetail() {
             {activeSession && <AttendanceModal courseId={courseId} session={activeSession} currentUserId={user?.id} onClose={() => setActiveSessionId(null)} />}
 
             {canManage && <EditCourseModal course={course} open={editModalOpen} onOpenChange={setEditModalOpen} />}
+            {canManage && <CopyFromCourseModal courseId={courseId} defaultDate={toDateOnly(course.event.startDate)} open={copyModalOpen} onOpenChange={setCopyModalOpen} />}
         </PageLayout>
     );
 }

@@ -58,7 +58,7 @@ export interface ScheduleConflict {
     blockIds: string[];
 }
 
-interface TemplateData {
+export interface TemplateData {
     version: 1;
     groups: { key: string; name: string; roomId: string | null }[];
     activities: {
@@ -490,16 +490,13 @@ export class CourseScheduleService {
 
     // ───────────────────────────── modelos ─────────────────────────────
 
-    async saveTemplate(courseId: string, organizationId: string, name: string) {
-        await this.requireCourse(courseId, organizationId);
+    /** Programação inteira da turma (grupos, atividades, ordem de cada grupo/dia) no formato dos modelos. */
+    async buildTemplateData(courseId: string): Promise<{ data: TemplateData; firstDate: Date | null }> {
         const [groups, activities, blocks] = await Promise.all([
             this.prisma.courseGroup.findMany({ where: { courseId }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
             this.prisma.courseActivity.findMany({ where: { courseId }, include: { assignees: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
             this.prisma.scheduleBlock.findMany({ where: { courseId }, orderBy: [{ date: 'asc' }, { order: 'asc' }] }),
         ]);
-        if (activities.length === 0) {
-            throw new BadRequestException('Cadastre as atividades da turma antes de salvar um modelo.');
-        }
 
         const firstDay = blocks[0]?.date.getTime() ?? 0;
         const days = new Map<string, TemplateData['days'][number]>();
@@ -523,6 +520,15 @@ export class CourseScheduleService {
             })),
             days: [...days.values()],
         };
+        return { data, firstDate: blocks[0]?.date ?? null };
+    }
+
+    async saveTemplate(courseId: string, organizationId: string, name: string) {
+        await this.requireCourse(courseId, organizationId);
+        const { data } = await this.buildTemplateData(courseId);
+        if (data.activities.length === 0) {
+            throw new BadRequestException('Cadastre as atividades da turma antes de salvar um modelo.');
+        }
 
         const template = await this.prisma.scheduleTemplate.upsert({
             where: { organizationId_name: { organizationId, name: name.trim() } },
@@ -550,13 +556,18 @@ export class CourseScheduleService {
      * programações. Sala/equipe/pessoa do modelo que não existe mais (ou foi desativada) é deixada de fora.
      */
     async applyTemplate(courseId: string, organizationId: string, dto: ApplyTemplateDto) {
-        const course = await this.requireCourse(courseId, organizationId);
-        if ((await this.prisma.courseActivity.count({ where: { courseId } })) > 0) {
-            throw new ConflictException('Esta turma já tem atividades cadastradas. O modelo só pode ser aplicado numa programação vazia.');
-        }
+        await this.requireCourse(courseId, organizationId);
         const template = await this.prisma.scheduleTemplate.findFirst({ where: { id: dto.templateId, organizationId } });
         if (!template) throw new NotFoundException('Modelo não encontrado.');
-        const data = template.data as unknown as TemplateData;
+        await this.applyTemplateData(courseId, organizationId, template.data as unknown as TemplateData, toDateOnly(dto.startDate));
+    }
+
+    /** Aplica uma programação (de modelo ou de outra turma) a partir de `startDate`, só em turma sem atividades. */
+    async applyTemplateData(courseId: string, organizationId: string, data: TemplateData, startDate: Date) {
+        const course = await this.requireCourse(courseId, organizationId);
+        if ((await this.prisma.courseActivity.count({ where: { courseId } })) > 0) {
+            throw new ConflictException('Esta turma já tem atividades cadastradas. A programação só pode ser copiada para uma turma sem atividades.');
+        }
 
         const referencedRooms = [...data.groups.map((g) => g.roomId), ...data.activities.map((a) => a.roomId)].filter((id): id is string => Boolean(id));
         const referencedTeams = data.activities.flatMap((a) => a.assignees.map((x) => x.teamId)).filter((id): id is string => Boolean(id));
@@ -569,8 +580,6 @@ export class CourseScheduleService {
         const validRooms = new Set(rooms.map((r) => r.id));
         const teamsById = new Map(teams.map((t) => [t.id, t]));
         const validUsers = new Set(users.map((u) => u.id));
-        const startDate = toDateOnly(dto.startDate);
-
         await this.prisma.$transaction(async (tx) => {
             const existingGroups = await tx.courseGroup.findMany({ where: { courseId } });
             const groupIdByKey = new Map<string, string>();
