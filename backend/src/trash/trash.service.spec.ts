@@ -159,8 +159,9 @@ describe('TrashService', () => {
             prisma.classSession.count.mockResolvedValue(5);
             prisma.courseModule.count.mockResolvedValue(2);
             prisma.courseLesson.count.mockResolvedValue(6);
-            prisma.courseLessonVideo.findMany.mockResolvedValue([{ storageKey: 'videos/a.mp4' }]);
-            prisma.courseLessonFile.findMany.mockResolvedValue([{ storageKey: 'materiais/apostila.pdf' }]);
+            // 1ª chamada: arquivos da turma; 2ª: os mesmos arquivos usados por aulas de outras turmas (nenhum).
+            prisma.courseLessonVideo.findMany.mockResolvedValueOnce([{ storageKey: 'videos/a.mp4' }]).mockResolvedValue([]);
+            prisma.courseLessonFile.findMany.mockResolvedValueOnce([{ storageKey: 'materiais/apostila.pdf' }]).mockResolvedValue([]);
             prisma.certificate.findMany.mockResolvedValue([{ pdfKey: 'certs/1.pdf' }, { pdfKey: 'certs/2.pdf' }]);
             prisma.event.delete.mockResolvedValue({});
             return prisma;
@@ -186,6 +187,23 @@ describe('TrashService', () => {
             expect(prisma.event.delete).toHaveBeenCalledWith({ where: { id: 'e1', hardDelete: true } });
             expect(order[0]).toBe('db');
             expect(mediaService.deleteObject).toHaveBeenCalledTimes(4);
+        });
+
+        it('turma: não apaga do storage o arquivo que aula copiada em outra turma ainda usa', async () => {
+            const prisma = coursePrisma();
+            const mediaService = media();
+            // O vídeo da turma excluída também está numa aula de outra turma (cópia de conteúdo).
+            const keys = (rows: Array<{ storageKey: string }>) => async () => rows;
+            prisma.courseLessonVideo.findMany.mockReset().mockImplementation(keys([{ storageKey: 'videos/a.mp4' }]));
+            prisma.courseLessonFile.findMany.mockReset().mockImplementation(async ({ where }: any) => (where.storageKey?.in ? [] : [{ storageKey: 'materiais/apostila.pdf' }]));
+
+            const check = await build(prisma).purgeCheck('courses', 'c1', ORG);
+            expect(check.files).toBe(3);
+
+            await build(prisma, mediaService).purge('courses', 'c1', ORG);
+            const removed = mediaService.deleteObject.mock.calls.map(([key]: [string]) => key);
+            expect(removed).not.toContain('videos/a.mp4');
+            expect(removed).toEqual(expect.arrayContaining(['materiais/apostila.pdf', 'certs/1.pdf', 'certs/2.pdf']));
         });
 
         it('se o banco recusar (FK), nenhum arquivo é apagado e o erro vira 409', async () => {

@@ -7,6 +7,8 @@ import { TeamsService } from './teams.service';
 import { TeamsController } from './teams.controller';
 import { CourseScheduleService } from './course-schedule.service';
 import { CourseScheduleController, ScheduleTemplatesController } from './course-schedule.controller';
+import { CourseCopyService } from './course-copy.service';
+import { CourseCopyController } from './course-copy.controller';
 import { ClassSessionsService } from './class-sessions.service';
 import { ClassSessionsController } from './class-sessions.controller';
 import { EnrollmentsService } from './enrollments.service';
@@ -29,6 +31,7 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
         TeamsController,
         CourseScheduleController,
         ScheduleTemplatesController,
+        CourseCopyController,
         ClassSessionsController,
         EnrollmentsController,
         CourseModulesController,
@@ -39,6 +42,7 @@ import { TransactionalEmailModule } from '../transactional-email/transactional-e
         RoomsService,
         TeamsService,
         CourseScheduleService,
+        CourseCopyService,
         ClassSessionsService,
         EnrollmentsService,
         CourseModulesService,

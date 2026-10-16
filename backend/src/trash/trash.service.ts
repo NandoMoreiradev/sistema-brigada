@@ -280,6 +280,23 @@ export class TrashService {
         return { message: `"${plan.name}" foi excluído(a) definitivamente.` };
     }
 
+    /**
+     * Vídeo e material de aula copiados para outra turma (course-copy.service.ts) apontam para o
+     * mesmo objeto do storage. Só vai para a remoção a chave que nenhuma aula de outra turma usa —
+     * inclusive de turma que está na lixeira, que ainda pode ser restaurada.
+     */
+    private async withoutKeysUsedElsewhere(db: Db, courseId: string, keys: Array<string | null>): Promise<string[]> {
+        const own = [...new Set(keys.filter((k): k is string => !!k))];
+        if (own.length === 0) return [];
+        const elsewhere = { lesson: { module: { courseId: { not: courseId } } }, storageKey: { in: own } };
+        const [videos, files] = await Promise.all([
+            db.courseLessonVideo.findMany({ where: elsewhere, select: { storageKey: true } }),
+            db.courseLessonFile.findMany({ where: elsewhere, select: { storageKey: true } }),
+        ]);
+        const shared = new Set([...videos, ...files].map((r) => r.storageKey));
+        return own.filter((k) => !shared.has(k));
+    }
+
     private async buildPurgePlan(
         db: PrismaService | Db,
         entity: TrashEntity,
@@ -308,9 +325,10 @@ export class TrashService {
                         { label: 'módulos', count: modules },
                         { label: 'videoaulas e conteúdos', count: lessons },
                     ],
-                    fileKeys: [...videos.map((v) => v.storageKey), ...materials.map((m) => m.storageKey), ...pdfs.map((p) => p.pdfKey)].filter(
-                        (k): k is string => !!k,
-                    ),
+                    fileKeys: [
+                        ...(await this.withoutKeysUsedElsewhere(db as Db, id, [...videos.map((v) => v.storageKey), ...materials.map((m) => m.storageKey)])),
+                        ...pdfs.map((p) => p.pdfKey).filter((k): k is string => !!k),
+                    ],
                     // Apagar o Event leva Course, sessões, módulos, matrículas e certificados pelo `onDelete: Cascade`.
                     execute: () => this.prisma.event.delete({ where: hard({ id: course.eventId }) }),
                 };
