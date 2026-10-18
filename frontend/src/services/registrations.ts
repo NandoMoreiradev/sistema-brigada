@@ -48,6 +48,8 @@ export const registrationsPublicApi = {
 
 export interface ApproveRegistrationInput {
     kind?: RegistrationKind;
+    /** Categoria na equipe; só vale quando o papel é equipe. */
+    staffCategoryId?: string;
     birthDate?: string;
     baptismDate?: string;
     pioneerStatus?: PioneerStatus;
@@ -86,7 +88,12 @@ export const registrationsApi = {
         const { data } = await api.get<RegistrationInvite[]>('/registrations/invites');
         return data;
     },
-    createInvite: async (input: { email: string; name?: string; kind: RegistrationKind }) => {
+    /** Só id+nome, para o seletor de categoria (não exige a permissão de Equipe). */
+    staffCategories: async () => {
+        const { data } = await api.get<{ id: string; name: string }[]>('/registrations/staff-categories');
+        return data;
+    },
+    createInvite: async (input: { email: string; name?: string; kind: RegistrationKind; staffCategoryId?: string }) => {
         const { data } = await api.post<{ sent: boolean; invite: RegistrationInvite }>('/registrations/invites', input);
         return data;
     },

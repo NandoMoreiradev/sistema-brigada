@@ -49,7 +49,7 @@ const userListSelect = {
     directPermissions: true,
     studentProfile: true,
     personProfile: true,
-    staffMember: { select: { id: true, status: true } },
+    staffMember: { select: { id: true, status: true, category: { select: { id: true, name: true } } } },
     instructorAssignments: { select: { courseId: true } },
     roleAssignments: { select: { id: true, name: true } },
     externalCertifications: true,
@@ -80,7 +80,7 @@ export class UsersService {
         personProfile?: PersonProfileDto;
         /** Promove a pessoa à equipe de atuação na mesma transação da criação da conta. */
         /** Sem revisor (`null`), a própria pessoa consta como quem aprovou. */
-        staff?: { approvedByUserId: string | null };
+        staff?: { approvedByUserId: string | null; categoryId?: string | null };
     }) {
         const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
         if (existing) {
@@ -126,7 +126,12 @@ export class UsersService {
             // sem papel e o e-mail já estaria ocupado para uma nova tentativa.
             if (input.staff) {
                 await tx.staffMember.create({
-                    data: { userId: user.id, organizationId: input.organizationId, approvedByUserId: input.staff.approvedByUserId ?? user.id },
+                    data: {
+                        userId: user.id,
+                        organizationId: input.organizationId,
+                        approvedByUserId: input.staff.approvedByUserId ?? user.id,
+                        categoryId: input.staff.categoryId ?? undefined,
+                    },
                 });
             }
 

@@ -165,6 +165,12 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     const planNameOf = (post: { floorPlanId: string | null } | null) => (schedule.plans.length > 1 && post ? (schedule.plans.find((p) => p.id === post.floorPlanId)?.name ?? null) : null);
     const { data: staff } = useQuery({ queryKey: ['staff'], queryFn: () => staffApi.list(), enabled: canManage });
     const activeStaff = (staff ?? []).filter((s) => s.status === 'ACTIVE');
+    /** Categorias que de fato existem entre as pessoas ativas — o filtro só aparece quando ajuda. */
+    const staffCategories = useMemo(() => {
+        const byId = new Map<string, string>();
+        activeStaff.forEach((s) => { if (s.category) byId.set(s.category.id, s.category.name); });
+        return [...byId.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+    }, [activeStaff]);
 
     const [view, setView] = useState<'list' | 'coverage'>('list');
     const [dayFilter, setDayFilter] = useState('all');
@@ -178,8 +184,9 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
     const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
     const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
     const [asTeam, setAsTeam] = useState(false);
+    const [categoryFilter, setCategoryFilter] = useState('');
 
-    const { register, handleSubmit, reset } = useForm<CreateFormData>();
+    const { register, handleSubmit, reset, getValues, setValue } = useForm<CreateFormData>();
     const editForm = useForm<EditFormData>();
 
     const invalidate = () => {
@@ -236,7 +243,18 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
         setSelectedStaffIds([]);
         setSelectedShiftIds(prefill?.shiftId ? [prefill.shiftId] : []);
         setAsTeam(false);
+        setCategoryFilter('');
         setCreateOpen(true);
+    };
+
+    const visibleStaff = categoryFilter ? activeStaff.filter((s) => s.category?.id === categoryFilter) : activeStaff;
+
+    /** Marca/desmarca uma pessoa. Com a função ainda em branco, sugere a categoria dela (editável). */
+    const toggleStaff = (staffMemberId: string) => {
+        const adding = !selectedStaffIds.includes(staffMemberId);
+        setSelectedStaffIds((prev) => (adding ? [...prev, staffMemberId] : prev.filter((x) => x !== staffMemberId)));
+        const category = activeStaff.find((s) => s.id === staffMemberId)?.category;
+        if (adding && category && !getValues('role').trim()) setValue('role', category.name, { shouldValidate: true });
     };
 
     const openEdit = (d: Designation) => {
@@ -344,7 +362,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                                     <tr>
                                         <Th>Turno</Th>
                                         <Th>Posto</Th>
-                                        <Th>Brigadista</Th>
+                                        <Th>Pessoa</Th>
                                         <Th>Equipe</Th>
                                         <Th>Situação</Th>
                                         {canManage && <Th style={{ width: 1 }} aria-label="Ações"></Th>}
@@ -415,24 +433,28 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
                 <Form onSubmit={handleSubmit((data) => createMutation.mutate(data))}>
                     <Field>
                         <CheckListHeader>
-                            <Label>Brigadistas ({selectedStaffIds.length} selecionado{selectedStaffIds.length === 1 ? '' : 's'})</Label>
+                            <Label>Equipe ({selectedStaffIds.length} selecionado{selectedStaffIds.length === 1 ? '' : 's'})</Label>
                             <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                <button type="button" onClick={() => setSelectedStaffIds(activeStaff.map((s) => s.id))}>Selecionar todos</button>
+                                <button type="button" onClick={() => setSelectedStaffIds((prev) => [...new Set([...prev, ...visibleStaff.map((s) => s.id)])])}>{categoryFilter ? 'Selecionar a categoria' : 'Selecionar todos'}</button>
                                 <button type="button" onClick={() => setSelectedStaffIds([])}>Limpar</button>
                             </div>
                         </CheckListHeader>
+                        {staffCategories.length > 0 && (
+                            <Select aria-label="Filtrar equipe por categoria" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ width: 'auto', padding: '0.4rem 0.6rem', fontSize: '0.8125rem', marginBottom: '0.4rem' }}>
+                                <option value="">Todas as categorias</option>
+                                {staffCategories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                            </Select>
+                        )}
                         <CheckList>
-                            {activeStaff.map((s) => (
+                            {visibleStaff.map((s) => (
                                 <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedStaffIds.includes(s.id)}
-                                        onChange={() => setSelectedStaffIds((prev) => (prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id]))}
-                                    />
+                                    <input type="checkbox" checked={selectedStaffIds.includes(s.id)} onChange={() => toggleStaff(s.id)} />
                                     {s.user.name}
+                                    {s.category && <span style={{ color: '#6c757d', fontSize: '0.75rem' }}>{s.category.name}</span>}
                                 </label>
                             ))}
-                            {activeStaff.length === 0 && <span>Nenhum brigadista ativo cadastrado.</span>}
+                            {activeStaff.length === 0 && <span>Nenhuma pessoa ativa na equipe. Promova pessoas em Equipe.</span>}
+                            {activeStaff.length > 0 && visibleStaff.length === 0 && <span>Ninguém nessa categoria.</span>}
                         </CheckList>
                     </Field>
 
@@ -493,7 +515,7 @@ export function ScheduleTab({ eventId }: { eventId: string }) {
             <Modal open={!!editing} onOpenChange={(open) => !open && setEditing(null)} title="Editar designação" width="560px">
                 <Form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate(data))}>
                     <Field>
-                        <Label htmlFor="edit-staff">Brigadista</Label>
+                        <Label htmlFor="edit-staff">Pessoa</Label>
                         <Select id="edit-staff" {...editForm.register('staffMemberId', { required: true })}>
                             {editing && !activeStaff.some((s) => s.id === editing.staffMember.id) && <option value={editing.staffMember.id}>{editing.staffMember.user.name}</option>}
                             {activeStaff.map((s) => <option key={s.id} value={s.id}>{s.user.name}</option>)}

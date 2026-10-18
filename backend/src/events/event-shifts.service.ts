@@ -12,6 +12,7 @@ import { CreateEventShiftDto, CreateEventShiftsBulkDto, UpdateEventShiftDto } fr
 import { parseAppDateTime } from '../common/datetime';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { findConflictingDesignation } from './designation-conflicts.util';
+import { assertQualifiedForShift } from './qualification-validity.util';
 
 const SHIFT_INCLUDE = { _count: { select: { designations: true } } } as const;
 
@@ -122,6 +123,14 @@ export class EventShiftsService {
                         `${designation.staffMember.user.name} já está escalado(a) no evento "${conflict.eventOperation.event.title}" ` +
                             'em um turno que conflita com o novo horário.',
                     );
+                }
+            }
+
+            // Remarcar para mais tarde pode empurrar o turno para depois do vencimento do certificado de
+            // quem já está escalado (decisão 79). Para mais cedo só melhora, então não revalida.
+            if (end > shift.end) {
+                for (const designation of designations) {
+                    await assertQualifiedForShift(this.prisma, { userId: designation.staffMember.userId, name: designation.staffMember.user.name }, { start, end });
                 }
             }
         }

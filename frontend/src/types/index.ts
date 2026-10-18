@@ -69,6 +69,8 @@ export interface RegistrationInvite {
     emailSentAt?: string | null;
     createdAt: string;
     createdBy?: { id: string; name: string } | null;
+    /** Categoria com que a pessoa entra na equipe (só convite de equipe). */
+    staffCategory?: { id: string; name: string } | null;
 }
 
 export interface User {
@@ -134,7 +136,7 @@ export interface OrgPerson {
     createdAt: string;
     studentProfile?: StudentProfile | null;
     personProfile?: PersonProfile | null;
-    staffMember?: { id: string; status: string } | null;
+    staffMember?: { id: string; status: string; category?: { id: string; name: string } | null } | null;
     instructorAssignments?: { courseId: string }[];
     roleAssignments?: { id: string; name: string }[];
     directPermissions?: string[];

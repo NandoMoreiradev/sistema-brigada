@@ -143,12 +143,20 @@ const SectionTitle = styled.h3`
     margin-bottom: 0.75rem;
 `;
 
-const AUDIENCE_LABEL: Record<CommunicationAudience, string> = {
+/** Públicos fixos, na ordem da tela. "Equipe por categoria" vira uma opção por categoria (ver `audienceOptions`). */
+const AUDIENCE_LABEL: Record<Exclude<CommunicationAudience, 'STAFF_CATEGORY'>, string> = {
     ALL: 'Todas as pessoas ativas da academia',
     STUDENTS: 'Somente alunos',
     STAFF: 'Somente equipe',
     CUSTOM: 'Pessoas específicas',
 };
+
+interface AudienceOption {
+    key: string;
+    label: string;
+    audience: CommunicationAudience;
+    staffCategoryId: string | null;
+}
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'Pendente', SENT: 'Enviado', FAILED: 'Falhou' };
 const STATUS_TONE: Record<string, 'neutral' | 'success' | 'danger'> = { PENDING: 'neutral', SENT: 'success', FAILED: 'danger' };
@@ -170,8 +178,13 @@ export default function CommunicationEditor() {
     });
     const people = peopleData?.data ?? [];
 
+    // Esta tela só exige `communications:manage`: as categorias vêm de uma rota da própria permissão.
+    const { data: staffCategoriesData } = useQuery({ queryKey: ['communications', 'staff-categories'], queryFn: () => communicationsApi.staffCategories() });
+    const staffCategories = useMemo(() => staffCategoriesData ?? [], [staffCategoriesData]);
+
     const [subject, setSubject] = useState('');
     const [audience, setAudience] = useState<CommunicationAudience>('ALL');
+    const [staffCategoryId, setStaffCategoryId] = useState<string | null>(null);
     const [customRecipientUserIds, setCustomRecipientUserIds] = useState<string[]>([]);
     const [peopleSearch, setPeopleSearch] = useState('');
     const [editorData, setEditorData] = useState<{ blocks: ExtendedBlock[]; settings: GlobalEmailSettings | undefined }>({
@@ -184,6 +197,7 @@ export default function CommunicationEditor() {
         if (communication && !isInitialized) {
             setSubject(communication.subject || '');
             setAudience(communication.audience);
+            setStaffCategoryId(communication.staffCategoryId ?? null);
             setCustomRecipientUserIds(communication.customRecipientUserIds ?? []);
             const designJson = (communication.designJson || {}) as { blocks?: ExtendedBlock[]; globalSettings?: GlobalEmailSettings };
             setEditorData({
@@ -196,13 +210,29 @@ export default function CommunicationEditor() {
 
     const isDraft = communication?.status === 'DRAFT';
 
+    const audienceOptions = useMemo<AudienceOption[]>(
+        () => [
+            { key: 'ALL', label: AUDIENCE_LABEL.ALL, audience: 'ALL', staffCategoryId: null },
+            { key: 'STUDENTS', label: AUDIENCE_LABEL.STUDENTS, audience: 'STUDENTS', staffCategoryId: null },
+            { key: 'STAFF', label: AUDIENCE_LABEL.STAFF, audience: 'STAFF', staffCategoryId: null },
+            ...staffCategories.map((c) => ({ key: `STAFF_CATEGORY:${c.id}`, label: `Equipe — ${c.name}`, audience: 'STAFF_CATEGORY' as const, staffCategoryId: c.id })),
+            { key: 'CUSTOM', label: AUDIENCE_LABEL.CUSTOM, audience: 'CUSTOM', staffCategoryId: null },
+        ],
+        [staffCategories],
+    );
+    const selectedOption = audienceOptions.find((o) => o.audience === audience && o.staffCategoryId === (audience === 'STAFF_CATEGORY' ? staffCategoryId : null));
+    /** Rascunho apontando para uma categoria que foi excluída: precisa de um novo público antes de enviar. */
+    const missingCategory = audience === 'STAFF_CATEGORY' && !selectedOption;
+    const audienceLabel = selectedOption?.label ?? 'Equipe — categoria não encontrada';
+
     const recipientCount = useMemo(() => {
         const active = people.filter((p) => p.isActive);
         if (audience === 'STUDENTS') return active.filter((p) => p.studentProfile).length;
         if (audience === 'STAFF') return active.filter((p) => p.staffMember?.status === 'ACTIVE').length;
+        if (audience === 'STAFF_CATEGORY') return active.filter((p) => p.staffMember?.status === 'ACTIVE' && p.staffMember.category?.id === staffCategoryId).length;
         if (audience === 'CUSTOM') return customRecipientUserIds.length;
         return active.length;
-    }, [people, audience, customRecipientUserIds]);
+    }, [people, audience, staffCategoryId, customRecipientUserIds]);
 
     const filteredPeople = useMemo(() => {
         const term = peopleSearch.trim().toLowerCase();
@@ -219,6 +249,7 @@ export default function CommunicationEditor() {
             communicationsApi.update(id!, {
                 subject,
                 audience,
+                staffCategoryId: audience === 'STAFF_CATEGORY' ? staffCategoryId : null,
                 customRecipientUserIds,
                 designJson: { blocks: editorData.blocks, globalSettings: editorData.settings },
             }),
@@ -256,9 +287,13 @@ export default function CommunicationEditor() {
     };
 
     const handleSend = async () => {
+        if (missingCategory) {
+            toast.error('A categoria da equipe escolhida não existe mais. Escolha outro público em Destinatários.');
+            return;
+        }
         await updateMutation.mutateAsync();
         const confirmed = window.confirm(
-            `Enviar este comunicado para ${recipientCount} pessoa(s) (${AUDIENCE_LABEL[audience]})? Depois de enviado não é mais possível editar.`,
+            `Enviar este comunicado para ${recipientCount} pessoa(s) (${audienceLabel})? Depois de enviado não é mais possível editar.`,
         );
         if (confirmed) sendMutation.mutate();
     };
@@ -337,25 +372,31 @@ export default function CommunicationEditor() {
                             <Popover.Trigger asChild>
                                 <IconButton type="button" aria-label="Destinatários" title="Destinatários">
                                     <GearSix size={18} />
-                                    {(!subject || recipientCount === 0) && <AlertDot />}
+                                    {(!subject || recipientCount === 0 || missingCategory) && <AlertDot />}
                                 </IconButton>
                             </Popover.Trigger>
                             <Popover.Portal>
                                 <PopoverContent sideOffset={8} align="end" collisionPadding={12}>
                                     <PopoverTitle>Destinatários</PopoverTitle>
                                     <PopoverField>
-                                        {(Object.keys(AUDIENCE_LABEL) as CommunicationAudience[]).map((value) => (
-                                            <RadioOption key={value}>
+                                        {audienceOptions.map((option) => (
+                                            <RadioOption key={option.key}>
                                                 <input
                                                     type="radio"
                                                     name="audience"
-                                                    checked={audience === value}
-                                                    onChange={() => setAudience(value)}
+                                                    checked={selectedOption?.key === option.key}
+                                                    onChange={() => { setAudience(option.audience); setStaffCategoryId(option.staffCategoryId); }}
                                                 />
-                                                {AUDIENCE_LABEL[value]}
+                                                {option.label}
                                             </RadioOption>
                                         ))}
                                     </PopoverField>
+
+                                    {missingCategory && (
+                                        <PopoverField>
+                                            <small style={{ color: '#d9480f' }}>A categoria da equipe escolhida foi excluída. Escolha outro público para poder enviar.</small>
+                                        </PopoverField>
+                                    )}
 
                                     {audience === 'CUSTOM' && (
                                         <PopoverField>

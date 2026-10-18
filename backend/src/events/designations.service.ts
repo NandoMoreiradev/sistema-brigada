@@ -12,6 +12,9 @@
 // staff cuja única qualificação registrada (certificado de turma OU
 // certificação externa) esteja vencida — completa a parte de "gestão ativa"
 // da reciclagem que faltava (o alerta de vencimento já existia).
+//
+// Decisão 79: a validade é avaliada no DIA DO TURNO, não "hoje" — quem tem certificado que vence
+// antes do turno também não pode ser escalado (ver qualification-validity.util.ts).
 
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,9 +23,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { CreateBulkDesignationDto } from './dto/create-bulk-designation.dto';
 import { UpdateDesignationDto } from './dto/update-designation.dto';
-import { DesignationStatus, CertificateStatus, Prisma, StaffStatus } from '@prisma/client';
+import { DesignationStatus, Prisma, StaffStatus } from '@prisma/client';
 import { formatAppDateTime } from '../common/datetime';
 import { findConflictingDesignation, windowsOverlap } from './designation-conflicts.util';
+import { assertQualifiedForShift } from './qualification-validity.util';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { userHasPermission } from '../auth/common/user-has-permission.util';
@@ -59,7 +63,7 @@ export class DesignationsService {
         }
 
         const staffMember = await this.validateStaffAvailability(dto.staffMemberId, organizationId, shift.start, shift.end);
-        await this.assertHasValidQualification(staffMember);
+        await this.assertQualified(staffMember, shift);
 
         const designation = await this.prisma.designation.create({
             data: {
@@ -127,7 +131,9 @@ export class DesignationsService {
         for (const shift of shifts.slice(1)) {
             await Promise.all(staffMemberIds.map((id) => this.validateStaffAvailability(id, organizationId, shift.start, shift.end)));
         }
-        await Promise.all(staffMembers.map((staffMember) => this.assertHasValidQualification(staffMember)));
+        // Só o turno que termina por último importa: se a qualificação cobre ele, cobre os anteriores.
+        const lastShift = shifts.reduce((last, shift) => (shift.end > last.end ? shift : last));
+        await Promise.all(staffMembers.map((staffMember) => this.assertQualified(staffMember, lastShift)));
 
         const teamName = dto.asTeam ? dto.teamName?.trim() || (await this.generateTeamName(operationId, staffMembers.length)) : undefined;
 
@@ -287,39 +293,12 @@ export class DesignationsService {
     }
 
     /**
-     * Decisão 19: bloqueia a designação quando o staff tem uma qualificação
-     * (certificado de turma concluída OU certificação externa) vencida e
-     * nenhuma outra ainda válida. Quem nunca teve nenhuma das duas (ex.:
-     * coordenador que não precisa de certificação específica) não é
-     * bloqueado — não há nada para checar.
+     * Decisões 19/79: bloqueia a designação quando a pessoa tem qualificação (certificado de turma
+     * OU certificação externa) mas nenhuma vale NO DIA DO TURNO. A regra mora em
+     * qualification-validity.util.ts, compartilhada com a remarcação de turnos.
      */
-    private async assertHasValidQualification(staffMember: { userId: string }) {
-        const now = new Date();
-        const isValid = (expiresAt: Date | null) => !expiresAt || expiresAt > now;
-
-        const [externalCertifications, courseCertificates] = await Promise.all([
-            this.prisma.externalCertification.findMany({
-                where: { userId: staffMember.userId },
-                select: { expiresAt: true },
-            }),
-            this.prisma.certificate.findMany({
-                where: {
-                    status: { not: CertificateStatus.REVOKED },
-                    enrollment: { studentProfile: { userId: staffMember.userId } },
-                },
-                select: { expiresAt: true },
-            }),
-        ]);
-
-        const qualifications = [...externalCertifications, ...courseCertificates];
-        if (qualifications.length === 0) return;
-
-        const hasValid = qualifications.some((q) => isValid(q.expiresAt));
-        if (!hasValid) {
-            throw new ConflictException(
-                'Este membro da equipe não tem certificado ou certificação válida no momento — a mais recente está vencida.',
-            );
-        }
+    private assertQualified(staffMember: { userId: string; user: { name: string } }, shift: { start: Date; end: Date }) {
+        return assertQualifiedForShift(this.prisma, { userId: staffMember.userId, name: staffMember.user.name }, shift);
     }
 
     async findAll(eventId: string, organizationId: string, user: AuthenticatedUser) {
@@ -368,7 +347,7 @@ export class DesignationsService {
         // e foi desativado depois não deve ficar bloqueado.
         const isChangingStaffMember = staffMemberId !== designation.staffMemberId;
         const staffMember = await this.validateStaffAvailability(staffMemberId, organizationId, shiftStart, shiftEnd, designationId, isChangingStaffMember);
-        await this.assertHasValidQualification(staffMember);
+        await this.assertQualified(staffMember, { start: shiftStart, end: shiftEnd });
 
         return this.prisma.designation.update({
             where: { id: designationId },
