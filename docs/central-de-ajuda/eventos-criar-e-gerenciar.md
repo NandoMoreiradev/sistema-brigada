@@ -61,7 +61,7 @@ Turnos são as faixas de horário em que as pessoas trabalham. Você cria uma ve
 
 - **Turno que passa da meia-noite** (ex.: Noite 22:00–02:00): basta colocar o fim menor que o início. O sistema entende que termina no dia seguinte.
 - **Passagem de turno:** o ideal é os turnos **encostarem** (um termina às 12:00 e o próximo começa às 12:00). A tela avisa quando há **lacuna** (um intervalo em que nenhum posto tem cobertura) ou **sobreposição** (as equipes se cruzam por alguns minutos).
-- **Remarcar um turno:** edite o nome ou o horário na lista de turnos e clique no ícone de salvar. A escala de todo mundo naquele turno é remarcada junto. Se alguém passar a ter conflito com outro evento, o sistema avisa e **não salva**.
+- **Remarcar um turno:** edite o nome ou o horário na lista de turnos e clique no ícone de salvar. A escala de todo mundo naquele turno é remarcada junto. Se alguém passar a ter conflito com outro evento, ou tiver certificado que vence antes da nova data, o sistema avisa e **não salva**.
 - **Excluir um turno:** só é possível se **ninguém** estiver escalado nele. Se houver gente, mova ou remova as escalas antes.
 
 ---
@@ -130,7 +130,7 @@ O sistema bloqueia a escala, explicando o motivo, nestes casos:
 - A pessoa **já está escalada em outro evento** em horário que se cruza com o turno.
 - Você marcou **dois turnos que se sobrepõem** na mesma escala (a pessoa estaria em dois lugares).
 - A pessoa está **inativa** na Equipe (reative-a antes).
-- A pessoa tem certificado ou certificação **vencido** e nenhum outro válido (ela precisa renovar).
+- A pessoa tem certificado ou certificação que **vence antes do dia do turno** e nenhum outro válido nessa data. A mensagem mostra a data do vencimento e a do turno. Ela precisa renovar a reciclagem antes de ser escalada. Vencer no próprio dia do turno ainda vale.
 - Você marcou **equipe (dupla/trio)** com menos de 2 pessoas.
 
 Nesses casos, **nada é criado**: o sistema valida todo mundo antes, então você nunca fica com metade do grupo escalado.
@@ -280,8 +280,8 @@ Turno só pode ser excluído quando ninguém está escalado nele; planta, quando
 **Uma pessoa não aparece na lista para escalar.**
 Só aparecem pessoas **ativas** em **Equipe**. Se ela ainda não está lá, quem gerencia a Equipe pode promovê-la em **Equipe → Promover para equipe**. Se um filtro de categoria estiver ativo, escolha **Todas as categorias**.
 
-**O sistema recusou escalar alguém por "certificado vencido".**
-É uma regra de segurança: quem tem certificado ou certificação e todos estão vencidos não pode ser escalado. A pessoa precisa renovar a reciclagem; depois disso, escale normalmente.
+**O sistema recusou escalar alguém por certificado vencido (ou que vai vencer antes do evento).**
+É uma regra de segurança: o certificado precisa estar válido **no dia do turno**, não só hoje. Se todos os certificados e certificações da pessoa vencem antes dessa data, ela não pode ser escalada. A pessoa precisa renovar a reciclagem; depois disso, escale normalmente. O mesmo vale ao **remarcar um turno para mais tarde**: se alguém escalado nele tiver certificado vencendo antes da nova data, o sistema avisa e não salva.
 
 **Quem recusou ainda aparece em algum lugar?**
 Não. Quem recusa não aparece na cobertura, no mapa, nos textos nem nas impressões, e não conta como vaga preenchida.
