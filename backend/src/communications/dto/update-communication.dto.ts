@@ -4,7 +4,7 @@
 // — depois de enviado, o conteúdo/destinatários não podem mudar mais.
 
 import { CommunicationAudience, Prisma } from '@prisma/client';
-import { IsArray, IsEnum, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsEnum, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateCommunicationDto {
     @IsOptional()
@@ -29,4 +29,10 @@ export class UpdateCommunicationDto {
     @IsArray()
     @IsString({ each: true })
     customRecipientUserIds?: string[];
+
+    /** Categoria da equipe, quando `audience` = STAFF_CATEGORY. `null` limpa; ignorada nos demais públicos. */
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    staffCategoryId?: string | null;
 }

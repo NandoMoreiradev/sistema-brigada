@@ -6,7 +6,7 @@
 // conta usa exatamente o que veio na solicitação e é sempre Role.ORG_USER (ver
 // RegistrationsService.approve) — autocadastro nunca é caminho pra virar ORG_ADMIN.
 
-import { IsOptional, IsDateString, IsEnum, IsArray, IsString } from 'class-validator';
+import { IsOptional, IsDateString, IsEnum, IsArray, IsString, IsNotEmpty } from 'class-validator';
 import { PioneerStatus, RegistrationKind } from '@prisma/client';
 
 export class ApproveRegistrationDto {
@@ -14,6 +14,12 @@ export class ApproveRegistrationDto {
     @IsOptional()
     @IsEnum(RegistrationKind)
     kind?: RegistrationKind;
+
+    /** Categoria na equipe, escolhida por quem revisa (a pessoa não escolhe a própria). Só vale quando o papel é equipe. */
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    staffCategoryId?: string;
 
     @IsOptional()
     @IsDateString()

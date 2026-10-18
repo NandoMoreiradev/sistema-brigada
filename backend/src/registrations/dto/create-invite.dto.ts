@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { RegistrationKind } from '@prisma/client';
 
 export class CreateInviteDto {
@@ -11,4 +11,10 @@ export class CreateInviteDto {
 
     @IsEnum(RegistrationKind)
     kind: RegistrationKind;
+
+    /** Categoria com que a pessoa entra na equipe. Só vale para convite de equipe; nos demais é ignorada. */
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    staffCategoryId?: string;
 }

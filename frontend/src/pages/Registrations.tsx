@@ -88,6 +88,15 @@ export default function Registrations() {
     const [rejectNotify, setRejectNotify] = useState(true);
     const [inviteOpen, setInviteOpen] = useState(false);
     const [inviteKind, setInviteKind] = useState<RegistrationKind>('STUDENT');
+    const [approveCategoryId, setApproveCategoryId] = useState('');
+    const [inviteCategoryId, setInviteCategoryId] = useState('');
+
+    // Só busca quando um dos modais está aberto; quem revisa cadastros não precisa da permissão de Equipe.
+    const { data: staffCategories } = useQuery({
+        queryKey: ['registrations', 'staff-categories'],
+        queryFn: () => registrationsApi.staffCategories(),
+        enabled: !!approving || inviteOpen,
+    });
 
     const { data, isLoading } = useQuery({
         queryKey: ['registrations', statusFilter],
@@ -115,6 +124,7 @@ export default function Registrations() {
     const openApprove = (request: RegistrationRequest) => {
         setApproving(request);
         setApproveKind(request.requestedKind ?? 'STUDENT');
+        setApproveCategoryId('');
         reset({
             birthDate: request.birthDate ? request.birthDate.slice(0, 10) : '',
             baptismDate: request.baptismDate ? request.baptismDate.slice(0, 10) : '',
@@ -128,6 +138,7 @@ export default function Registrations() {
         mutationFn: ({ id, data }: { id: string; data: ApproveFormData }) =>
             registrationsApi.approve(id, {
                 kind: approveKind,
+                staffCategoryId: approveKind === 'STAFF' && approveCategoryId ? approveCategoryId : undefined,
                 // Dados pessoais valem para qualquer papel (aluno, instrutor ou equipe).
                 birthDate: data.birthDate || undefined,
                 baptismDate: data.baptismDate || undefined,
@@ -175,7 +186,13 @@ export default function Registrations() {
     };
 
     const createInviteMutation = useMutation({
-        mutationFn: (data: InviteFormData) => registrationsApi.createInvite({ email: data.email, name: data.name || undefined, kind: inviteKind }),
+        mutationFn: (data: InviteFormData) =>
+            registrationsApi.createInvite({
+                email: data.email,
+                name: data.name || undefined,
+                kind: inviteKind,
+                staffCategoryId: inviteKind === 'STAFF' && inviteCategoryId ? inviteCategoryId : undefined,
+            }),
         onSuccess: (result) => {
             inviteResult(result, 'Convite enviado');
             setInviteOpen(false);
@@ -199,6 +216,7 @@ export default function Registrations() {
     const openInvite = () => {
         inviteForm.reset({ email: '', name: '' });
         setInviteKind('STUDENT');
+        setInviteCategoryId('');
         setInviteOpen(true);
     };
 
@@ -318,7 +336,10 @@ export default function Registrations() {
                                         {invite.name || invite.email}
                                         {invite.name && <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{invite.email}</div>}
                                     </Td>
-                                    <Td><Badge $tone={invite.kind === 'STUDENT' ? 'neutral' : 'info'}>{KIND_LABEL[invite.kind]}</Badge></Td>
+                                    <Td>
+                                        <Badge $tone={invite.kind === 'STUDENT' ? 'neutral' : 'info'}>{KIND_LABEL[invite.kind]}</Badge>
+                                        {invite.staffCategory && <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{invite.staffCategory.name}</div>}
+                                    </Td>
                                     <Td>{invite.createdBy?.name ?? '—'}<div style={{ fontSize: '0.75rem', color: '#6c757d' }}>{format(new Date(invite.createdAt), 'dd/MM/yyyy')}</div></Td>
                                     <Td>{format(new Date(invite.expiresAt), 'dd/MM/yyyy')}</Td>
                                     <Td>
@@ -362,6 +383,17 @@ export default function Registrations() {
                             {approving && approving.requestedKind !== approveKind && ` (a pessoa pediu: ${KIND_LABEL[approving.requestedKind ?? 'STUDENT']}.)`}
                         </HelpText>
                     </Field>
+
+                    {approveKind === 'STAFF' && (
+                        <Field>
+                            <Label htmlFor="approve-category">Categoria na equipe (opcional)</Label>
+                            <Select id="approve-category" value={approveCategoryId} onChange={(e) => setApproveCategoryId(e.target.value)}>
+                                <option value="">Sem categoria</option>
+                                {(staffCategories ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </Select>
+                            <HelpText>Quem revisa decide: a pessoa não escolhe a própria categoria. Dá para mudar depois em Equipe.</HelpText>
+                        </Field>
+                    )}
 
                     <HelpText>Complete ou ajuste os dados antes de aprovar — a conta é criada com o que estiver aqui.</HelpText>
                     <FieldRow>
@@ -437,6 +469,16 @@ export default function Registrations() {
                         <Segmented ariaLabel="Papel do convite" value={inviteKind} onChange={setInviteKind} options={kindOptions} />
                         <HelpText>{KIND_HINT[inviteKind]}</HelpText>
                     </Field>
+                    {inviteKind === 'STAFF' && (
+                        <Field>
+                            <Label htmlFor="invite-category">Categoria na equipe (opcional)</Label>
+                            <Select id="invite-category" value={inviteCategoryId} onChange={(e) => setInviteCategoryId(e.target.value)}>
+                                <option value="">Sem categoria</option>
+                                {(staffCategories ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </Select>
+                            <HelpText>A pessoa já entra na equipe com essa categoria. Dá para mudar depois em Equipe.</HelpText>
+                        </Field>
+                    )}
                     <HelpText>A pessoa recebe um link pessoal, válido por 7 dias. Ao preencher, a conta é criada na hora e ela recebe o acesso por e-mail.</HelpText>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setInviteOpen(false)}>Cancelar</Button>

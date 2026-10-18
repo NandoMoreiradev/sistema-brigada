@@ -26,7 +26,12 @@ const AUDIENCE_LABEL: Record<CommunicationAudience, string> = {
     STUDENTS: 'Somente alunos',
     STAFF: 'Somente equipe',
     CUSTOM: 'Pessoas específicas',
+    STAFF_CATEGORY: 'Equipe por categoria',
 };
+
+/** Equipe por categoria mostra o nome da categoria; se ela foi excluída, fica o rótulo genérico. */
+const audienceLabel = (c: { audience: CommunicationAudience; staffCategory?: { name: string } | null }) =>
+    c.audience === 'STAFF_CATEGORY' && c.staffCategory ? `Equipe — ${c.staffCategory.name}` : AUDIENCE_LABEL[c.audience];
 
 const STATUS_LABEL: Record<CommunicationStatus, string> = {
     DRAFT: 'Rascunho',
@@ -100,7 +105,7 @@ export function CommunicationsTab() {
                         {communications.map((c) => (
                             <Tr key={c.id}>
                                 <Td>{c.subject || <em>(sem assunto)</em>}</Td>
-                                <Td>{AUDIENCE_LABEL[c.audience]}</Td>
+                                <Td>{audienceLabel(c)}</Td>
                                 <Td>{c.status === 'DRAFT' ? '—' : c.recipientCount}</Td>
                                 <Td>{c.status === 'DRAFT' ? '—' : `${c.openedCount}/${c.recipientCount}`}</Td>
                                 <Td><Badge $tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge></Td>

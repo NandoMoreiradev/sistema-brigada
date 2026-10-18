@@ -60,6 +60,13 @@ export class RegistrationsAdminController {
         return this.registrationsService.revokeInvite(id, this.requireOrganizationId(organizationId));
     }
 
+    // Também antes de `:id`. Lista só id+nome para o seletor de categoria (aprovar / convidar para a equipe).
+    @Get('staff-categories')
+    @RequirePermission('registrations:manage')
+    listStaffCategories(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.registrationsService.listStaffCategories(this.requireOrganizationId(organizationId));
+    }
+
     @Get(':id')
     @RequirePermission('registrations:manage')
     findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {

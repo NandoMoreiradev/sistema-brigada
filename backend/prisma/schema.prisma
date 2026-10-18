@@ -59,6 +59,7 @@ model Organization {
   certificateTemplate         CertificateTemplate?
   certificateReminderSettings CertificateReminderSettings?
   certificateDesigns          CertificateDesign[]
+  staffCategories             StaffCategory[]
   emailTemplates              EmailTemplate[]
   communications              Communication[]
   registrationRequests        RegistrationRequest[]
@@ -931,10 +932,33 @@ model StaffMember {
   /// Decisão 9: promoção para staff é sempre manual, feita pelo admin
   approvedByUserId String
   approvedAt       DateTime    @default(now())
+  /// Categoria dentro da equipe (Brigadista, Bombeiro Civil...). Opcional: quem já era
+  /// da equipe antes de existir categoria fica sem, e continua escalável normalmente.
+  categoryId       String?
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category     StaffCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   designations Designation[]
 
+  @@index([organizationId])
+  @@index([categoryId])
+}
+
+/// Catálogo de categorias da equipe, por academia (cada uma define as suas). Não confundir
+/// com "qualificação" (certificado válido, que bloqueia a escala) nem com Cargo (permissões).
+model StaffCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        StaffMember[]
+  communications Communication[]
+  invites        RegistrationInvite[]
+
+  @@unique([organizationId, name])
   @@index([organizationId])
 }
 
@@ -1245,6 +1269,8 @@ enum CommunicationAudience {
   STUDENTS
   STAFF
   CUSTOM
+  /// Equipe ativa de uma categoria só (Communication.staffCategoryId).
+  STAFF_CATEGORY
 }
 
 enum CommunicationStatus {
@@ -1269,6 +1295,9 @@ model Communication {
   audience               CommunicationAudience @default(ALL)
   /// Só relevante quando audience = CUSTOM — ids de User escolhidos manualmente.
   customRecipientUserIds String[]              @default([])
+  /// Só relevante quando audience = STAFF_CATEGORY. Se a categoria for excluída fica nulo e o envio
+  /// é bloqueado (nunca vira "toda a equipe" sem aviso).
+  staffCategoryId        String?
   status                 CommunicationStatus   @default(DRAFT)
   recipientCount         Int                   @default(0)
   failedCount            Int                   @default(0)
@@ -1280,11 +1309,13 @@ model Communication {
   updatedAt              DateTime              @updatedAt
   sentAt                 DateTime?
 
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User                     @relation("CommunicationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  recipients   CommunicationRecipient[]
+  organization  Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy     User                     @relation("CommunicationCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  staffCategory StaffCategory?           @relation(fields: [staffCategoryId], references: [id], onDelete: SetNull)
+  recipients    CommunicationRecipient[]
 
   @@index([organizationId])
+  @@index([staffCategoryId])
 }
 
 /// Um registro por pessoa por comunicado, criado no momento do ENVIO (não existe enquanto o
@@ -1371,6 +1402,8 @@ model RegistrationInvite {
   kind            RegistrationKind @default(STUDENT)
   token           String           @unique
   createdByUserId String?
+  /// Categoria com que a pessoa entra na equipe (só quando kind = STAFF; escolhida por quem convida).
+  staffCategoryId String?
   expiresAt       DateTime
   usedAt          DateTime?
   revokedAt       DateTime?
@@ -1379,9 +1412,10 @@ model RegistrationInvite {
   emailSentAt     DateTime?
   createdAt       DateTime         @default(now())
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                @relation("RegistrationInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  request      RegistrationRequest?
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy     User?                @relation("RegistrationInviteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  staffCategory StaffCategory?       @relation(fields: [staffCategoryId], references: [id], onDelete: SetNull)
+  request       RegistrationRequest?
 
   @@index([organizationId, email])
 }

@@ -48,6 +48,7 @@ const inviteSelect = {
     emailSentAt: true,
     createdAt: true,
     createdBy: { select: { id: true, name: true } },
+    staffCategory: { select: { id: true, name: true } },
 } satisfies Prisma.RegistrationInviteSelect;
 
 type InviteRow = Prisma.RegistrationInviteGetPayload<{ select: typeof inviteSelect }>;
@@ -218,7 +219,7 @@ export class RegistrationsService {
             },
             studentProfile: kind === RegistrationKind.STUDENT ? {} : undefined,
             // A promoção nasce junto com a conta (mesma transação) — ver UsersService.createAccount.
-            staff: kind === RegistrationKind.STAFF ? { approvedByUserId: reviewerId } : undefined,
+            staff: kind === RegistrationKind.STAFF ? { approvedByUserId: reviewerId, categoryId: overrides.staffCategoryId } : undefined,
         });
 
         await this.prisma.registrationRequest.update({
@@ -253,7 +254,10 @@ export class RegistrationsService {
 
     async approve(id: string, organizationId: string, reviewerId: string, dto: ApproveRegistrationDto) {
         const request = await this.requirePending(id, organizationId);
-        await this.createAccountFromRequest(request, organizationId, reviewerId, dto.kind ?? request.requestedKind, dto);
+        const kind = dto.kind ?? request.requestedKind;
+        // Valida antes de criar a conta: categoria de outra academia não pode deixar a aprovação pela metade.
+        if (kind === RegistrationKind.STAFF && dto.staffCategoryId) await this.requireStaffCategory(dto.staffCategoryId, organizationId);
+        await this.createAccountFromRequest(request, organizationId, reviewerId, kind, dto);
         return this.findOne(id, organizationId);
     }
 
@@ -331,6 +335,18 @@ export class RegistrationsService {
         }
     }
 
+    /** Categorias da equipe da academia, para o seletor (esta tela não exige `staff:manage`). */
+    listStaffCategories(organizationId: string) {
+        return this.prisma.staffCategory.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    }
+
+    private async requireStaffCategory(id: string, organizationId: string) {
+        const category = await this.prisma.staffCategory.findFirst({ where: { id, organizationId }, select: { id: true } });
+        if (!category) {
+            throw new NotFoundException('Categoria da equipe não encontrada nesta academia.');
+        }
+    }
+
     // ───────────────────────────── convites dirigidos ─────────────────────────────
 
     private inviteLink(token: string) {
@@ -366,12 +382,17 @@ export class RegistrationsService {
             data: { revokedAt: new Date() },
         });
 
+        // Categoria só faz sentido para quem entra na equipe.
+        const staffCategoryId = dto.kind === RegistrationKind.STAFF ? dto.staffCategoryId : undefined;
+        if (staffCategoryId) await this.requireStaffCategory(staffCategoryId, organizationId);
+
         const invite = await this.prisma.registrationInvite.create({
             data: {
                 organizationId,
                 email,
                 name: dto.name?.trim() || null,
                 kind: dto.kind,
+                staffCategoryId,
                 token: crypto.randomBytes(24).toString('hex'),
                 createdByUserId,
                 expiresAt: new Date(Date.now() + INVITE_TTL_MS),
@@ -485,7 +506,9 @@ export class RegistrationsService {
                 },
             });
             // O convite é a autorização: quem convidou é registrado como revisor.
-            emailSent = await this.createAccountFromRequest(request, invite.organizationId, invite.createdByUserId, invite.kind);
+            emailSent = await this.createAccountFromRequest(request, invite.organizationId, invite.createdByUserId, invite.kind, {
+                staffCategoryId: invite.staffCategoryId ?? undefined,
+            });
         } catch (error) {
             // Não deixa o convite "queimado" se a conta não chegou a ser criada.
             await this.prisma.registrationInvite.updateMany({ where: { id: invite.id }, data: { usedAt: null } });

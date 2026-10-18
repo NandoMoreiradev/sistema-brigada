@@ -86,7 +86,7 @@ function personRoleBadges(person: OrgPerson): string[] {
     if (person.role === 'ORG_ADMIN') roles.push('Admin');
     if (person.studentProfile) roles.push('Aluno');
     if (person.instructorAssignments?.length) roles.push('Instrutor');
-    if (person.staffMember) roles.push('Equipe');
+    if (person.staffMember) roles.push(person.staffMember.category?.name ?? 'Equipe');
     if (person.roleAssignments?.[0]) roles.push(person.roleAssignments[0].name);
     return roles;
 }

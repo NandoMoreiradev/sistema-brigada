@@ -20,6 +20,7 @@ import { AuthService } from '../auth/auth.service';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { TransactionalEmailService } from '../transactional-email/transactional-email.service';
 import { MailService } from '../communications/mail.service';
+import { DEFAULT_STAFF_CATEGORIES } from '../staff/staff-category.defaults';
 
 @Injectable()
 export class OrganizationsService {
@@ -60,6 +61,9 @@ export class OrganizationsService {
 
         const { organization, admin } = await this.prisma.$transaction(async (tx) => {
             const organization = await tx.organization.create({ data: organizationData });
+            await tx.staffCategory.createMany({
+                data: DEFAULT_STAFF_CATEGORIES.map((name) => ({ organizationId: organization.id, name })),
+            });
             const admin = await tx.user.create({
                 data: {
                     name: adminName,

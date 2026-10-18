@@ -7,7 +7,7 @@
 
 import { api } from './api';
 
-export type CommunicationAudience = 'ALL' | 'STUDENTS' | 'STAFF' | 'CUSTOM';
+export type CommunicationAudience = 'ALL' | 'STUDENTS' | 'STAFF' | 'CUSTOM' | 'STAFF_CATEGORY';
 export type CommunicationStatus = 'DRAFT' | 'SENDING' | 'SENT' | 'FAILED';
 export type CommunicationRecipientStatus = 'PENDING' | 'SENT' | 'FAILED';
 
@@ -31,6 +31,9 @@ export interface Communication {
     designJson: Record<string, unknown> | null;
     audience: CommunicationAudience;
     customRecipientUserIds: string[];
+    /** Só quando audience = STAFF_CATEGORY; nulo se a categoria foi excluída. */
+    staffCategoryId: string | null;
+    staffCategory?: { id: string; name: string } | null;
     status: CommunicationStatus;
     recipientCount: number;
     failedCount: number;
@@ -56,6 +59,7 @@ export interface UpdateCommunicationInput {
     designJson?: Record<string, unknown>;
     audience?: CommunicationAudience;
     customRecipientUserIds?: string[];
+    staffCategoryId?: string | null;
 }
 
 export interface ListCommunicationsQuery {
@@ -67,6 +71,11 @@ export interface ListCommunicationsQuery {
 export const communicationsApi = {
     list: async (query: ListCommunicationsQuery = {}) => {
         const { data } = await api.get<CommunicationListResponse>('/communications', { params: query });
+        return data;
+    },
+    /** Só id+nome, para o seletor de público (não exige a permissão de Equipe). */
+    staffCategories: async () => {
+        const { data } = await api.get<{ id: string; name: string }[]>('/communications/staff-categories');
         return data;
     },
     get: async (id: string) => {

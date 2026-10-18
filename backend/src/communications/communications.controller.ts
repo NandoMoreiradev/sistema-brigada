@@ -44,6 +44,12 @@ export class CommunicationsController {
         return this.communicationsService.findAll(this.requireOrganizationId(organizationId), query);
     }
 
+    // Antes de `:id` para 'staff-categories' não ser lido como um id.
+    @Get('staff-categories')
+    listStaffCategories(@ActiveOrganizationId() organizationId: string | undefined) {
+        return this.communicationsService.listStaffCategories(this.requireOrganizationId(organizationId));
+    }
+
     @Get(':id')
     findOne(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
         return this.communicationsService.findOne(id, this.requireOrganizationId(organizationId));

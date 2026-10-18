@@ -31,6 +31,7 @@ const SEND_DELAY_MS = 300;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const CREATED_BY_SELECT = { select: { id: true, name: true } } as const;
+const STAFF_CATEGORY_SELECT = { select: { id: true, name: true } } as const;
 
 @Injectable()
 export class CommunicationBroadcastService {
@@ -68,7 +69,7 @@ export class CommunicationBroadcastService {
         const [data, total] = await this.prisma.$transaction([
             this.prisma.communication.findMany({
                 where,
-                include: { createdBy: CREATED_BY_SELECT },
+                include: { createdBy: CREATED_BY_SELECT, staffCategory: STAFF_CATEGORY_SELECT },
                 orderBy: { createdAt: 'desc' },
                 skip: (page - 1) * limit,
                 take: limit,
@@ -84,6 +85,7 @@ export class CommunicationBroadcastService {
             where: { id, organizationId },
             include: {
                 createdBy: CREATED_BY_SELECT,
+                staffCategory: STAFF_CATEGORY_SELECT,
                 recipients: { orderBy: { name: 'asc' } },
             },
         });
@@ -103,8 +105,19 @@ export class CommunicationBroadcastService {
             throw new BadRequestException(`O corpo do e-mail excede o limite de ${LIMITS.MAX_BODY_LENGTH} caracteres.`);
         }
 
-        const { designJson, body, ...rest } = dto;
-        const dataToUpdate: Prisma.CommunicationUpdateInput = { ...rest };
+        const { designJson, body, staffCategoryId, ...rest } = dto;
+        const dataToUpdate: Prisma.CommunicationUncheckedUpdateInput = { ...rest };
+
+        // A categoria só existe para o público STAFF_CATEGORY; em qualquer outro, é limpa. Fica nula
+        // (rascunho) quando a categoria foi excluída — o envio é que bloqueia, ver `send`.
+        const finalAudience = dto.audience ?? existing.audience;
+        if (finalAudience === CommunicationAudience.STAFF_CATEGORY) {
+            const chosen = staffCategoryId !== undefined ? staffCategoryId : existing.staffCategoryId;
+            if (chosen) await this.requireStaffCategory(chosen, organizationId);
+            dataToUpdate.staffCategoryId = chosen;
+        } else {
+            dataToUpdate.staffCategoryId = null;
+        }
 
         if (this.isPlainObject(designJson)) {
             try {
@@ -134,14 +147,37 @@ export class CommunicationBroadcastService {
         return { message: 'Comunicado removido.' };
     }
 
+    /** Categorias da equipe da academia, para o seletor de público (esta tela não exige `staff:manage`). */
+    listStaffCategories(organizationId: string) {
+        return this.prisma.staffCategory.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    }
+
+    private async requireStaffCategory(id: string, organizationId: string) {
+        const category = await this.prisma.staffCategory.findFirst({ where: { id, organizationId }, select: { id: true } });
+        if (!category) {
+            throw new NotFoundException('Categoria da equipe não encontrada nesta academia.');
+        }
+    }
+
     /** Só {id,name,email} — é tudo que o envio e o log de destinatários precisam. */
-    async resolveRecipients(organizationId: string, audience: CommunicationAudience, customRecipientUserIds: string[]) {
+    async resolveRecipients(
+        organizationId: string,
+        audience: CommunicationAudience,
+        customRecipientUserIds: string[],
+        staffCategoryId: string | null = null,
+    ) {
         const where: Prisma.UserWhereInput = { organizationId, isActive: true };
 
         if (audience === CommunicationAudience.STUDENTS) {
             where.studentProfile = { isNot: null };
         } else if (audience === CommunicationAudience.STAFF) {
             where.staffMember = { status: 'ACTIVE' };
+        } else if (audience === CommunicationAudience.STAFF_CATEGORY) {
+            // Sem categoria isto viraria "toda a equipe" — melhor falhar do que mandar para mais gente.
+            if (!staffCategoryId) {
+                throw new BadRequestException('Escolha a categoria da equipe que vai receber o comunicado (a categoria anterior pode ter sido excluída).');
+            }
+            where.staffMember = { status: 'ACTIVE', categoryId: staffCategoryId };
         } else if (audience === CommunicationAudience.CUSTOM) {
             where.id = { in: customRecipientUserIds };
         }
@@ -158,7 +194,7 @@ export class CommunicationBroadcastService {
             throw new BadRequestException('Informe o assunto do e-mail antes de enviar.');
         }
 
-        const recipients = await this.resolveRecipients(organizationId, communication.audience, communication.customRecipientUserIds);
+        const recipients = await this.resolveRecipients(organizationId, communication.audience, communication.customRecipientUserIds, communication.staffCategoryId);
         if (recipients.length === 0) {
             throw new BadRequestException('Nenhum destinatário encontrado para o público-alvo selecionado.');
         }
