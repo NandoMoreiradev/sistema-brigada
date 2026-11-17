@@ -7,7 +7,7 @@
 // Turma dividida em grupos (aba Programação): cada aluno é colocado num grupo aqui — um a um ou
 // com "Distribuir", que espalha quem está sem grupo pelos grupos com menos gente.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -45,12 +45,21 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
     const [enrollModalOpen, setEnrollModalOpen] = useState(false);
     const [enrollUserIds, setEnrollUserIds] = useState<string[]>([]);
     const [studentSearch, setStudentSearch] = useState('');
+    const [debouncedStudentSearch, setDebouncedStudentSearch] = useState('');
     const [groupFilter, setGroupFilter] = useState<string>('ALL');
 
-    const { data: peopleData } = useQuery({
-        queryKey: ['people', { hasStudentProfile: true }],
-        queryFn: () => peopleApi.list({ hasStudentProfile: true }),
-        enabled: canManage,
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedStudentSearch(studentSearch.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [studentSearch]);
+
+    // A listagem de pessoas é paginada (padrão 100). Sem busca no servidor, alunos
+    // depois da primeira página — ex.: nomes com T — não apareciam no modal.
+    const studentPickerQuery = debouncedStudentSearch || undefined;
+    const { data: peopleData, isFetching: isFetchingStudents } = useQuery({
+        queryKey: ['people', { hasStudentProfile: true, search: studentPickerQuery, limit: 500 }],
+        queryFn: () => peopleApi.list({ hasStudentProfile: true, search: studentPickerQuery, limit: 500 }),
+        enabled: canManage && enrollModalOpen,
     });
 
     const invalidateEnrollments = () => queryClient.invalidateQueries({ queryKey: ['courses', courseId, 'enrollments'] });
@@ -144,6 +153,7 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
     const enrolledUserIds = new Set(enrollments.map((e) => e.studentProfile.user.id));
     const availableStudents = (peopleData?.data ?? []).filter((p) => !enrolledUserIds.has(p.id));
     const filteredStudents = availableStudents.filter((p) => !studentSearch.trim() || normalize(`${p.name} ${p.email}`).includes(normalize(studentSearch)));
+    const listTruncated = (peopleData?.total ?? 0) > (peopleData?.data.length ?? 0);
 
     const toggleUser = (id: string) => setEnrollUserIds((current) => (current.includes(id) ? current.filter((u) => u !== id) : [...current, id]));
     const allFilteredSelected = filteredStudents.length > 0 && filteredStudents.every((p) => enrollUserIds.includes(p.id));
@@ -287,7 +297,11 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
                             style={{ width: '100%' }}
                         />
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <HelpText>{enrollUserIds.length} selecionado(s) de {availableStudents.length} disponíveis</HelpText>
+                            <HelpText>
+                                {isFetchingStudents
+                                    ? 'Buscando alunos…'
+                                    : `${enrollUserIds.length} selecionado(s) de ${availableStudents.length} disponíveis`}
+                            </HelpText>
                             {filteredStudents.length > 0 && (
                                 <Button type="button" $variant="ghost" onClick={toggleAllFiltered}>
                                     {allFilteredSelected ? 'Desmarcar exibidos' : 'Selecionar exibidos'}
@@ -306,10 +320,15 @@ export function EnrollmentsTab({ courseId, enrollments, canManage, canIssueCerti
                                 </label>
                             ))}
                         </div>
-                        {availableStudents.length === 0 && (
+                        {listTruncated && (
+                            <HelpText>A lista mostra os primeiros {peopleData?.data.length} alunos. Busque pelo nome ou e-mail para encontrar os demais.</HelpText>
+                        )}
+                        {availableStudents.length === 0 && !studentSearch.trim() && !isFetchingStudents && (
                             <ErrorText>Todos os alunos cadastrados já estão matriculados, ou nenhum aluno foi cadastrado ainda.</ErrorText>
                         )}
-                        {availableStudents.length > 0 && filteredStudents.length === 0 && <HelpText>Nenhum aluno encontrado para “{studentSearch}”.</HelpText>}
+                        {filteredStudents.length === 0 && studentSearch.trim() && !isFetchingStudents && (
+                            <HelpText>Nenhum aluno encontrado para “{studentSearch}”.</HelpText>
+                        )}
                     </Field>
                     <FormActions>
                         <Button type="button" $variant="secondary" onClick={() => setEnrollModalOpen(false)}>Cancelar</Button>

@@ -33,8 +33,17 @@ export class MailService {
         private readonly emailSenderFactory: EmailSenderFactory,
         private readonly configService: ConfigService,
     ) {
-        this.platformDefaultSender =
+        const rawSender =
             this.configService.get<string>('DEFAULT_FROM_EMAIL') ?? 'Brigada <no-reply@example.com>';
+        this.platformDefaultSender = this.sanitizeSender(rawSender);
+    }
+
+    /**
+     * Remove aspas literais envolventes que podem ser injetadas por variáveis de ambiente
+     * do Docker/dotenv (ex: `"Nome <email@dominio.com>"` -> `Nome <email@dominio.com>`).
+     */
+    private sanitizeSender(sender: string): string {
+        return sender.replace(/^["']+|["']+$/g, '').trim();
     }
 
     /**
@@ -54,7 +63,8 @@ export class MailService {
 
     async sendSingleOrThrow(options: SendSingleEmailOptions): Promise<void> {
         const { organizationId, to, subject, html, replyTo } = options;
-        const finalFrom = options.from ?? (await this.resolveFrom(organizationId));
+        const resolvedFrom = options.from ?? (await this.resolveFrom(organizationId));
+        const finalFrom = this.sanitizeSender(resolvedFrom);
 
         const { sender, isOrganizationOwned } = await this.emailSenderFactory.forOrganization(organizationId);
         this.logger.log(
