@@ -19,6 +19,28 @@ export interface PersonProfileInput {
     profession?: string;
 }
 
+/** Ficha da pessoa (GET /users/:id/overview). */
+export interface PersonOverview extends Omit<OrgPerson, 'studentProfile' | 'instructorAssignments'> {
+    isTwoFactorEnabled: boolean;
+    updatedAt: string;
+    organizationName: string | null;
+    /** Aproximado pelo login mais recente que gerou sessão; null = nunca acessou. */
+    lastAccessAt: string | null;
+    origin: 'MANUAL' | 'REGISTRATION';
+    studentProfile: { id: string; guardianName?: string | null; guardianPhone?: string | null } | null;
+    instructorAssignments: { course: { id: string; event: { title: string } } }[];
+    externalCertifications: { id: string; name: string; issuingOrg?: string | null; issuedAt?: string | null; expiresAt?: string | null }[];
+    enrollments: {
+        id: string;
+        status: 'ACTIVE' | 'COMPLETED' | 'DROPPED';
+        enrolledAt: string;
+        group: { name: string } | null;
+        course: { id: string; event: { title: string; startDate: string } };
+        certificate: { id: string; status: string; issuedAt: string; expiresAt: string | null; code: string } | null;
+        attendance: { recorded: number; present: number; justified: number; absent: number };
+    }[];
+}
+
 export interface CreatePersonInput {
     name: string;
     email: string;
@@ -104,6 +126,15 @@ export const peopleApi = {
     },
     resendAccess: async (id: string) => {
         const { data } = await api.post<{ sent: boolean; message: string }>(`/users/${id}/resend-access`);
+        return data;
+    },
+    overview: async (id: string) => {
+        const { data } = await api.get<PersonOverview>(`/users/${id}/overview`);
+        return data;
+    },
+    /** Troca o e-mail de login, encerra as sessões e envia o link de acesso ao novo endereço. */
+    changeEmail: async (id: string, email: string) => {
+        const { data } = await api.post<{ user: OrgPerson; sent: boolean; message: string }>(`/users/${id}/change-email`, { email });
         return data;
     },
     /** O que impede excluir a pessoa; lista vazia = pode excluir. */

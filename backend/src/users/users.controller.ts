@@ -16,6 +16,7 @@ import { UserDeletionService } from './user-deletion.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
+import { ChangeEmailDto } from './dto/change-email.dto';
 import { SetRoleAssignmentDto } from './dto/set-role-assignment.dto';
 import { SetDirectPermissionsDto } from './dto/set-direct-permissions.dto';
 import { CreateExternalCertificationDto } from './dto/create-external-certification.dto';
@@ -75,6 +76,13 @@ export class UsersController {
         return this.usersService.findOne(id, this.requireOrganizationId(organizationId));
     }
 
+    /** Ficha completa da pessoa: conta, matrículas com presença e certificados, vínculos. */
+    @Get(':id/overview')
+    @RequirePermission('people:manage')
+    overview(@Param('id') id: string, @ActiveOrganizationId() organizationId: string | undefined) {
+        return this.usersService.getOverview(id, this.requireOrganizationId(organizationId));
+    }
+
     @Patch(':id')
     @RequirePermission('people:manage')
     update(
@@ -83,6 +91,18 @@ export class UsersController {
         @ActiveOrganizationId() organizationId: string | undefined,
     ) {
         return this.usersService.update(id, this.requireOrganizationId(organizationId), dto);
+    }
+
+    /** Troca o e-mail de login (aluno que perdeu o acesso ao antigo). Ver UsersService.changeEmail. */
+    @Post(':id/change-email')
+    @RequirePermission('people:manage')
+    changeEmail(
+        @Param('id') id: string,
+        @Body() dto: ChangeEmailDto,
+        @ActiveOrganizationId() organizationId: string | undefined,
+        @CurrentUser() user: AuthenticatedUser,
+    ) {
+        return this.usersService.changeEmail(id, this.requireOrganizationId(organizationId), dto.email, user.id);
     }
 
     /** O que impede excluir esta pessoa (histórico, papel...) — a tela mostra antes de confirmar. */
