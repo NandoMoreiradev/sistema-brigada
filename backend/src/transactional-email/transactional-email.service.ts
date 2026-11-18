@@ -212,6 +212,28 @@ export class TransactionalEmailService {
     }
 
     /**
+     * Avisa a pessoa (no e-mail NOVO) que o e-mail de login foi trocado por um administrador, com o
+     * link para definir a senha. Gatilho próprio: o texto de "boas-vindas" confundiria quem já tinha conta.
+     * Sai pelo Resend da própria academia, como USER_WELCOME.
+     */
+    async sendEmailChangedEmail(
+        user: { name: string; email: string },
+        organizationId: string,
+        organizationName: string,
+        activationLink: string,
+    ): Promise<boolean> {
+        const context: MergeTagContext = {
+            organization: { name: organizationName },
+            organization_name: organizationName,
+            user: { name: user.name, email: user.email },
+            user_name: user.name,
+            login_link: activationLink,
+        };
+
+        return this.sendEmailByTrigger(user.email, EmailTriggerType.EMAIL_CHANGED, context, organizationId);
+    }
+
+    /**
      * Credenciais de acesso pra quem teve o autocadastro público (registrations/) aprovado
      * por um staff da academia — gatilho próprio (não USER_WELCOME) porque a mensagem faz
      * sentido ser diferente do "boas-vindas" de quando um admin cadastra alguém manualmente.

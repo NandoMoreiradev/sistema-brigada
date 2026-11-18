@@ -381,16 +381,22 @@ export class UsersService {
             await tx.refreshToken.deleteMany({ where: { userId: id } });
         });
 
-        const access = user.isActive
-            ? await this.resendAccess(id, organizationId)
-            : { sent: false, message: 'E-mail alterado. A pessoa está inativa: reative-a antes de reenviar o acesso.' };
+        let sent = false;
+        let failure = 'A pessoa está inativa: reative-a antes de reenviar o acesso.';
+        if (user.isActive) {
+            const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+            const token = this.authService.createPasswordResetToken(id, ACTIVATION_TOKEN_TTL);
+            const link = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+            sent = await this.transactionalEmailService.sendEmailChangedEmail({ name: user.name, email }, organizationId, organization?.name ?? '', link);
+            failure = 'Confira a configuração de e-mail da academia (Minha Conta › Academia › E-mail).';
+        }
 
         return {
             user: await this.findOne(id, organizationId),
-            sent: access.sent,
-            message: access.sent
+            sent,
+            message: sent
                 ? `E-mail alterado para ${email}. Enviamos o link de acesso para o novo endereço e encerramos as sessões abertas.`
-                : `E-mail alterado para ${email}, mas o link de acesso não foi enviado. ${access.message}`,
+                : `E-mail alterado para ${email}, mas o link de acesso não foi enviado. ${failure}`,
         };
     }
 
