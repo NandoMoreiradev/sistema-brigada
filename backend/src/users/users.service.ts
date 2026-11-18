@@ -221,6 +221,76 @@ export class UsersService {
     }
 
     /**
+     * Ficha da pessoa (modal de detalhes): conta, matrículas com presença e certificados, vínculos
+     * e certificações externas. Separada de `findOne` porque a listagem não precisa de nada disso.
+     * "Último acesso" é aproximado pelo refresh token mais recente: não existe campo próprio.
+     */
+    async getOverview(id: string, organizationId: string) {
+        const user = await this.prisma.user.findFirst({
+            where: { id, organizationId },
+            select: {
+                ...userListSelect,
+                isTwoFactorEnabled: true,
+                updatedAt: true,
+                organization: { select: { name: true } },
+                refreshTokens: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+                instructorAssignments: {
+                    select: { course: { select: { id: true, event: { select: { title: true } } } } },
+                },
+                studentProfile: {
+                    select: {
+                        id: true,
+                        guardianName: true,
+                        guardianPhone: true,
+                        healthInfo: true,
+                        enrollments: {
+                            where: { deletedAt: null },
+                            orderBy: { enrolledAt: 'desc' },
+                            select: {
+                                id: true,
+                                status: true,
+                                enrolledAt: true,
+                                group: { select: { name: true } },
+                                course: { select: { id: true, event: { select: { title: true, startDate: true } } } },
+                                certificate: { select: { id: true, status: true, issuedAt: true, expiresAt: true, code: true } },
+                                attendances: { select: { status: true } },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+
+        const registration = await this.prisma.registrationRequest.findFirst({
+            where: { createdUserId: id },
+            select: { createdAt: true },
+        });
+
+        const { refreshTokens, studentProfile, organization, ...rest } = user;
+        const enrollments = (studentProfile?.enrollments ?? []).map(({ attendances, ...enrollment }) => {
+            const present = attendances.filter((a) => a.status === 'PRESENT').length;
+            const justified = attendances.filter((a) => a.status === 'JUSTIFIED_ABSENT').length;
+            return {
+                ...enrollment,
+                attendance: { recorded: attendances.length, present, justified, absent: attendances.length - present - justified },
+            };
+        });
+
+        return {
+            ...rest,
+            organizationName: organization?.name ?? null,
+            studentProfile: studentProfile ? { ...studentProfile, enrollments: undefined } : null,
+            enrollments,
+            lastAccessAt: refreshTokens[0]?.createdAt ?? null,
+            origin: registration ? 'REGISTRATION' : 'MANUAL',
+        };
+    }
+
+    /**
      * Gera um novo token de redefinição de senha e reenvia o e-mail — pro
      * admin usar quando alguém perde a senha e não quer (ou não consegue)
      * usar o "Esqueci minha senha" da tela de login. Mesmo mecanismo do
@@ -272,6 +342,55 @@ export class UsersService {
             message: sent
                 ? `E-mail de acesso reenviado para ${user.email}.`
                 : 'Não foi possível enviar o e-mail. Confira a configuração de e-mail da academia (Minha Conta › Academia › E-mail).',
+        };
+    }
+
+    /**
+     * Troca o e-mail de login (o aluno perdeu o acesso ao antigo). Como quem controla o e-mail
+     * controla a conta: derruba as sessões abertas e manda o link de acesso para o e-mail NOVO.
+     * Devolve se o envio saiu, porque ele falha em silêncio.
+     */
+    async changeEmail(id: string, organizationId: string, newEmail: string, actorId: string) {
+        const user = await this.prisma.user.findFirst({ where: { id, organizationId } });
+        if (!user) {
+            throw new NotFoundException(`Usuário com ID ${id} não encontrado nesta organização.`);
+        }
+        if (user.role === Role.SUPER_ADMIN || user.role === Role.GROUP_ADMIN || user.isSuperAdminRoot) {
+            throw new BadRequestException('O e-mail de administradores da plataforma não pode ser alterado aqui.');
+        }
+        if (user.id === actorId) {
+            throw new BadRequestException('Para alterar o seu próprio e-mail, use a sua conta.');
+        }
+
+        const email = newEmail.trim();
+        if (email.toLowerCase() === user.email.toLowerCase()) {
+            throw new BadRequestException('O novo e-mail é igual ao atual.');
+        }
+
+        // Inclui contas excluídas (soft delete): o índice único ainda as considera.
+        const taken = await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' }, id: { not: id } },
+            select: { id: true },
+        });
+        if (taken) {
+            throw new ConflictException('Já existe um usuário cadastrado com este e-mail.');
+        }
+
+        await this.prisma.$transaction(async (tx) => {
+            await tx.user.update({ where: { id }, data: { email } });
+            await tx.refreshToken.deleteMany({ where: { userId: id } });
+        });
+
+        const access = user.isActive
+            ? await this.resendAccess(id, organizationId)
+            : { sent: false, message: 'E-mail alterado. A pessoa está inativa: reative-a antes de reenviar o acesso.' };
+
+        return {
+            user: await this.findOne(id, organizationId),
+            sent: access.sent,
+            message: access.sent
+                ? `E-mail alterado para ${email}. Enviamos o link de acesso para o novo endereço e encerramos as sessões abertas.`
+                : `E-mail alterado para ${email}, mas o link de acesso não foi enviado. ${access.message}`,
         };
     }
 

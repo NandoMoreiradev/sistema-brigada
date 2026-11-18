@@ -92,7 +92,9 @@ export class MediaService {
         // chave do objeto (`${this.publicUrl}/${key}`), que o R2 trata como
         // chave diferente da real e retorna 404.
         this.publicUrl = publicUrl.replace(/\/+$/, '');
-        const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+        // R2_ENDPOINT é opcional e serve para desenvolvimento local (MinIO ou S3 fake);
+        // sem ele o endpoint é o do Cloudflare R2, como sempre foi em produção.
+        const endpoint = this.configService.get<string>('R2_ENDPOINT')?.replace(/\/+$/, '') || `https://${accountId}.r2.cloudflarestorage.com`;
 
         const httpsAgent = new https.Agent({ minVersion: 'TLSv1.2', keepAlive: true });
         const requestHandler = new NodeHttpHandler({ httpsAgent });

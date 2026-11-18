@@ -35,10 +35,12 @@ import { peopleApi, type CreatePersonInput, type UpdatePersonInput } from '@/ser
 import { toast } from '@/utils/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { DeletePersonModal } from '@/pages/people/DeletePersonModal';
+import { ChangeEmailModal } from '@/pages/people/ChangeEmailModal';
+import { PersonDetailModal } from '@/pages/people/PersonDetailModal';
 import type { OrgPerson } from '@/types';
 
 // Dois schemas em vez de um só: e-mail/tipo de cadastro só existem na criação
-// (não dá pra editar depois via UpdatePersonInput), isActive só existe na
+// (na edição o e-mail muda pelo ChangeEmailModal, com regras próprias), isActive só existe na
 // edição — mesmo padrão de admin/Organizations.tsx.
 const baseFields = {
     name: z.string().min(1, 'Informe o nome'),
@@ -95,6 +97,8 @@ export default function People() {
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<OrgPerson | null>(null);
     const [deleting, setDeleting] = useState<OrgPerson | null>(null);
+    const [changingEmail, setChangingEmail] = useState<OrgPerson | null>(null);
+    const [viewing, setViewing] = useState<OrgPerson | null>(null);
     const { user } = useAuth();
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
@@ -295,7 +299,16 @@ export default function People() {
                             const roles = personRoleBadges(person);
                             return (
                                 <Tr key={person.id}>
-                                    <Td>{person.name}</Td>
+                                    <Td>
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewing(person)}
+                                            title="Ver ficha"
+                                            style={{ all: 'unset', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 3 }}
+                                        >
+                                            {person.name}
+                                        </button>
+                                    </Td>
                                     <Td>{person.email}</Td>
                                     <Td>{person.phone || '—'}</Td>
                                     <Td>
@@ -337,6 +350,22 @@ export default function People() {
             </TableWrapper>
 
             <DeletePersonModal person={deleting} onClose={() => setDeleting(null)} />
+            <PersonDetailModal
+                person={viewing}
+                isSelf={viewing?.id === user?.id}
+                onClose={() => setViewing(null)}
+                onEdit={(person) => { setViewing(null); openEdit(person); }}
+                onChangeEmail={(person) => setChangingEmail(person)}
+                onResetPassword={(person) => {
+                    if (window.confirm(`Enviar um novo e-mail de redefinição de senha para ${person.name}?`)) resetPasswordMutation.mutate(person.id);
+                }}
+                onResendAccess={(person) => resendAccessMutation.mutate(person.id)}
+            />
+            <ChangeEmailModal
+                person={changingEmail}
+                onClose={() => setChangingEmail(null)}
+                onChanged={(updated) => setEditing((current) => (current && current.id === updated.id ? { ...current, email: updated.email } : current))}
+            />
 
             <Modal open={modalOpen} onOpenChange={setModalOpen} title={editing ? 'Editar pessoa' : 'Nova pessoa'} width="560px">
                 <Form onSubmit={handleSubmit(onSubmit)}>
@@ -376,6 +405,20 @@ export default function People() {
                             </Field>
                             <HelpText>A pessoa recebe um e-mail de boas-vindas com um link para definir a própria senha.</HelpText>
                         </>
+                    )}
+
+                    {editing && (
+                        <Field>
+                            <Label htmlFor="currentEmail">E-mail</Label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <Input id="currentEmail" value={editing.email} disabled readOnly style={{ flex: 1 }} />
+                                {editing.id !== user?.id && (
+                                    <Button type="button" $variant="secondary" onClick={() => setChangingEmail(editing)}>
+                                        Alterar e-mail
+                                    </Button>
+                                )}
+                            </div>
+                        </Field>
                     )}
 
                     {editing && (
