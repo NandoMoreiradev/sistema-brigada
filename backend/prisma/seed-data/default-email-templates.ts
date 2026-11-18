@@ -72,6 +72,21 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultEmailTemplate[] = [
         `.trim(),
     },
     {
+        name: 'Padrão — E-mail de acesso alterado',
+        trigger: EmailTriggerType.EMAIL_CHANGED,
+        subject: 'Seu e-mail de acesso à {{organization_name}} foi atualizado',
+        body: `
+            <h2>Seu e-mail de acesso foi atualizado</h2>
+            <p>Olá, {{user.name | firstname}}.</p>
+            <p>A equipe da <strong>{{organization_name}}</strong> atualizou o e-mail da sua conta. A partir de agora, você entra no sistema com <strong>{{user.email}}</strong>.</p>
+            <p>Por segurança, desconectamos os acessos que estavam abertos. Clique no botão abaixo para definir uma nova senha e entrar.</p>
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{login_link}}" style="display: inline-block; background-color: #007bff; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Definir minha senha e acessar</a>
+            </p>
+            <p>O link vale por 7 dias. Se você não pediu essa alteração, fale com a {{organization_name}}.</p>
+        `.trim(),
+    },
+    {
         name: 'Padrão — Cadastro recusado (autocadastro público)',
         trigger: EmailTriggerType.REGISTRATION_REJECTED,
         subject: 'Sobre o seu cadastro em {{organization_name}}',

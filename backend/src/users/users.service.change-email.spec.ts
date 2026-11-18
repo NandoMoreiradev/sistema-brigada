@@ -11,15 +11,15 @@ function build(target: Partial<{ role: Role; isActive: boolean; email: string; i
             findFirst: jest
                 .fn()
                 // 1ª chamada: a pessoa; 2ª: checagem de e-mail em uso; demais: resendAccess/findOne
-                .mockResolvedValueOnce({ id: 'u1', email: 'velho@x.com', isActive: true, role: Role.ORG_USER, isSuperAdminRoot: false, ...target })
+                .mockResolvedValueOnce({ id: 'u1', name: 'Ana', email: 'velho@x.com', isActive: true, role: Role.ORG_USER, isSuperAdminRoot: false, ...target })
                 .mockResolvedValueOnce(emailTaken ? { id: 'u2' } : null)
-                .mockResolvedValue({ id: 'u1', name: 'Ana', email: 'novo@x.com', isActive: true, organization: { name: 'Org' } }),
+                .mockResolvedValue({ id: 'u1', name: 'Ana', email: 'novo@x.com', isActive: true }),
         },
-        registrationRequest: { findFirst: jest.fn().mockResolvedValue(null) },
+        organization: { findUnique: jest.fn().mockResolvedValue({ name: 'Org' }) },
         $transaction: jest.fn(async (fn: any) => fn(tx)),
     };
     const auth = { createPasswordResetToken: jest.fn().mockReturnValue('tok') };
-    const mail = { sendUserWelcomeEmail: jest.fn().mockResolvedValue(true), sendRegistrationApprovedEmail: jest.fn() };
+    const mail = { sendEmailChangedEmail: jest.fn().mockResolvedValue(true) };
     const service = new UsersService(prisma as any, auth as any, mail as any);
     return { service, prisma, tx, mail };
 }
@@ -32,7 +32,7 @@ describe('UsersService.changeEmail', () => {
 
         expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'u1' }, data: { email: 'novo@x.com' } });
         expect(tx.refreshToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
-        expect(mail.sendUserWelcomeEmail).toHaveBeenCalled();
+        expect(mail.sendEmailChangedEmail).toHaveBeenCalledWith({ name: 'Ana', email: 'novo@x.com' }, ORG, 'Org', expect.stringContaining('token=tok'));
         expect(result.sent).toBe(true);
     });
 
@@ -55,7 +55,7 @@ describe('UsersService.changeEmail', () => {
         const result = await service.changeEmail('u1', ORG, 'novo@x.com', 'admin-1');
 
         expect(tx.user.update).toHaveBeenCalled();
-        expect(mail.sendUserWelcomeEmail).not.toHaveBeenCalled();
+        expect(mail.sendEmailChangedEmail).not.toHaveBeenCalled();
         expect(result.sent).toBe(false);
     });
 });

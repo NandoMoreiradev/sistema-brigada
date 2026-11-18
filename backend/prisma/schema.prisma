@@ -1179,6 +1179,7 @@ enum EmailTriggerType {
   REGISTRATION_APPROVED
   REGISTRATION_REJECTED
   REGISTRATION_INVITE
+  EMAIL_CHANGED
 }
 
 /// organizationId = null -> template padrão global (usado quando a academia não tem override).

@@ -31,6 +31,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
     REGISTRATION_APPROVED: 'Cadastro aprovado (autocadastro público)',
     REGISTRATION_REJECTED: 'Cadastro recusado (autocadastro público)',
     REGISTRATION_INVITE: 'Convite para se cadastrar',
+    EMAIL_CHANGED: 'E-mail de acesso alterado',
 };
 
 @Injectable()
